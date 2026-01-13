@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SDOF Drop Shock</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+<style>
+  :root{
+    --w: 920px;
+    --border:#9aa4b2;
+    --panel:#d9d9d9;
+    --ink:#0b1220;
+    --red:#c00000;
+  }
+  body{ margin:0; background:#fff; font-family: Arial, Helvetica, sans-serif; color:var(--ink); }
+  .wrap{
+    width: min(var(--w), calc(100vw - 16px));
+    margin: 10px auto 18px;
+    border:1px solid var(--border);
+    background: var(--panel);
+  }
+  .topbar{
+    display:grid;
+    grid-template-columns: 1fr 1fr;
+    align-items:center;
+    padding:6px 10px;
+    background:#cfcfcf;
+    border-bottom:1px solid var(--border);
+    font-weight:700;
+    font-size:14px;
+  }
+  .topbar .r{ text-align:center; }
+
+  .upper{
+    display:grid;
+    grid-template-columns: 260px 250px 1fr;
+    gap:10px;
+    padding:10px;
+  }
+
+  .rows{
+    display:grid;
+    grid-template-columns: 40px 1fr;
+    row-gap:8px;
+    column-gap:10px;
+    align-items:center;
+    font-size:13px;
+  }
+  .lab{ display:flex; align-items:center; gap:6px; }
+  .tri{
+    width:0;height:0;
+    border-left:7px solid transparent;
+    border-top:7px solid var(--red);
+    transform: rotate(45deg);
+    margin-left:2px;
+  }
+  input{
+    width:100%;
+    height:22px;
+    padding:2px 6px;
+    font-size:13px;
+    border:1px solid #333;
+    background:#fff;
+    box-sizing:border-box;
+  }
+
+  .summaryRows{
+    display:grid;
+    grid-template-columns: 1fr 1fr;
+    row-gap:8px;
+    column-gap:10px;
+    align-items:center;
+    font-size:13px;
+  }
+  .sumLab{ display:flex; align-items:center; gap:6px; }
+  .sumVal{ font-weight:700; }
+
+  .schem{
+    background: var(--panel);
+    display:flex;
+    justify-content:center;
+    align-items:flex-start;
+  }
+  canvas#schem{
+    width: 220px;
+    height: 150px;
+    background: var(--panel);
+  }
+
+  .controls{
+    padding: 0 10px 8px;
+    display:flex;
+    align-items:center;
+    gap:8px;
+    flex-wrap:wrap;
+  }
+  .btn{
+    height:24px;
+    padding:0 10px;
+    border:1px solid #333;
+    background:#f2f2f2;
+    font-weight:700;
+    font-size:12px;
+    cursor:pointer;
+  }
+  .btn:disabled{ opacity:.55; cursor:not-allowed; }
+
+  .ctl{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    font-size:12px;
+    margin-left:auto;
+  }
+  input[type="range"]{ height:auto; }
+
+  .plotWrap{
+    background:#fff;
+    border-top:1px solid var(--border);
+    padding:8px 10px 10px;
+  }
+  .plotBox{
+    background:#fff;
+    border:1px solid #333;
+    padding:6px;
+  }
+  #chart{ width:100%; height:290px; }
+
+  .hint{
+    padding: 0 10px 8px;
+    font-size:11px;
+    opacity:.8;
+  }
+
+  @media (max-width: 860px){
+    .upper{ grid-template-columns: 1fr; }
+    canvas#schem{ width: 260px; height: 170px; }
+    .ctl{ margin-left:0; }
+  }
+</style>
+</head>
+
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div>SDOF Drop Shock</div>
+    <div class="r">XL4sim</div>
+  </div>
+
+  <div class="upper">
+    <div>
+      <div class="rows" style="padding:4px 2px 0;">
+        <div class="lab"><div style="width:18px;text-align:right;font-weight:700;">W</div><div class="tri"></div></div>
+        <div><input id="W" type="number" step="any" value="100"></div>
+
+        <div class="lab"><div style="width:18px;text-align:right;font-weight:700;">k</div><div class="tri"></div></div>
+        <div><input id="k" type="number" step="any" value="1000"></div>
+
+        <div class="lab"><div style="width:18px;text-align:right;font-weight:700;">c</div><div class="tri"></div></div>
+        <div><input id="c" type="number" step="any" value="4"></div>
+
+        <div class="lab"><div style="width:18px;text-align:right;font-weight:700;">G</div><div class="tri"></div></div>
+        <div><input id="g" type="number" step="any" value="386.4"></div>
+
+        <div class="lab"><div style="width:18px;text-align:right;font-weight:700;">h</div><div class="tri"></div></div>
+        <div><input id="h" type="number" step="any" value="1"></div>
+
+        <div class="lab"><div style="width:18px;text-align:right;font-weight:700;">V<sub>0</sub></div><div class="tri"></div></div>
+        <div><input id="v0" type="number" step="any" value="10"></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="summaryRows" style="padding:4px 2px 0;">
+        <div class="sumLab"><div style="width:64px;font-weight:700;">f<sub>n</sub></div><div class="tri"></div></div>
+        <div class="sumVal" id="fn">—</div>
+
+        <div class="sumLab"><div style="width:64px;font-weight:700;">c<sub>c</sub></div><div class="tri"></div></div>
+        <div class="sumVal" id="cc">—</div>
+
+        <div class="sumLab"><div style="width:64px;font-weight:700;">&#950;</div><div class="tri"></div></div>
+        <div class="sumVal" id="zeta">—</div>
+
+        <div class="sumLab"><div style="width:110px;font-weight:700;">initial contact t</div><div class="tri"></div></div>
+        <div class="sumVal" id="tC">—</div>
+
+        <div class="sumLab"><div style="width:64px;font-weight:700;">g max</div><div class="tri"></div></div>
+        <div class="sumVal" id="gmax">—</div>
+
+        <div class="sumLab"><div style="width:64px;font-weight:700;">&#916; max</div><div class="tri"></div></div>
+        <div class="sumVal" id="dmax">—</div>
+      </div>
+
+      <div class="hint">
+        Derived live from inputs. Auto-stop: 20 cycles from initial contact.
+      </div>
+    </div>
+
+    <div class="schem">
+      <canvas id="schem" width="440" height="300"></canvas>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button class="btn" id="run">Run</button>
+    <button class="btn" id="pause" disabled>Pause</button>
+    <button class="btn" id="stop" disabled>Stop</button>
+    <button class="btn" id="reset">Reset</button>
+
+    <button class="btn" id="btnJson" disabled>JSON</button>
+    <button class="btn" id="btnCsv" disabled>CSV</button>
+
+    <div class="ctl">
+      <div style="font-weight:700;">Animation speed</div>
+      <input id="speed" type="range" min="0.1" max="4" step="0.1" value="1.0">
+      <div id="speedLbl" style="width:48px;text-align:right;font-weight:700;">1.0×</div>
+    </div>
+  </div>
+
+  <div class="plotWrap">
+    <div class="plotBox">
+      <canvas id="chart"></canvas>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const fmt = (x, n=3) => {
+    if (!isFinite(x)) return "—";
+    const ax = Math.abs(x);
+    if (ax >= 1000) return x.toFixed(0);
+    if (ax >= 100)  return x.toFixed(1);
+    if (ax >= 10)   return x.toFixed(2);
+    return x.toFixed(n);
+  };
+
+  const defaults = { W:100, k:1000, c:4, g:386.4, h:1, v0:10, speed:1.0 };
+
+  const inp = { W: $("W"), k: $("k"), c: $("c"), g: $("g"), h: $("h"), v0: $("v0") };
+  const out = { fn: $("fn"), cc: $("cc"), zeta: $("zeta"), tC: $("tC"), gmax: $("gmax"), dmax: $("dmax") };
+
+  const btnRun = $("run"), btnPause = $("pause"), btnStop = $("stop"), btnReset = $("reset");
+  // Export Buttons
+  const btnJson = $("btnJson"), btnCsv = $("btnCsv");
+  
+  const speed = $("speed"), speedLbl = $("speedLbl");
+
+  // Soft-reset target: inputs as of the last time Run was clicked
+  let lastRunInputs = null;
+  
+  // Data snapshot for export
+  let frozenRunData = null; 
+
+  // Chart
+  const chart = new Chart($("chart").getContext("2d"), {
+    type: "line",
+    data: {
+      labels: [],
+      datasets: [
+        { label: "Displacement, y", data: [], borderWidth: 2, pointRadius: 0, tension: 0.05, yAxisID: "yDisp" },
+        { label: "Acceleration", data: [], borderWidth: 2, pointRadius: 0, tension: 0.05, borderDash: [6,4], yAxisID: "yG" }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      interaction: { mode: "index", intersect: false },
+      plugins: { legend: { position: "top" } },
+      scales: {
+        x: { title: { display: true, text: "Time, sec." }, ticks: { maxTicksLimit: 10 } },
+        yDisp: { position: "left", title: { display: true, text: "Displacement" } },
+        yG: { position: "right", title: { display: true, text: "Accelerometer Reading, g's" }, grid: { drawOnChartArea:false } }
+      }
+    }
+  });
+
+  // Physics
+  function computeContactTime(h, v0, g){
+    const a = 0.5*g, b = v0, c = -h;
+    const disc = b*b - 4*a*c;
+    if (disc < 0) return NaN;
+    const t1 = (-b + Math.sqrt(disc)) / (2*a);
+    const t2 = (-b - Math.sqrt(disc)) / (2*a);
+    const cand = [t1,t2].filter(t => t >= 0).sort((p,q)=>p-q);
+    return cand.length ? cand[0] : NaN;
+  }
+
+  function simulateFromInputs(){
+    const W = +inp.W.value;
+    const k = +inp.k.value;
+    const c = +inp.c.value;
+    const g = +inp.g.value;
+    const h = +inp.h.value;
+    const v0 = +inp.v0.value;
+
+    if (!(W>0) || !(k>0) || !(g>0) || !(h>=0)) return null;
+
+    const m = W/g;
+    const wn = Math.sqrt(k/m);
+    const fn = wn/(2*Math.PI);
+    const cc = 2*m*wn;
+    const zeta = c/cc;
+
+    const tC = (h===0) ? 0 : computeContactTime(h, v0, g);
+    const vC = isFinite(tC) ? (v0 + g*tC) : NaN;
+    const Tn = 1/Math.max(1e-12, fn);
+    const cyclesToContact = isFinite(tC) ? (fn * tC) : NaN;
+
+    const cycles = 20;
+    const tStop = (isFinite(tC) ? tC : 0) + cycles / Math.max(1e-12, fn);
+
+    const dt = Math.max(1e-5, Math.min(0.0005, 1/(fn*550 + 250)));
+
+    const t = [], y = [], v = [], a = [], gRead = [];
+
+    const nFF = Math.max(0, Math.ceil(((isFinite(tC)?tC:0))/dt));
+    for (let i=0; i<=nFF; i++){
+      const tt = i*dt;
+      const yy = -h + v0*tt + 0.5*g*tt*tt;
+      const vv = v0 + g*tt;
+      const aa = g;
+      t.push(tt); y.push(yy); v.push(vv); a.push(aa);
+      gRead.push(Math.abs(aa)/g);
+    }
+
+    function acc(yy,vv){ return g - (c/m)*vv - (k/m)*yy; }
+    let tt = isFinite(tC) ? tC : 0;
+    let yy = 0;
+    let vv = isFinite(tC) ? (v0 + g*tC) : v0;
+
+    while (tt < tStop - 0.5*dt){
+      const k1y = vv;
+      const k1v = acc(yy, vv);
+
+      const k2y = vv + 0.5*dt*k1v;
+      const k2v = acc(yy + 0.5*dt*k1y, vv + 0.5*dt*k1v);
+
+      const k3y = vv + 0.5*dt*k2v;
+      const k3v = acc(yy + 0.5*dt*k2y, vv + 0.5*dt*k2v);
+
+      const k4y = vv + dt*k3v;
+      const k4v = acc(yy + dt*k3y, vv + dt*k3v);
+
+      yy = yy + (dt/6)*(k1y + 2*k2y + 2*k3y + k4y);
+      vv = vv + (dt/6)*(k1v + 2*k2v + 2*k3v + k4v);
+      tt = tt + dt;
+
+      const aa = acc(yy, vv);
+
+      t.push(tt); y.push(yy); v.push(vv); a.push(aa);
+      gRead.push(Math.abs(aa)/g);
+    }
+
+    const yMax = Math.max(...y);
+    const gMax = Math.max(...gRead);
+
+    return { W,k,c,g,h,v0, m, wn, fn, cc, zeta, tC, vC, Tn, cyclesToContact, tStop, dt, t, y, v, a, gRead, yMax, gMax };
+  }
+
+  function writeSummary(sim){
+    if (!sim){
+      out.fn.textContent="—"; out.cc.textContent="—"; out.zeta.textContent="—";
+      out.tC.textContent="—"; out.gmax.textContent="—"; out.dmax.textContent="—";
+      return;
+    }
+    out.fn.innerHTML = fmt(sim.fn,3) + " Hz";
+    out.cc.textContent = fmt(sim.cc,3);
+    out.zeta.innerHTML = fmt(sim.zeta*100,1) + " %";
+    out.tC.textContent = fmt(sim.tC,4) + " s";
+    out.gmax.innerHTML = fmt(sim.gMax,2) + " g";
+    out.dmax.textContent = fmt(sim.yMax,4);
+  }
+
+  // Schematic
+  const canv = $("schem");
+  const ctx = canv.getContext("2d");
+  function clamp(x,a,b){ return Math.max(a, Math.min(b, x)); }
+  function roundRect(x,y,w,h,r){
+    const rr = Math.min(r, w/2, h/2);
+    ctx.beginPath();
+    ctx.moveTo(x+rr, y);
+    ctx.arcTo(x+w, y, x+w, y+h, rr);
+    ctx.arcTo(x+w, y+h, x, y+h, rr);
+    ctx.arcTo(x, y+h, x, y, rr);
+    ctx.arcTo(x, y, x+w, y, rr);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  }
+  function drawSpring(x, yTop, yBot){
+    ctx.strokeStyle = "#111827";
+    ctx.lineWidth = 2;
+    const turns = 8, amp = 14;
+    const dy = yBot - yTop;
+    const seg = dy / (turns*2);
+    ctx.beginPath();
+    ctx.moveTo(x, yTop);
+    let xx=x, yy=yTop;
+    for (let i=0; i<turns*2; i++){
+      yy += seg;
+      xx = x + (i%2===0 ? -amp : amp);
+      ctx.lineTo(xx, yy);
+    }
+    ctx.lineTo(x, yBot);
+    ctx.stroke();
+  }
+  function drawDamper(x, yTop, yBot){
+    ctx.strokeStyle = "#111827";
+    ctx.lineWidth = 2;
+    const mid = (yTop + yBot)/2;
+    ctx.beginPath(); ctx.moveTo(x,yTop); ctx.lineTo(x, mid-28); ctx.stroke();
+    ctx.beginPath(); ctx.rect(x-18, mid-28, 36, 22); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x, mid-6); ctx.lineTo(x, yBot); ctx.stroke();
+  }
+
+  // SHIFT ENTIRE GRAPHIC DOWN to prevent clipping
+  const SCENE_TOP_SHIFT = 48; 
+
+
+function drawSchematic(sim, tNow, yNow, vNow){
+  const w = canv.width, h = canv.height;
+
+  // background
+  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--panel").trim() || "#d9d9d9";
+  ctx.fillRect(0,0,w,h);
+
+  // OPTIONAL: vertical shift
+  ctx.save();
+  ctx.translate(0, SCENE_TOP_SHIFT);
+
+  // --- Minimal geometry ---
+  const baseY = Math.round(h*0.82);      // ground elevation
+  const xMid  = Math.round(w*0.70);      // center of the mechanism
+  const yTop0 = Math.round(h*0.42);      // un-deflected top plate location (contact plane)
+
+  // Ground line
+  ctx.strokeStyle = "#111827";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(Math.round(w*0.45), baseY);
+  ctx.lineTo(Math.round(w*0.92), baseY);
+  ctx.stroke();
+
+  // Scale for visual deflection
+  const yMaxVis = sim ? Math.max(1e-6, sim.yMax) : Math.max(1e-6, (+inp.h.value || 1));
+  const plateMaxPix = Math.round((baseY - yTop0) * 0.60);
+
+  // Plate deflection only when in contact (y >= 0)
+  const yPlatePhys = Math.max(0, yNow);
+  const yPlatePix = yTop0 + clamp(yPlatePhys / yMaxVis, 0, 1.25) * plateMaxPix;
+
+  // Top plate
+  ctx.strokeStyle = "#111827";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(xMid - 95, yPlatePix);
+  ctx.lineTo(xMid + 95, yPlatePix);
+  ctx.stroke();
+
+  // Spring + Damper under the weight
+  const xDamper = Math.round(xMid - 35);
+  const xSpring = Math.round(xMid + 35);
+  drawDamper(xDamper, yPlatePix, baseY);
+  drawSpring(xSpring, yPlatePix, baseY);
+
+  // Weight block
+  const bw = 150, bh = 70;
+  let yMassTop;
+  if (yNow < 0){
+    // free fall
+    const hIn = Math.max(1e-6, (+inp.h.value || 1));
+    const freeFallPix = clamp((-yNow)/hIn, 0, 1.5) * Math.round(h*0.25);
+    yMassTop = Math.round(yTop0 - 14 - bh - freeFallPix);
+  } else {
+    // contact
+    yMassTop = Math.round(yPlatePix - bh - 4);
+  }
+  const xMass = xMid - bw/2;
+
+  ctx.fillStyle = "#cfd5dd";
+  ctx.strokeStyle = "#111827";
+  ctx.lineWidth = 3;
+  roundRect(xMass, yMassTop, bw, bh, 16);
+
+  ctx.restore();
+}
+
+  // Live recompute (debounced)
+  let simReady = null;
+  let debounceTimer = null;
+
+  function recomputeLive(){
+    simReady = simulateFromInputs();
+    writeSummary(simReady);
+
+    // Pre-run schematic: t=0, y=-h, v=v0
+    const h0 = +inp.h.value || 0;
+    const v0 = +inp.v0.value || 0;
+    drawSchematic(simReady, 0, -Math.max(0,h0), v0);
+  }
+
+  function requestRecompute(){
+    if (anim.running) return;
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(recomputeLive, 120);
+  }
+
+  Object.values(inp).forEach(el => {
+    el.addEventListener("input", requestRecompute);
+    el.addEventListener("change", requestRecompute);
+  });
+
+  // Animation
+  function setButtons(running, paused){
+    btnRun.disabled = running && !paused;
+    btnPause.disabled = !running;
+    btnStop.disabled = !running;
+    btnPause.textContent = paused ? "Resume" : "Pause";
+  }
+
+  let anim = { running:false, paused:false, idx:0, t0:0 };
+  let raf = null;
+
+  function updateChartTo(idx){
+    chart.data.labels = simReady.t.slice(0, idx+1).map(x => x.toFixed(4));
+    chart.data.datasets[0].data = simReady.y.slice(0, idx+1);
+    chart.data.datasets[1].data = simReady.gRead.slice(0, idx+1);
+    chart.update();
+  }
+
+  function start(){
+    // Commit current inputs as the "last run" state (used by Reset)
+    lastRunInputs = {
+      W:  +inp.W.value,
+      k:  +inp.k.value,
+      c:  +inp.c.value,
+      g:  +inp.g.value,
+      h:  +inp.h.value,
+      v0: +inp.v0.value
+    };
+
+    if (!simReady){
+       recomputeLive();
+       if (!simReady) return;
+    }
+
+    // Capture snapshot for Export
+    frozenRunData = simReady;
+    btnJson.disabled = false;
+    btnCsv.disabled = false;
+
+    chart.data.labels = [];
+    chart.data.datasets[0].data = [];
+    chart.data.datasets[1].data = [];
+    chart.update();
+
+    anim.running = true;
+    anim.paused = false;
+    anim.idx = 0;
+    anim.t0 = performance.now();
+    setButtons(true,false);
+
+    const step = () => {
+      if (!anim.running) return;
+
+      const spd = +speed.value;
+      const now = performance.now();
+
+      if (!anim.paused){
+        const dtSec = ((now - anim.t0)/1000) * spd;
+        anim.t0 = now;
+
+        const tTarget = simReady.t[anim.idx] + dtSec;
+        while (anim.idx < simReady.t.length-1 && simReady.t[anim.idx] < tTarget){
+          anim.idx++;
+        }
+
+        if (anim.idx >= simReady.t.length-1){
+          anim.idx = simReady.t.length-1;
+          updateChartTo(anim.idx);
+          drawSchematic(simReady, simReady.t[anim.idx], simReady.y[anim.idx], simReady.v[anim.idx]);
+          stop(true);
+          return;
+        }
+      } else {
+        anim.t0 = now;
+      }
+
+      updateChartTo(anim.idx);
+      drawSchematic(simReady, simReady.t[anim.idx], simReady.y[anim.idx], simReady.v[anim.idx]);
+
+      raf = requestAnimationFrame(step);
+    };
+
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(step);
+  }
+
+  function stop(){
+    anim.running = false;
+    anim.paused = false;
+    setButtons(false,false);
+    cancelAnimationFrame(raf);
+    raf = null;
+
+    if (simReady){
+      updateChartTo(simReady.t.length-1);
+      drawSchematic(simReady, simReady.t.at(-1), simReady.y.at(-1), simReady.v.at(-1));
+    }
+  }
+
+  function hardReset(){
+    // stop animation
+    anim.running = false;
+    anim.paused = false;
+    setButtons(false,false);
+    cancelAnimationFrame(raf);
+    raf = null;
+
+    // Disable exports on reset
+    btnJson.disabled = true;
+    btnCsv.disabled = true;
+    frozenRunData = null;
+
+    // restore inputs to the last Run values (soft reset)
+    const src = lastRunInputs || defaults;
+
+    inp.W.value  = src.W;
+    inp.k.value  = src.k;
+    inp.c.value  = src.c;
+    inp.g.value  = src.g;
+    inp.h.value  = src.h;
+    inp.v0.value = src.v0;
+
+    // clear plot
+    chart.data.labels = [];
+    chart.data.datasets[0].data = [];
+    chart.data.datasets[1].data = [];
+    chart.update();
+
+    // recompute + redraw initial
+    recomputeLive();
+  }
+
+  // --- EXPORT FUNCTIONS ---
+
+  function downloadFile(content, fileName, mimeType) {
+    const a = document.createElement("a");
+    const blob = new Blob([content], {type: mimeType});
+    const url = URL.createObjectURL(blob);
+    a.setAttribute("href", url);
+    a.setAttribute("download", fileName);
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  btnJson.addEventListener("click", () => {
+    if(!frozenRunData) return;
+    const d = frozenRunData;
+    const exportObj = {
+      provenance: {
+        module: "SDOF Drop Shock",
+        version: "1.0",
+        timestamp: new Date().toISOString()
+      },
+      inputs: {
+        W: d.W, k: d.k, c: d.c, g: d.g, 
+        h: d.h, v0: d.v0
+      },
+      derivedValues: {
+        m: d.m, wn: d.wn, fn: d.fn, cc: d.cc, zeta: d.zeta, 
+        tC: d.tC, vC: d.vC, Tn: d.Tn, tStop: d.tStop,
+        maxima: { gMax: d.gMax, yMax: d.yMax }
+      },
+      results: {
+        t: d.t,
+        y: d.y,
+        a_g: d.a.map(val => val/d.g) // Exporting acceleration in Gs (signed)
+      }
+    };
+    downloadFile(JSON.stringify(exportObj, null, 2), "drop_shock_data.json", "application/json");
+  });
+
+  btnCsv.addEventListener("click", () => {
+    if(!frozenRunData) return;
+    const d = frozenRunData;
+    // Columns: Time, Displacement, Acceleration(g)
+    let csv = "t_sec,disp,accel_g\n";
+    for(let i=0; i<d.t.length; i++){
+      // Note: converting raw acceleration 'a' to Gs by dividing by gravity input 'g'
+      csv += `${d.t[i]},${d.y[i]},${d.a[i]/d.g}\n`;
+    }
+    downloadFile(csv, "drop_shock_history.csv", "text/csv");
+  });
+
+
+  btnRun.addEventListener("click", start);
+  btnPause.addEventListener("click", () => {
+    if (!anim.running) return;
+    anim.paused = !anim.paused;
+    setButtons(true, anim.paused);
+  });
+  btnStop.addEventListener("click", stop);
+  btnReset.addEventListener("click", hardReset);
+
+  speed.addEventListener("input", () => speedLbl.textContent = (+speed.value).toFixed(1) + "×");
+
+  // initial
+  speedLbl.textContent = (+speed.value).toFixed(1) + "×";
+  recomputeLive();
+})();
+</script>
+</body>
+</html>
