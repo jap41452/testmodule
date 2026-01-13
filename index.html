@@ -12,7 +12,7 @@
       --pad: 50px;
       --beam-w: 960px;        /* desired max drawing width */
       --plot-h: 260px;
-      --right-gutter: 25px; /* empty page space to the right of canvases */
+      --right-gutter: 25px;   /* empty page space to the right of canvases */
     }
 
     body { background: #f4f4f4; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 24px; }
@@ -36,8 +36,7 @@
       border: 1px solid #ddd;
     }
 
-    /* Your fixed heights (optional) */
-    #beamCanvas { height: 260px; }
+    #beamCanvas { height: 260px; cursor: pointer; }
     .plot { height: var(--plot-h); }
 
     /* Responsive gutter */
@@ -54,7 +53,7 @@
   </style>
 </head>
 <body>
-  <h2>Beam Stiffness Solver — Canvas Testbed</h2>
+  <h2>Beam Stiffness Solver — Dark Segments & Loads Above</h2>
 
   <div class="row">
     <label>Segments (max 10): <input id="numSegments" type="number" min="1" max="10" value="2"></label>
@@ -109,13 +108,11 @@
     let nodes = [];
     let elementForces = null; // [{V1,M1,V2,M2,L}, ...]
     let lastU = null;         // {u, map}
-    // Global unit system for presets: 'US' or 'SI'
     let unitSystem = 'US';
 
     // -------------------- Helpers --------------------
     function isHinge(node){ return !!node.pinJoint; }
 
-    // Format to ≤ 3 significant figures for plot axes
     function fmtSig3(n){
       if (n === 0) return '0';
       if (!isFinite(n)) return String(n);
@@ -129,7 +126,6 @@
     }
 
     function normalizeSegments(){
-      // Back-compat: migrate S -> St/Sb and q -> qL/qR; default wd/A
       for (const seg of segments){
         if (seg.St === undefined && seg.S !== undefined) seg.St = seg.S;
         if (seg.Sb === undefined && seg.S !== undefined) seg.Sb = seg.S;
@@ -139,13 +135,12 @@
         if (seg.qR === undefined && seg.q !== undefined) seg.qR = seg.q;
         if (seg.qL === undefined) seg.qL = 0;
         if (seg.qR === undefined) seg.qR = 0;
-        if (seg.wd === undefined) seg.wd = 0;   // weight density (force/vol)
-        if (seg.A  === undefined) seg.A  = 0;   // area
+        if (seg.wd === undefined) seg.wd = 0;
+        if (seg.A  === undefined) seg.A  = 0;
         delete seg.S; delete seg.q;
       }
     }
 
-    // DOF map with hinge (pin = moment release; shear still transferred)
     function buildDOFMap(){
       const n = nodes.length; const idxW = new Array(n); const thLeft = new Array(n); const thRight = new Array(n); let dof=0;
       for (let i=0;i<n;i++) idxW[i] = dof++;
@@ -177,7 +172,7 @@
           <label><span>Kv:</span><input id="Kv" class="swal2-input" value="${node.Kv}"></label>
           <label><span>Km:</span><input id="Km" class="swal2-input" value="${node.Km}"></label>
           <hr style='margin:6px 0;'>
-          <label><span>Pin joint (moment release; shear-only transfer):</span><input type="checkbox" id="pinJoint" ${node.pinJoint? 'checked':''}></label>
+          <label><span>Pin joint:</span><input type="checkbox" id="pinJoint" ${node.pinJoint? 'checked':''}></label>
           <label><span>Prescribed w:</span><input id="w0" class="swal2-input" placeholder="(blank = none)" value="${Number.isFinite(node.w0)? node.w0 : ''}"></label>
           <label><span>Prescribed θ:</span><input id="th0" class="swal2-input" placeholder="(blank = none)" value="${Number.isFinite(node.th0)? node.th0 : ''}"></label>`,
         focusConfirm: false,
@@ -227,30 +222,10 @@
             </div>
             <div id="secCalc" style="display:none; margin-top:8px; padding-top:8px; border-top:1px solid #ddd;">
               <div id="shapeGrid" style="display:grid; grid-template-columns:repeat(3, auto); gap:6px; align-items:center;">
-                <button type="button" class="shapeBtn" data-shape="rect" title="Rectangle" style="display:flex; align-items:center; gap:6px; padding:4px 6px; border:1px solid #ccc; border-radius:6px; background:#fafafa; width:auto; min-width:0; white-space:nowrap;">
-                  <svg width="28" height="20"><rect x="2" y="2" width="24" height="16" fill="#ddd" stroke="#666"/></svg>
-                  <span>Rectangle</span>
-                </button>
-                <button type="button" class="shapeBtn" data-shape="circ" title="Circle / Tube" style="display:flex; align-items:center; gap:6px; padding:4px 6px; border:1px solid #ccc; border-radius:6px; background:#fafafa; width:auto; min-width:0; white-space:nowrap;">
-                  <svg width="28" height="28"><circle cx="14" cy="14" r="12" fill="#ddd" stroke="#666"/><circle cx="14" cy="14" r="6" fill="#fff" stroke="#666"/></svg>
-                  <span>Circle</span>
-                </button>
-                <button type="button" class="shapeBtn" data-shape="tube" title="Hollow Box" style="display:flex; align-items:center; gap:6px; padding:4px 6px; border:1px solid #ccc; border-radius:6px; background:#fafafa; width:auto; min-width:0; white-space:nowrap;">
-                  <svg width="28" height="20"><rect x="2" y="2" width="24" height="16" fill="#ddd" stroke="#666"/><rect x="7" y="6" width="14" height="8" fill="#fff" stroke="#666"/></svg>
-                  <span>Hollow Box</span>
-                </button>
-                <button type="button" class="shapeBtn" data-shape="ibeam" title="I-Beam" style="display:flex; align-items:center; gap:6px; padding:4px 6px; border:1px solid #ccc; border-radius:6px; background:#fafafa; width:auto; min-width:0; white-space:nowrap;">
-                  <svg width="32" height="20"><rect x="2" y="2" width="28" height="4" fill="#ddd" stroke="#666"/><rect x="14" y="6" width="4" height="8" fill="#ddd" stroke="#666"/><rect x="2" y="14" width="28" height="4" fill="#ddd" stroke="#666"/></svg>
-                  <span>I-Beam</span>
-                </button>
-                <button type="button" class="shapeBtn" data-shape="channel" title="Channel" style="display:flex; align-items:center; gap:6px; padding:4px 6px; border:1px solid #ccc; border-radius:6px; background:#fafafa; width:auto; min-width:0; white-space:nowrap;">
-                  <svg width="32" height="20"><rect x="2" y="2" width="6" height="16" fill="#ddd" stroke="#666"/><rect x="2" y="2" width="22" height="4" fill="#ddd" stroke="#666"/><rect x="2" y="14" width="22" height="4" fill="#ddd" stroke="#666"/></svg>
-                  <span>Channel</span>
-                </button>
-                <button type="button" class="shapeBtn" data-shape="tbeam" title="T-Beam" style="display:flex; align-items:center; gap:6px; padding:4px 6px; border:1px solid #ccc; border-radius:6px; background:#fafafa; width:auto; min-width:0; white-space:nowrap;">
-                  <svg width="32" height="20"><rect x="2" y="2" width="28" height="4" fill="#ddd" stroke="#666"/><rect x="14" y="6" width="4" height="12" fill="#ddd" stroke="#666"/></svg>
-                  <span>T-Beam</span>
-                </button>
+                <button type="button" class="shapeBtn" data-shape="rect" title="Rectangle" style="display:flex; align-items:center; gap:6px; padding:4px 6px; border:1px solid #ccc; border-radius:6px; background:#fafafa; width:auto; min-width:0; white-space:nowrap;"><span>Rectangle</span></button>
+                <button type="button" class="shapeBtn" data-shape="circ" title="Circle" style="display:flex; align-items:center; gap:6px; padding:4px 6px; border:1px solid #ccc; border-radius:6px; background:#fafafa; width:auto; min-width:0; white-space:nowrap;"><span>Circle</span></button>
+                <button type="button" class="shapeBtn" data-shape="tube" title="Tube" style="display:flex; align-items:center; gap:6px; padding:4px 6px; border:1px solid #ccc; border-radius:6px; background:#fafafa; width:auto; min-width:0; white-space:nowrap;"><span>Tube</span></button>
+                <button type="button" class="shapeBtn" data-shape="ibeam" title="I-Beam" style="display:flex; align-items:center; gap:6px; padding:4px 6px; border:1px solid #ccc; border-radius:6px; background:#fafafa; width:auto; min-width:0; white-space:nowrap;"><span>I-Beam</span></button>
               </div>
               <div id="secInputs" style="margin-top:8px; font-size:12px;"></div>
             </div>
@@ -316,16 +291,6 @@
               <label><span style="width:120px; display:inline-block;">t<sub>w</sub> (web)</span><input id="sh_tw" class="swal2-input" style="width:100px"></label>
               <button id="applySec" type="button" style="height:28px; padding:0 12px; border:1px solid #7aa; border-radius:6px; background:#e6f3ff;">Use</button>
             </div>`;
-        } else if (shape==='tbeam'){
-          html = `
-            <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-              <label><span style="width:120px; display:inline-block;">h (total)</span><input id="sh_h" class="swal2-input" style="width:100px"></label>
-              <label><span style="width:120px; display:inline-block;">b<sub>f</sub> (flange)</span><input id="sh_bf" class="swal2-input" style="width:100px"></label>
-              <label><span style="width:120px; display:inline-block;">t<sub>f</sub> (flange)</span><input id="sh_tf" class="swal2-input" style="width:100px"></label>
-              <label><span style="width:120px; display:inline-block;">t<sub>w</sub> (web)</span><input id="sh_tw" class="swal2-input" style="width:100px"></label>
-              <button id="applySec" type="button" style="height:28px; padding:0 12px; border:1px solid #7aa; border-radius:6px; background:#e6f3ff;">Use</button>
-              <div style="font-size:11px; color:#555;">Assumes flange at the <b>top</b>.</div>
-            </div>`;
         }
         inputs.innerHTML = html;
         const apply = el.querySelector('#applySec');
@@ -355,35 +320,16 @@
                   const I = 2*(bf*Math.pow(tf,3)/12 + bf*tf*Math.pow(d,2)) + (tw*Math.pow(hw,3))/12;
                   const c = h/2; const S = I/c; return {A,I,St:S,Sb:S};
                 }
-                if (shape==='tbeam'){
-                  const h=parseFloat(el.querySelector('#sh_h').value), bf=parseFloat(el.querySelector('#sh_bf').value), tf=parseFloat(el.querySelector('#sh_tf').value), tw=parseFloat(el.querySelector('#sh_tw').value);
-                  if (!(h>0 && bf>0 && tf>0 && tw>0 && h>tf)) throw new Error('Check dimensions: h>tf and positive');
-                  const hw = h - tf; // web height
-                  const A_f = bf*tf, y_f = h - tf/2; const I_f = bf*Math.pow(tf,3)/12;
-                  const A_w = tw*hw, y_w = hw/2;     const I_w = tw*Math.pow(hw,3)/12;
-                  const A = A_f + A_w; const ybar = (A_f*y_f + A_w*y_w)/A;
-                  const I = I_f + A_f*Math.pow(y_f - ybar,2) + I_w + A_w*Math.pow(y_w - ybar,2);
-                  const St = I/(h - ybar), Sb = I/(ybar - 0);
-                  return {A,I,St,Sb};
-                }
                 throw new Error('Unknown shape');
               })();
-              // Fill the fields in the parent form (these inputs live inside the Swal popup)
               const set = (id,val)=>{ const inp = document.getElementById(id); if (inp){ inp.value = val; inp.dispatchEvent(new Event('input', {bubbles:true})); } };
               const to3 = (v)=> Number(v).toPrecision(3);
               set('A', to3(out.A)); set('I', to3(out.I)); set('St', to3(out.St)); set('Sb', to3(out.Sb));
-              // Immediately sync to underlying segment + redraw, so the beam labels update even before OK
               try {
                 const tgt = segments[segIndex];
-                if (tgt) {
-                  tgt.A  = parseFloat(to3(out.A));
-                  tgt.I  = parseFloat(to3(out.I));
-                  tgt.St = parseFloat(to3(out.St));
-                  tgt.Sb = parseFloat(to3(out.Sb));
-                }
+                if (tgt) { tgt.A=parseFloat(to3(out.A)); tgt.I=parseFloat(to3(out.I)); tgt.St=parseFloat(to3(out.St)); tgt.Sb=parseFloat(to3(out.Sb)); }
                 drawBeam();
               } catch(_) {}
-              
               Swal.fire({icon:'success', title:'Section properties applied', timer:900, showConfirmButton:false});
             }catch(err){ Swal.fire('Invalid input', err.message || String(err), 'error'); }
           });
@@ -394,7 +340,6 @@
 
     // ---- Material presets (E & wd) ----
     function setupMaterialPresets(el, segIndex){
-      // Inject unit toggle buttons into the existing row if not present
       const row = el.querySelector('#matRow');
       if (row && !row.querySelector('.unitBtn')){
         const spacer = document.createElement('span'); spacer.style.cssText = 'font-size:12px; color:#555; margin-left:8px;'; spacer.textContent = 'Units:';
@@ -402,44 +347,23 @@
         const si = document.createElement('button'); si.type='button'; si.className='unitBtn'; si.dataset.unit='SI'; si.textContent='Metric (SI)'; si.style.cssText='height:26px; padding:0 10px; border:1px solid #bbb; border-radius:6px; background:#f5f5f5;';
         row.appendChild(spacer); row.appendChild(us); row.appendChild(si);
       }
-
       const presets = {
-        US: {
-          steel:    { E: 29e6,  wd: 0.283 },
-          aluminum: { E: 10e6,  wd: 0.098 },
-          hardwood: { E: 1.6e6, wd: 0.025 },
-          softwood: { E: 1.2e6, wd: 0.018 }
-        },
-        SI: {
-          steel:    { E: 200e9, wd: 77000 },   // N/m^3
-          aluminum: { E: 69e9,  wd: 26500 },   // N/m^3
-          hardwood: { E: 11e9,  wd: 7000 },    // N/m^3
-          softwood: { E: 8.3e9, wd: 5000 }     // N/m^3
-        }
+        US: { steel: { E: 29e6, wd: 0.283 }, aluminum: { E: 10e6, wd: 0.098 }, hardwood: { E: 1.6e6, wd: 0.025 }, softwood: { E: 1.2e6, wd: 0.018 } },
+        SI: { steel: { E: 200e9, wd: 77000 }, aluminum: { E: 69e9, wd: 26500 }, hardwood: { E: 11e9, wd: 7000 }, softwood: { E: 8.3e9, wd: 5000 } }
       };
-
       function refreshUnitButtons(){
         el.querySelectorAll('.unitBtn').forEach(b=>{
           const active = (b.dataset.unit === unitSystem);
-          b.style.background  = active ? '#e6f3ff' : '#f5f5f5';
-          b.style.borderColor = active ? '#5a8' : '#bbb';
-          b.style.fontWeight  = active ? '600' : '400';
+          b.style.background  = active ? '#e6f3ff' : '#f5f5f5'; b.style.borderColor = active ? '#5a8' : '#bbb'; b.style.fontWeight  = active ? '600' : '400';
         });
       }
-
-      // Wire unit buttons
-      el.querySelectorAll('.unitBtn').forEach(btn=>{
-        btn.addEventListener('click', ()=>{ unitSystem = btn.dataset.unit; refreshUnitButtons(); });
-      });
+      el.querySelectorAll('.unitBtn').forEach(btn=>{ btn.addEventListener('click', ()=>{ unitSystem = btn.dataset.unit; refreshUnitButtons(); }); });
       refreshUnitButtons();
-
-      // Wire material buttons
       el.querySelectorAll('.matBtn').forEach(btn=>{
         btn.addEventListener('click', ()=>{
           const key = btn.dataset.mat; const pset = presets[unitSystem] || presets.US; const p = pset[key]; if (!p) return;
           const eIn = el.querySelector('#E'); const wdIn = el.querySelector('#wd');
-          if (eIn)  eIn.value  = p.E;
-          if (wdIn) wdIn.value = p.wd;
+          if (eIn)  eIn.value  = p.E; if (wdIn) wdIn.value = p.wd;
           try { const tgt = segments[segIndex]; if (tgt){ tgt.E = p.E; tgt.wd = p.wd; } drawBeam(); } catch(_) {}
         });
       });
@@ -456,9 +380,7 @@
         segments = arr;
         normalizeSegments();
         nodes = Array(numSegments + 1).fill().map(() => ({ bc: 'free', F: 0, M: 0, Kv: 0, Km: 0, pinJoint: false, w0: null, th0: null }));
-      } else {
-        normalizeSegments();
-      }
+      } else { normalizeSegments(); }
 
       elementForces = null; K_global = null; lastU = null; drawBeam();
     }
@@ -475,11 +397,7 @@
       const maxEI = Math.max(...segments.map(seg => seg.E * seg.I));
       const maxHeight = 0.40 * canvas.height * 0.25;
       const eiScale = parseFloat(document.getElementById('eiScale').value || '1');
-      
-      const maxAbsQ = Math.max(
-        ...segments.flatMap(seg => [Math.abs(seg.qL || 0), Math.abs(seg.qR || 0)]),
-        0
-      );
+      const maxAbsQ = Math.max(...segments.flatMap(seg => [Math.abs(seg.qL || 0), Math.abs(seg.qR || 0)]), 0);
       const maxAbsF = Math.max(...nodes.map(n => Math.abs(n.F || 0)), 0);
       const maxAbsW = Math.max(...segments.map(s => Math.abs((s.wd||0)*(s.A||0))), 0);
 
@@ -582,10 +500,7 @@
         const theta = isPos ? 0.5*Math.PI : -0.5*Math.PI; 
         const tipX = x + r * Math.cos(theta);
         const tipY = y + r * Math.sin(theta);
-        const shaft = 10; 
-        const head  = 12; 
-        const phi   = Math.PI/6; 
-        const baseA = Math.PI;   
+        const shaft = 10; const head  = 12; const phi = Math.PI/6; const baseA = Math.PI;   
         ctx.beginPath(); ctx.moveTo(tipX, tipY); ctx.lineTo(tipX - shaft, tipY);
         ctx.moveTo(tipX, tipY); ctx.lineTo(tipX + head*Math.cos(baseA + phi), tipY + head*Math.sin(baseA + phi));
         ctx.moveTo(tipX, tipY); ctx.lineTo(tipX + head*Math.cos(baseA - phi), tipY + head*Math.sin(baseA - phi));
@@ -596,18 +511,13 @@
         const isPos = node.F > 0; // Pos = Down, Neg = Up
         const base = 16, extra = 34; 
         const len = (maxAbsF && maxAbsF > 0) ? base + extra * (Math.abs(node.F) / maxAbsF) : base + extra * 0.6;
-        
-        // Everything occurs at y <= midY (above centerline)
-        const yNode = y; 
-        const ySky = y - len;
-
+        const yNode = y, ySky = y - len;
         ctx.beginPath(); ctx.moveTo(x, ySky); ctx.lineTo(x, yNode); ctx.stroke();
         ctx.beginPath();
         if (isPos) { 
           // Downward arrow (Sky -> Node)
           ctx.moveTo(x - 7, yNode - 8); ctx.lineTo(x, yNode); ctx.lineTo(x + 7, yNode - 8); 
-        }
-        else { 
+        } else { 
           // Upward arrow (Node -> Sky)
           ctx.moveTo(x - 7, ySky + 8); ctx.lineTo(x, ySky); ctx.lineTo(x + 7, ySky + 8); 
         }
@@ -626,41 +536,62 @@
       if (Number.isFinite(node.th0)) { ctx.fillText(`θ₀: ${node.th0}`, x, offsetY); offsetY += 14; }
     }
 
-    // -------------------- Canvas picking --------------------
+    // -------------------- FIXED CLICK HANDLER --------------------
     const beamCanvas = document.getElementById('beamCanvas');
-    beamCanvas.addEventListener('click', (e)=>{
-      if (segments.length===0) return;
-      const rect = beamCanvas.getBoundingClientRect(); const xClick = e.clientX - rect.left; const yClick = e.clientY - rect.top;
-      const margin = 50; const totalLength = segments.reduce((s,seg)=>s+seg.L,0); const scaleX = (beamCanvas.width - 2*margin) / totalLength; const midY = Math.round(beamCanvas.height*0.35);
-      const nodeXs = [margin]; let accX = margin; for (let i=0;i<segments.length;i++){ accX += segments[i].L*scaleX; nodeXs.push(accX); }
-      for (let i=0;i<nodes.length;i++){ const dx = xClick - nodeXs[i]; const dy = yClick - midY; if (Math.hypot(dx,dy) < 20){ editNode(i); return; } }
-      accX = margin; for (let i=0;i<segments.length;i++){ const w = segments[i].L*scaleX; if (xClick>=accX && xClick<=accX+w && Math.abs(yClick - midY) <= 18){ editSegment(i); return; } accX += w; }
+    beamCanvas.addEventListener('click', (e) => {
+      if (segments.length === 0) return;
+      
+      const rect = beamCanvas.getBoundingClientRect();
+      const scaleMapX = beamCanvas.width / rect.width;
+      const scaleMapY = beamCanvas.height / rect.height;
+      const xClick = (e.clientX - rect.left) * scaleMapX;
+      const yClick = (e.clientY - rect.top) * scaleMapY;
+
+      const margin = 50; 
+      const midY = Math.round(beamCanvas.height * 0.35);
+      const totalLength = segments.reduce((sum, seg) => sum + seg.L, 0);
+      const scaleX = (beamCanvas.width - 2 * margin) / totalLength;
+
+      const maxEI = Math.max(...segments.map(seg => seg.E * seg.I));
+      const maxHeight = 0.40 * beamCanvas.height * 0.25;
+      const eiScale = parseFloat(document.getElementById('eiScale').value || '1');
+
+      // 1. Check Nodes
+      const nodeXs = [margin];
+      let accX = margin;
+      for (let i = 0; i < segments.length; i++) {
+        accX += segments[i].L * scaleX;
+        nodeXs.push(accX);
+      }
+      for (let i = 0; i < nodes.length; i++) {
+        const dx = xClick - nodeXs[i];
+        const dy = yClick - midY;
+        if (Math.hypot(dx, dy) < 20) { editNode(i); return; }
+      }
+
+      // 2. Check Segments
+      accX = margin;
+      for (let i = 0; i < segments.length; i++) {
+        const seg = segments[i];
+        const w = seg.L * scaleX;
+        const h = ((seg.E * seg.I) / maxEI) * maxHeight * eiScale;
+        const hitLimit = Math.max(20, h / 2 + 10);
+        if (xClick >= accX && xClick <= accX + w && Math.abs(yClick - midY) <= hitLimit) {
+          editSegment(i);
+          return;
+        }
+        accX += w;
+      }
     });
 
-    // -------------------- Analysis --------------------
-    function beamElementStiffness(E, I, L) {
-      const EI = E * I, L2 = L * L, L3 = L2 * L;
-      return [
-        [ 12*EI/L3,   6*EI/L2, -12*EI/L3,   6*EI/L2 ],
-        [  6*EI/L2,   4*EI/L,   -6*EI/L2,   2*EI/L  ],
-        [-12*EI/L3,  -6*EI/L2,  12*EI/L3,  -6*EI/L2 ],
-        [  6*EI/L2,   2*EI/L,   -6*EI/L2,   4*EI/L  ]
-      ];
-    }
-
-    let dispChart=null, momentChart=null, shearChart=null, stressChart=null;
-    function clearPlot(chartRef, canvasId){ if (chartRef) { try{ chartRef.destroy(); } catch(_){} } const cv = document.getElementById(canvasId); if (cv){ const c=cv.getContext('2d'); c.clearRect(0,0,cv.width,cv.height);} return null; }
-    function clearAllPlots(){ dispChart=clearPlot(dispChart,'dispPlot'); momentChart=clearPlot(momentChart,'momentPlot'); shearChart=clearPlot(shearChart,'shearPlot'); stressChart=clearPlot(stressChart,'stressPlot'); }
-
+    // -------------------- Solver (Standard FEM) --------------------
     function solveBeam(){
-      clearAllPlots(); lastU = null; elementForces = null; K_global = null;
-      const n = nodes.length; if (n<2) { Swal.fire('Error','Build the beam first.','error'); return; }
+      if(nodes.length<2){ Swal.fire('Error','Build the beam first.','error'); return; }
 
       const map = buildDOFMap(); const dof = map.ndof;
       const K = Array(dof).fill().map(()=>Array(dof).fill(0));
       const F = Array(dof).fill(0);
 
-      // Assemble elements (handles hinges via split rotations)
       for (let e=0; e<segments.length; e++){
         const {E,I,L} = segments[e]; const k = beamElementStiffness(E,I,L);
         const i = e, j = e+1;
@@ -670,8 +601,7 @@
         for (let r=0;r<4;r++) for (let c=0;c<4;c++) K[dofs[r]][dofs[c]] += k[r][c];
       }
 
-      // Nodal loads & springs
-      for (let i=0;i<n;i++){
+      for (let i=0;i<nodes.length;i++){
         const wi = map.idxW[i]; F[wi] += nodes[i].F || 0; if (nodes[i].Kv) K[wi][wi] += nodes[i].Kv;
         const hinge = isHinge(nodes[i]);
         if (!hinge && (nodes[i].Km||0) > 0){
@@ -683,7 +613,6 @@
         }
       }
 
-      // Distributed loads -> CONSISTENT element nodal loads (linear q(x), + up)
       for (let e = 0; e < segments.length; e++){
         const feq = consistentLoadVector(e);
         const i = e, j = e+1;
@@ -693,15 +622,14 @@
         F[wj] += feq[2]; if (typeof thj === 'number') F[thj] += feq[3];
       }
 
-      // Dirichlet constraints: supports + prescribed w/θ
       const knownIdx = []; const knownVal = [];
-      for (let i=0;i<n;i++){
+      for (let i=0;i<nodes.length;i++){
         const bc = nodes[i].bc;
         if (bc === 'fixed'){
           knownIdx.push(map.idxW[i]); knownVal.push(0);
           const rL = map.thLeft[i]; const rR = map.thRight[i]; if (typeof rL==='number'){ knownIdx.push(rL); knownVal.push(0);} if (typeof rR==='number' && rR!==rL){ knownIdx.push(rR); knownVal.push(0);} 
         } else if (bc === 'pinned'){
-          knownIdx.push(map.idxW[i]); knownVal.push(0); // θ free
+          knownIdx.push(map.idxW[i]); knownVal.push(0); 
         }
         if (Number.isFinite(nodes[i].w0)) { const idx = map.idxW[i]; const p = knownIdx.indexOf(idx); if (p>=0) knownVal[p]=nodes[i].w0; else { knownIdx.push(idx); knownVal.push(nodes[i].w0);} }
         if (Number.isFinite(nodes[i].th0)) {
@@ -712,20 +640,28 @@
       }
       const mapKV = new Map(); for (let k=0;k<knownIdx.length;k++) mapKV.set(knownIdx[k], knownVal[k]);
       const kIdx = Array.from(mapKV.keys()).sort((a,b)=>a-b); const kVal = kIdx.map(i=>mapKV.get(i));
-      const allIdx = [...Array(K.length).keys()]; const uIdx = allIdx.filter(i=>!kIdx.includes(i)); if (uIdx.length===0){ Swal.fire('Error','All DOFs are constrained — system is singular (mechanism).','error'); return; }
+      const allIdx = [...Array(K.length).keys()]; const uIdx = allIdx.filter(i=>!kIdx.includes(i)); if (uIdx.length===0){ Swal.fire('Error','All DOFs are constrained — system is singular.','error'); return; }
 
       const Kuu = uIdx.map(r=>uIdx.map(c=>K[r][c])); const Kuk = uIdx.map(r=>kIdx.map(c=>K[r][c])); const Fu = uIdx.map(r=>F[r]); const rhs = numeric.sub(Fu, numeric.dot(Kuk, kVal));
       try{
         const uu = numeric.solve(Kuu, rhs); const u = Array(K.length).fill(0); uIdx.forEach((d,i)=>u[d]=uu[i]); kIdx.forEach((d,i)=>u[d]=kVal[i]);
         lastU = { u, map }; K_global = K; plotDisplacement(u, map); elementForces = computeElementForces(u, map); drawBeam();
-        // Auto-plot results after a successful solve
         plotMoment(); plotShearFromMoment(); plotBendingStress();
       }catch(e){
-        Swal.fire('Mechanism or insufficient restraints', 'The system matrix is singular. This often happens with simply supported ends and an internal hinge with only nodal loading.', 'warning');
+        Swal.fire('Mechanism or insufficient restraints', 'System matrix singular.', 'warning');
       }
     }
 
-    // Internal element forces for plotting (equilibrium sign)
+    function beamElementStiffness(E, I, L) {
+      const EI = E * I, L2 = L * L, L3 = L2 * L;
+      return [
+        [ 12*EI/L3,   6*EI/L2, -12*EI/L3,   6*EI/L2 ],
+        [  6*EI/L2,   4*EI/L,   -6*EI/L2,   2*EI/L  ],
+        [-12*EI/L3,  -6*EI/L2,  12*EI/L3,  -6*EI/L2 ],
+        [  6*EI/L2,   2*EI/L,   -6*EI/L2,   4*EI/L  ]
+      ];
+    }
+
     function computeElementForces(u, map){
       const res = [];
       for (let e=0; e<segments.length; e++){
@@ -733,15 +669,35 @@
         const k = beamElementStiffness(E,I,L);
         const wi = map.idxW[e], thi = map.thRight[e], wj = map.idxW[e+1], thj = map.thLeft[e+1];
         const ue = [ u[wi], u[thi], u[wj], u[thj] ];
-        const fe = numeric.dot(k, ue); // from stiffness
-        const feq = consistentLoadVector(e); // distributed load contribution (linear q)
-        const ftotal = numeric.sub(fe, feq); // internal end forces
+        const fe = numeric.dot(k, ue);
+        const feq = consistentLoadVector(e);
+        const ftotal = numeric.sub(fe, feq);
         res.push({ V1: -ftotal[0], M1: -ftotal[1], V2: -ftotal[2], M2: -ftotal[3], L });
       }
       return res;
     }
 
+    function consistentLoadVector(e){
+      const seg = segments[e]; const L = seg.L;
+      const qw = - (seg.wd || 0) * (seg.A || 0);
+      const qL = (seg.qL || 0) + qw; 
+      const qR = (seg.qR || 0) + qw;
+      const gauss = [ {t:-Math.sqrt(3/5), w:5/9}, {t:0, w:8/9}, {t:Math.sqrt(3/5), w:5/9} ];
+      const feq = [0,0,0,0];
+      for (const g of gauss){
+        const t=g.t, w=g.w; const x=(t+1)*L/2; const r=x/L; const J=L/2;
+        const h1=1-3*r*r+2*r*r*r, h2=x*(1-2*r+r*r), h3=3*r*r-2*r*r*r, h4=x*(r*r-r);
+        const qx = qL + (qR - qL) * r;
+        feq[0] += w*J*h1*qx; feq[1] += w*J*h2*qx; feq[2] += w*J*h3*qx; feq[3] += w*J*h4*qx;
+      }
+      return feq;
+    }
+
     // -------------------- Plotting --------------------
+    let dispChart=null, momentChart=null, shearChart=null, stressChart=null;
+    function clearPlot(chartRef, canvasId){ if (chartRef) { try{ chartRef.destroy(); } catch(_){} } const cv = document.getElementById(canvasId); if (cv){ const c=cv.getContext('2d'); c.clearRect(0,0,cv.width,cv.height);} return null; }
+    function clearAllPlots(){ dispChart=clearPlot(dispChart,'dispPlot'); momentChart=clearPlot(momentChart,'momentPlot'); shearChart=clearPlot(shearChart,'shearPlot'); stressChart=clearPlot(stressChart,'stressPlot'); }
+
     function plotDisplacement(u, map){
       const pts=[]; let xTot=0;
       for (let e=0;e<segments.length;e++){
@@ -751,7 +707,7 @@
         for (let j=start;j<=numPts;j++){
           const xi=(j/numPts)*L, r=xi/L;
           const h1=1-3*r*r+2*r*r*r, h2=xi*(1-2*r+r*r), h3=3*r*r-2*r*r*r, h4=xi*(r*r-r);
-          const w = h1*u1 + h2*th1 + h3*u2 + h4*th2; // +w upward
+          const w = h1*u1 + h2*th1 + h3*u2 + h4*th2;
           pts.push({ x: xTot+xi, y: w });
         }
         xTot += L;
@@ -760,27 +716,20 @@
       dispChart = new Chart(ctx, {
         type:'line',
         data:{ datasets:[{ label:'Deflection', data:pts, parsing:false, borderWidth:2, fill:false, pointRadius:0 }]},
-        options:{
-          responsive:false,
-          scales:{
-            x:{ type:'linear', title:{display:true, text:'x-position'}, ticks:{ callback:(v)=>fmtSig3(v) } },
-            y:{ title:{display:true, text:'Deflection (up +)'}, ticks:{ callback:(v)=>fmtSig3(v) } }
-          }
-        }
+        options:{ responsive:false, scales:{ x:{ type:'linear', title:{display:true, text:'x'} }, y:{ title:{display:true, text:'Deflection (up +)'} } } }
       });
     }
 
     function plotMoment(){
-      if (!elementForces) { Swal.fire('Error','Please solve the beam first.'); return; }
       const pts=[]; let xBase=0;
       for (let i=0;i<elementForces.length;i++){
         const ef = elementForces[i]; const L = ef.L; const seg = segments[i]; const qw = - (seg.wd || 0) * (seg.A || 0); const qL = (seg.qL || 0) + qw; const qR = (seg.qR || 0) + qw; const dq = qR - qL;
-        const samples = 48; const start=(i===0)?0:1; // avoid double-plotting shared node
+        const samples = 48; const start=(i===0)?0:1;
         for (let j=start;j<=samples;j++){
           const xi = (j/samples)*L;
           const M_right = -ef.M2;
           const integral = ef.V1*(L - xi) - 0.5*qL*(L*L - xi*xi) - (dq/(6*L))*(L*L*L - xi*xi*xi);
-          const M = M_right + integral; // anchor at right end
+          const M = M_right + integral;
           pts.push({ x:xBase + xi, y:M });
         }
         xBase += L;
@@ -788,19 +737,12 @@
       const ctx = document.getElementById('momentPlot').getContext('2d'); if (momentChart) momentChart.destroy();
       momentChart = new Chart(ctx,{
         type:'line',
-        data:{ datasets:[{ label:'Bending Moment (internal)', data:pts, parsing:false, borderWidth:2, fill:false, pointRadius:2, tension:0 }]},
-        options:{
-          responsive:false,
-          scales:{
-            x:{ type:'linear', title:{display:true, text:'x-position'}, ticks:{ callback:(v)=>fmtSig3(v) } },
-            y:{ title:{display:true, text:'Moment'}, ticks:{ callback:(v)=>fmtSig3(v) } }
-          }
-        }
+        data:{ datasets:[{ label:'Bending Moment', data:pts, parsing:false, borderWidth:2, fill:false, pointRadius:2, tension:0 }]},
+        options:{ responsive:false, scales:{ x:{ type:'linear', title:{display:true, text:'x'} }, y:{ title:{display:true, text:'Moment'} } } }
       });
     }
 
     function plotShearFromMoment(){
-      if (!elementForces) { Swal.fire('Error','Please solve the beam first.'); return; }
       const pts=[]; let xBase=0;
       for (let i=0;i<elementForces.length;i++){
         const ef = elementForces[i]; const L = ef.L; const seg = segments[i]; const qw = - (seg.wd || 0) * (seg.A || 0); const qL = (seg.qL || 0) + qw; const qR = (seg.qR || 0) + qw; const dq = qR - qL;
@@ -815,19 +757,12 @@
       const ctx = document.getElementById('shearPlot').getContext('2d'); if (shearChart) shearChart.destroy();
       shearChart = new Chart(ctx,{
         type:'line',
-        data:{ datasets:[{ label:'Shear Force (internal)', data:pts, parsing:false, borderWidth:2, fill:false, pointRadius:2, tension:0 }]},
-        options:{
-          responsive:false,
-          scales:{
-            x:{ type:'linear', title:{display:true, text:'x-position'}, ticks:{ callback:(v)=>fmtSig3(v) } },
-            y:{ title:{display:true, text:'Shear'}, ticks:{ callback:(v)=>fmtSig3(v) } }
-          }
-        }
+        data:{ datasets:[{ label:'Shear Force', data:pts, parsing:false, borderWidth:2, fill:false, pointRadius:2, tension:0 }]},
+        options:{ responsive:false, scales:{ x:{ type:'linear', title:{display:true, text:'x'} }, y:{ title:{display:true, text:'Shear'} } } }
       });
     }
 
     function plotBendingStress(){
-      if (!elementForces) { Swal.fire('Error','Please solve the beam first.'); return; }
       const ptsTop=[]; const ptsBot=[]; let xBase=0;
       for (let i=0;i<elementForces.length;i++){
         const ef = elementForces[i]; const L = ef.L; const { St, Sb } = segments[i]; const seg = segments[i]; const qw = - (seg.wd || 0) * (seg.A || 0); const qL = (seg.qL || 0) + qw; const qR = (seg.qR || 0) + qw; const dq = qR - qL;
@@ -850,47 +785,24 @@
       stressChart = new Chart(ctx,{
         type:'line',
         data:{ datasets },
-        options:{
-          responsive:false,
-          scales:{
-            x:{ type:'linear', title:{display:true, text:'x-position'}, ticks:{ callback:(v)=>fmtSig3(v) } },
-            y:{ title:{display:true, text:'Stress (tension positive)'}, ticks:{ callback:(v)=>fmtSig3(v) } }
-          }
-        }
+        options:{ responsive:false, scales:{ x:{ type:'linear', title:{display:true, text:'x'} }, y:{ title:{display:true, text:'Stress (tension +)'} } } }
       });
-    }
-
-    // Consistent load vector for linear q(x) using 3-pt Gauss integration
-    function consistentLoadVector(e){
-      const seg = segments[e]; const L = seg.L;
-      const qw = - (seg.wd || 0) * (seg.A || 0); // self-weight (down)
-      const qL = (seg.qL || 0) + qw; // effective linear q(x)
-      const qR = (seg.qR || 0) + qw;
-      const gauss = [ {t:-Math.sqrt(3/5), w:5/9}, {t:0, w:8/9}, {t:Math.sqrt(3/5), w:5/9} ];
-      const feq = [0,0,0,0];
-      for (const g of gauss){
-        const t=g.t, w=g.w; const x=(t+1)*L/2; const r=x/L; const J=L/2;
-        const h1=1-3*r*r+2*r*r*r, h2=x*(1-2*r+r*r), h3=3*r*r-2*r*r*r, h4=x*(r*r-r);
-        const qx = qL + (qR - qL) * r; // combined q
-        feq[0] += w*J*h1*qx; feq[1] += w*J*h2*qx; feq[2] += w*J*h3*qx; feq[3] += w*J*h4*qx;
-      }
-      return feq;
     }
 
     // -------------------- CSV Export --------------------
     function exportCSV(){
-      if (!lastU || !elementForces){ Swal.fire('Note','Solve first to export results.','info'); return; }
+      if (!lastU || !elementForces){ Swal.fire('Note','Solve first.','info'); return; }
       const { u, map } = lastU; const rows = [['x','w(up+)','V','M','sigma_top(tension+)','sigma_bottom(tension+)']]; let xTot=0;
       for (let i=0;i<segments.length;i++){
         const seg = segments[i]; const L=seg.L; const wi=map.idxW[i], thi=map.thRight[i], wj=map.idxW[i+1], thj=map.thLeft[i+1];
         const u1=u[wi], th1=u[thi], u2=u[wj], th2=u[thj]; const ef = elementForces[i];
-        const numPts=20; const start=(i===0)?0:1;
-        for (let j=start;j<=numPts;j++){
+        const numPts=20; 
+        for (let j=0;j<=numPts;j++){
           const xi=(j/numPts)*L, r=xi/L; const h1=1-3*r*r+2*r*r*r, h2=xi*(1-2*r+r*r), h3=3*r*r-2*r*r*r, h4=xi*(r*r-r);
           const w=h1*u1+h2*th1+h3*u2+h4*th2;
           const qw = - (seg.wd || 0) * (seg.A || 0), qL = (seg.qL || 0) + qw, qR = (seg.qR || 0) + qw, dq = qR - qL;
           const V = ef.V1 - ( qL*xi + (dq*xi*xi)/(2*L) );
-          const M_right = -ef.M2; const M = M_right + ( ef.V1*(L - xi) - 0.5*qL*(L*L - xi*xi) - (dq/(6*L))*(L*L*L - xi*xi*xi) ); // continuity: right uses -M2
+          const M_right = -ef.M2; const M = M_right + ( ef.V1*(L - xi) - 0.5*qL*(L*L - xi*xi) - (dq/(6*L))*(L*L*L - xi*xi*xi) ); 
           const sigT = (Number.isFinite(seg.St) && Math.abs(seg.St)>1e-12) ? (-M/seg.St) : '';
           const sigB = (Number.isFinite(seg.Sb) && Math.abs(seg.Sb)>1e-12) ? ( M/seg.Sb) : '';
           rows.push([ (xTot+xi).toFixed(6), w, V, M, sigT, sigB ]);
@@ -911,7 +823,6 @@
     window.clearAllPlots = clearAllPlots;
     window.exportCSV = exportCSV;
 
-    // Safe initial build (DOM is already parsed because script is at end of body)
     try { buildBeam(); } catch(e) { console.error(e); }
   </script>
 </body>
