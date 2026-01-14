@@ -2,594 +2,715 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Beam Solver /title>
+  <title>Beam Modal Solver</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/numeric/1.2.6/numeric.min.js"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
   <style>
-    :root {
-      --pad: 50px;
-      --beam-w: 960px;
-      --plot-h: 260px;
-      --right-gutter: 25px;
+    body { background: #f4f4f4; font-family: sans-serif; margin: 20px; }
+    h2 { margin-bottom: 10px; }
+    
+    /* 1. CHANGED: Reduced width from 900px to 720px */
+    #container { width: 720px; }
+
+    #beamCanvas { border: 1px solid #ccc; margin-top: 12px; cursor: pointer; background: #fff; display: block; }
+    
+    .swal2-popup { font-size: 12px !important; width: auto !important; min-width: 250px !important; }
+    .swal2-input, .swal2-select { font-size: 12px !important; width: 120px !important; margin: 5px !important; }
+    .swal2-html-container label { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
+    .swal2-html-container label span { margin-right: 10px; }
+
+    /* Updated Toolbar Layout */
+    .toolbar { 
+      display: flex; 
+      gap: 8px; 
+      align-items: center;
+      flex-wrap: wrap; /* Added wrapping for narrower width */
+      /* 2. CHANGED: Reduced width from 900px to 720px */
+      width: 720px; 
+      background: #e0e0e0;
+      padding: 8px;
+      box-sizing: border-box;
+      border-radius: 4px;
     }
-    body { background: #f4f4f4; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 24px; }
-    h2 { margin: 0 0 12px; }
-    .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-    .row + .row { margin-top: 8px; }
-    label { display: inline-flex; gap: 6px; align-items: center; }
-    input, button, select { height: 30px; padding: 0 10px; border-radius: 6px; border: 1px solid #bbb; background: #fff; }
-    button { cursor: pointer; }
-    button.primary { background: #9aa0a6; color: #111; border-color: #9aa0a6; border-radius: 2px; }
-    #stage { max-width: 100%; }
-    #beamCanvas, .plot {
-      display: block;
-      width: min(var(--beam-w), calc(100% - var(--right-gutter)));
-      max-width: calc(100% - var(--right-gutter));
-      background: #fff;
-      border: 1px solid #ddd;
+
+    /* 3. CHANGED: Reduced width from 900px to 720px */
+    .results { margin-top: 8px; font-size: 14px; width: 720px; }
+    .muted { color:#666; font-size: 12px; }
+    
+    .modeCanvas { display:block; margin: 12px 0; border: 1px solid #ccc; background:#fff; }
+    
+    #modeToggles label { margin-right: 10px; cursor: pointer; }
+    #animControls label { margin-left: 12px; }
+    #animControls button { margin-left: 6px; }
+
+    /* Label styling */
+    .toolbar label { display: inline-flex; align-items: center; gap: 4px; color: #000; font-size: 14px; }
+    .toolbar input[type=number] { width: 50px; padding: 4px; height: 20px; border: 1px solid #999; border-radius: 3px;}
+    
+    /* Button styling */
+    .toolbar button { 
+      padding: 5px 12px; 
+      font-size: 13px; 
+      cursor: pointer; 
+      background: #eee; 
+      border: 1px solid #999; 
+      border-radius: 3px; 
     }
-    #beamCanvas { height: 260px; cursor: crosshair; }
-    .plot { height: var(--plot-h); }
-    @media (max-width: 1100px) { :root { --right-gutter: 24px; } }
-    .swal2-popup { font-size: 12px !important; width: auto !important; min-width: 260px !important; }
-    .swal2-input, .swal2-select { font-size: 12px !important; width: 160px !important; margin: 4px !important; }
-    .swal2-html-container label { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+    .toolbar button:hover { background: #ddd; }
   </style>
 </head>
 <body>
-  <h2>Beam Solver </h2>
+  <h2>Beam Modal Solver</h2>
 
-  <div class="row">
-    <label>Segments (max 10): <input id="numSegments" type="number" min="1" max="10" value="2"></label>
-    <button class="primary" onclick="buildBeam()">Build Beam</button>
-    <button onclick="solveBeam()">Solve</button>
-    
-    <button onclick="exportJSON()">Export JSON</button>
-    
-    <button onclick="exportCSV()">Export CSV</button>
-    <label>EI scale: <input id="eiScale" type="number" step="0.01" value="1.00" style="width:70px"></label>
-  </div>
-
-  <div id="stage">
-    <canvas id="beamCanvas" width="960" height="275"></canvas>
-    <div id="charts">
-      <canvas id="dispPlot" class="plot" width="960" height="260"></canvas>
-      <canvas id="momentPlot" class="plot" width="960" height="260"></canvas>
-      <canvas id="shearPlot" class="plot" width="960" height="260"></canvas>
-      <canvas id="stressPlot" class="plot" width="960" height="260"></canvas>
+  <div id="container">
+    <div class="toolbar">
+      <label>Segments (max 10): <input id="numSegments" type="number" min="1" max="10" value="2"></label>
+      <label>Gravity (G): <input id="gravityInput" type="number" value="386" style="width:60px"></label>
+      <button onclick="buildBeam()">Build Beam</button>
+      <button onclick="computeModesRefined()">Compute Modes</button>
+      
+      <button onclick="exportJSON()">Export JSON</button>
+      <button onclick="exportCSV()">Export CSV</button>
     </div>
+
+    <canvas id="beamCanvas" width="720" height="220"></canvas>
+    
+    <div id="freqList" class="results"></div>
+    <div id="modeToggles" class="results"></div>
+    
+    <div id="animControls" class="results">
+      <strong>Animate:</strong>
+      <button id="btnPlay" disabled>Play</button>
+      <button id="btnPause" disabled>Pause</button>
+      <label>Mode <select id="animMode" style="width:60px"></select></label>
+      <label>Speed ×<input id="animSpeed" type="range" min="0.01" max="1" step="0.01" value="1" style="vertical-align: middle; width:120px"> <span id="animSpeedVal">1.00</span></label>
+      <label>Amp ×<input id="animAmp" type="range" min="0.2" max="1.5" step="0.1" value="1" style="vertical-align: middle; width:120px"> <span id="animAmpVal">1.0</span></label>
+      <span class="muted">(animates the selected mode only)</span>
+    </div>
+    
+    <canvas id="modesCombined" width="720" height="340" class="modeCanvas"></canvas>
   </div>
 
-  <script>
-    // Canvas Sizing
-    function syncCanvasSizes() {
-      const ids = ['beamCanvas','dispPlot','momentPlot','shearPlot','stressPlot'];
-      let changed = false;
-      for (const id of ids) {
-        const cv = document.getElementById(id);
-        if (!cv) continue;
-        const w = Math.round(cv.getBoundingClientRect().width);
-        const h = Math.round(cv.getBoundingClientRect().height);
-        if (w && h && (cv.width !== w || cv.height !== h)) {
-          cv.width = w; cv.height = h; changed = true;
+<script>
+// --- configuration ---
+const INTERNAL_NODES_PER_SEG = 10; // fixed refinement (m)
+
+let segments = [];
+let nodes = [];      // primary nodes only (length = S+1)
+let lastModes = null; // [{lambdaGEP, freq, vec(full DOF)}] on refined grid
+
+// animation state
+const anim = { running:false, rafId:0, t0:0, modeIndex:0, speed:1, amp:1 };
+
+function getRefine(){ return INTERNAL_NODES_PER_SEG; }
+
+function buildBeam() {
+  stopAnimation();
+  const S = Math.max(1, Math.min(10, parseInt(document.getElementById("numSegments").value)));
+  const totalL = 96; // arbitrary default total length
+  // reset segments
+  segments = [];
+  for (let i = 0; i < S; i++) {
+    segments.push({ E: 12e6, I: 21.3, L: totalL / S, rho: 0.28, A: 2.0 });
+  }
+  // primary nodes only (S+1)
+  nodes = Array(S + 1).fill().map(() => ({ bc: "free", W: 0, Kv: 0, Kr: 0 }));
+  drawBeam();
+  // reset UI areas
+  lastModes = null;
+  renderFreqList([]);
+  buildModeToggles(0);
+  buildAnimControls(0);
+  renderCombinedModes();
+}
+
+async function editSegment(i){
+  const s = segments[i];
+  const { value: data } = await Swal.fire({
+    title: `Segment ${i} Properties`,
+    html:
+      `<label><span>E:</span><input id="segE" class="swal2-input" value="${s.E}"></label>
+       <label><span>I:</span><input id="segI" class="swal2-input" value="${s.I}"></label>
+       <label><span>L:</span><input id="segL" class="swal2-input" value="${s.L}"></label>
+       <label><span>ρ (dens):</span><input id="segRho" class="swal2-input" value="${s.rho}"></label>
+       <label><span>A:</span><input id="segA" class="swal2-input" value="${s.A}"></label>`,
+    focusConfirm:false,
+    preConfirm:()=>[
+      parseFloat(document.getElementById('segE').value),
+      parseFloat(document.getElementById('segI').value),
+      parseFloat(document.getElementById('segL').value),
+      parseFloat(document.getElementById('segRho').value),
+      parseFloat(document.getElementById('segA').value)
+    ]
+  });
+  if (data){
+    const [E,I,L,rho,A] = data.map(v=> (isFinite(v)? v:0));
+    segments[i] = { E,I,L,rho,A };
+    drawBeam();
+  }
+}
+
+function drawBeam() {
+  const canvas = document.getElementById("beamCanvas");
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (segments.length === 0) return;
+  const margin = 50;
+  const midY = canvas.height/2;
+  const totalLength = segments.reduce((sum, seg) => sum + seg.L, 0);
+  const scaleX = (canvas.width - 2 * margin) / totalLength;
+  const maxEI = Math.max(...segments.map(seg => seg.E * seg.I));
+  
+  // Height scaling set to 0.12 (approx 1/3 of previous 0.35)
+  const maxHeight = 0.12 * canvas.height; 
+
+  // PASS 1: Draw all Segments
+  let x = margin;
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    const width = seg.L * scaleX;
+    const height = (seg.E * seg.I / maxEI) * maxHeight;
+    
+    // Light gray fill
+    ctx.fillStyle = "#ccc"; 
+    ctx.fillRect(x, midY - height / 2, width, height);
+
+    // Segment text
+    ctx.fillStyle = "black";
+    ctx.textAlign = "center";
+    const props = [ `E: ${seg.E}`, `I: ${seg.I}`, `L: ${seg.L}`, `ρ: ${seg.rho}`, `A: ${seg.A}` ];
+    const startY = midY + height / 2 + 12;
+    ctx.font = "11px sans-serif";
+    for (let j = 0; j < props.length; j++) ctx.fillText(props[j], x + width / 2, startY + j * 14);
+
+    x += width;
+  }
+
+  // PASS 2: Draw all Nodes on top (so blue dots are fully exposed)
+  x = margin;
+  // Draw first node
+  drawNodeFeatures(ctx, x, midY, nodes[0]);
+  
+  // Draw subsequent nodes
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    const width = seg.L * scaleX;
+    x += width;
+    drawNodeFeatures(ctx, x, midY, nodes[i+1]);
+  }
+}
+
+function buildPrimaryNodePositionMap(){
+  const margin = 50; 
+  const totalLength = segments.reduce((sum, seg) => sum + seg.L, 0) || 1;
+  const scaleX = (document.getElementById('beamCanvas').width - 2 * margin) / totalLength;
+  const xs = [];
+  let cumL = 0;
+  xs.push(margin); // leftmost
+  for (let i=0;i<segments.length;i++){
+    cumL += segments[i].L;
+    xs.push(margin + cumL * scaleX);
+  }
+  const is = xs.map((_,idx)=> idx);
+  return { xs, is };
+}
+
+function drawNodeFeatures(ctx, x, y, node = { bc: 'free', W:0, Kv:0, Kr:0 }){
+  ctx.save();
+  ctx.strokeStyle = "black"; ctx.lineWidth = 2; 
+  ctx.fillStyle = "#06f"; // Blue nodes
+
+  // support glyphs (keep black outlines)
+  if (node.bc === "pinned") {
+    ctx.beginPath(); ctx.moveTo(x - 15, y + 17); ctx.lineTo(x, y); ctx.lineTo(x + 15, y + 17); ctx.closePath(); ctx.stroke();
+  } else if (node.bc === "fixed") {
+    ctx.beginPath(); ctx.moveTo(x - 5, y - 20); ctx.lineTo(x - 5, y + 20); ctx.moveTo(x + 5, y - 20); ctx.lineTo(x + 5, y + 20); ctx.stroke();
+  }
+
+  // Kv vertical spring
+  if (node.Kv > 0) {
+    ctx.beginPath(); let springY = y + 8; ctx.moveTo(x, springY);
+    for (let i=0;i<4;i++){ ctx.lineTo(x + (i%2? -6:6), springY += 6); }
+    ctx.lineTo(x, springY + 6); ctx.stroke();
+  }
+
+  // Kr rotational spring
+  if (node.Kr > 0) {
+    ctx.beginPath();
+    ctx.moveTo(x-35, y-20); ctx.lineTo(x-25, y-20); ctx.lineTo(x-22, y-30); ctx.lineTo(x-16, y-10);
+    ctx.lineTo(x-10, y-30); ctx.lineTo(x-8,  y-20); ctx.lineTo(x,    y-20); ctx.lineTo(x,    y+20);
+    ctx.lineTo(x+8,  y+20); ctx.lineTo(x+10, y+30); ctx.lineTo(x+16, y+10); ctx.lineTo(x+22, y+30);
+    ctx.lineTo(x+25, y+20); ctx.lineTo(x+35, y+20);
+    ctx.stroke();
+  }
+
+  // node dot (Blue) - Drawn last to be on top of everything
+  const r = (node.W && node.W > 0) ? 8 : 5;
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2); ctx.fill(); 
+
+  // labels
+  function fmt(v){
+    if (!isFinite(v)) return '0';
+    const a = Math.abs(v);
+    if (a >= 1000) return v.toFixed(0);
+    if (a >= 100)  return v.toFixed(1);
+    if (a >= 10)   return v.toFixed(2);
+    if (a >= 1)    return v.toFixed(3);
+    if (a >= 0.01) return v.toFixed(4);
+    return v.toExponential(2);
+  }
+  ctx.fillStyle = "black"; ctx.textAlign = "center"; ctx.font = "11px sans-serif";
+  const labels = [];
+  if (Math.abs(Number(node.W)||0)  > 1e-12) labels.push(`W:${fmt(Number(node.W))}`);
+  if (Math.abs(Number(node.Kv)||0) > 1e-12) labels.push(`Kv:${fmt(Number(node.Kv))}`);
+  if (Math.abs(Number(node.Kr)||0) > 1e-12) labels.push(`Kr:${fmt(Number(node.Kr))}`);
+  let y0 = y - 36;
+  for (let i=0;i<labels.length;i++) ctx.fillText(labels[i], x, y0 - i*12);
+
+  ctx.restore();
+}
+
+const beamCanvas = document.getElementById("beamCanvas");
+beamCanvas.addEventListener("click", function (e) {
+  const rect = beamCanvas.getBoundingClientRect();
+  const xClick = e.clientX - rect.left;
+  const yClick = e.clientY - rect.top;
+
+  const margin = 50; 
+  const midY = beamCanvas.height/2;
+  const totalLength = segments.reduce((sum, seg) => sum + seg.L, 0);
+  if (totalLength <= 0) return;
+  const scaleX = (beamCanvas.width - 2 * margin) / totalLength;
+  const maxEI = Math.max(...segments.map(seg => seg.E * seg.I)) || 1;
+  const maxHeight = 0.12 * beamCanvas.height; // Updated height match
+
+  const map = buildPrimaryNodePositionMap();
+  const nodeXs = map.xs;
+  const nodeIs = map.is;
+
+  const nodeHitR = 14;
+  for (let k = 0; k < nodeXs.length; k++) {
+    const dx0 = xClick - nodeXs[k];
+    const dy0 = yClick - midY;
+    if (Math.hypot(dx0, dy0) <= nodeHitR) {
+      const idx = nodeIs[k];
+      if (idx >= 0 && idx < nodes.length) editNode(idx);
+      return;
+    }
+  }
+
+  let x = margin;
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    const width = seg.L * scaleX;
+    const height = (seg.E * seg.I / maxEI) * maxHeight;
+
+    const left = x + nodeHitR + 2;
+    const right = x + width - (nodeHitR + 2);
+
+    if (right > left) {
+      if (xClick >= left && xClick <= right && yClick >= (midY - height/2 - 10) && yClick <= (midY + height/2 + 10)) {
+        editSegment(i);
+        return;
+      }
+    }
+    x += width;
+  }
+});
+
+async function editNode(i) {
+  if (i < 0 || i >= nodes.length) return;
+  const node = nodes[i] || { bc:'free', W:0, Kv:0, Kr:0 };
+  const { value: data } = await Swal.fire({
+    title: `Node ${i} Properties`,
+    html:
+      `<label><span>BC:</span><select id=\"bc\" class=\"swal2-select\">\n          <option value=\"free\" ${node.bc === 'free' ? 'selected' : ''}>Free</option>\n          <option value=\"pinned\" ${node.bc === 'pinned' ? 'selected' : ''}>Simple support (w=0, θ free)</option>\n          <option value=\"fixed\" ${node.bc === 'fixed' ? 'selected' : ''}>Fixed</option>\n        </select></label>\n        <label><span>W (lbf):</span><input id=\"W\" class=\"swal2-input\" value=\"${node.W}\"></label>\n        <label><span>Kv (lb/in):</span><input id=\"Kv\" class=\"swal2-input\" value=\"${node.Kv}\"></label>\n        <label><span>Kr (in·lb/rad):</span><input id=\"Kr\" class=\"swal2-input\" value=\"${node.Kr}\"></label>\n        <span class=\"muted\">Used in modal: Mww += W/G; Kww += Kv; Kθθ += Kr</span>`,
+    focusConfirm: false,
+    preConfirm: () => [
+      document.getElementById("bc").value,
+      parseFloat(document.getElementById("W").value),
+      parseFloat(document.getElementById("Kv").value),
+      parseFloat(document.getElementById("Kr").value)
+    ]
+  });
+  if (data) nodes[i] = { ...nodes[i], bc: data[0], W: (isFinite(data[1])? data[1]:0), Kv: (isFinite(data[2])? data[2]:0), Kr: (isFinite(data[3])? data[3]:0) };
+  drawBeam();
+}
+
+function computeModesRefined() {
+  stopAnimation();
+  if (!segments.length) { buildBeam(); return; }
+  const m = getRefine(); 
+
+  const g = parseFloat(document.getElementById("gravityInput").value) || 386;
+  const S = segments.length; 
+  const Nn_ref = S * (m + 1) + 1; 
+  const dofPerNode = 2; const N = dofPerNode * Nn_ref;
+
+  const M = numeric.rep([N, N], 0); const K = numeric.rep([N, N], 0);
+
+  for (let i = 0; i < S; i++) {
+    const seg = segments[i];
+    const EI = seg.E * seg.I;
+    const mu = (seg.rho / g) * seg.A; 
+    const sub = m + 1; 
+    const Lsub = seg.L / sub;
+    const startRef = i * (m + 1);
+
+    for (let j = 0; j < sub; j++) {
+      const n1 = startRef + j;
+      const n2 = n1 + 1;
+      const dofs = [ 2*n1, 2*n1+1, 2*n2, 2*n2+1 ];
+
+      const kLocal = [
+        [12, 6*Lsub, -12, 6*Lsub],
+        [6*Lsub, 4*Lsub*Lsub, -6*Lsub, 2*Lsub*Lsub],
+        [-12, -6*Lsub, 12, -6*Lsub],
+        [6*Lsub, 2*Lsub*Lsub, -6*Lsub, 4*Lsub*Lsub]
+      ].map(r => r.map(v => v * EI / (Lsub*Lsub*Lsub)));
+
+      for (let a=0;a<4;a++){
+        for (let b=0;b<4;b++){
+          K[dofs[a]][dofs[b]] += kLocal[a][b];
         }
       }
-      if (changed) {
-        try { drawBeam(); } catch(_) {}
-        try { if (window.lastU) { plotDisplacement(lastU.u, lastU.map); plotMoment(); plotShearFromMoment(); plotBendingStress(); } } catch(_) {}
-      }
-    }
-    window.addEventListener('load', syncCanvasSizes);
-    window.addEventListener('resize', syncCanvasSizes);
-  </script>
 
-  <script>
-    // -------------------- State --------------------
-    let K_global = null, segments = [], nodes = [], elementForces = null, lastU = null, unitSystem = 'US';
+      const c = mu * Lsub / 420;
+      const mLocal = [
+        [156,    22*Lsub,  54,    -13*Lsub],
+        [22*Lsub, 4*Lsub*Lsub, 13*Lsub, -3*Lsub*Lsub],
+        [54,     13*Lsub, 156,    -22*Lsub],
+        [-13*Lsub, -3*Lsub*Lsub, -22*Lsub, 4*Lsub*Lsub]
+      ].map(row => row.map(v => v * c));
 
-    // -------------------- Helpers --------------------
-    function isHinge(node){ return !!node.pinJoint; }
-    function fmtSig3(n){
-      if (n === 0) return '0';
-      if (!isFinite(n)) return String(n);
-      const abs = Math.abs(n);
-      return (abs >= 1e-3 && abs < 1e4) 
-        ? ((Number(n).toPrecision(3).includes('e')) ? Number(n).toString() : String(parseFloat(Number(n).toPrecision(3))))
-        : Number(n).toExponential(2);
-    }
-    function normalizeSegments(){
-      for (const seg of segments){
-        if (seg.St === undefined) seg.St = 5.3;
-        if (seg.Sb === undefined) seg.Sb = 5.3;
-        if (seg.qL === undefined) seg.qL = 0;
-        if (seg.qR === undefined) seg.qR = 0;
-        if (seg.wd === undefined) seg.wd = 0;
-        if (seg.A  === undefined) seg.A  = 0;
-      }
-    }
-    function buildDOFMap(){
-      const n = nodes.length; const idxW = new Array(n), thLeft = new Array(n), thRight = new Array(n); let dof=0;
-      for (let i=0;i<n;i++) idxW[i] = dof++;
-      for (let i=0;i<n;i++){
-        const hinge = isHinge(nodes[i]);
-        if (!hinge){ const r = dof++; thLeft[i] = r; thRight[i] = r; } 
-        else { if (i>0) thLeft[i] = dof++; if (i<n-1) thRight[i] = dof++; }
-      }
-      return { idxW, thLeft, thRight, ndof: dof };
-    }
-
-    // -------------------- Editors --------------------
-    function editNode(i) {
-      const node = nodes[i];
-      Swal.fire({
-        title: `Node ${i} Properties`,
-        html: `<label><span>BC:</span><select id="bc" class="swal2-select"><option value="free" ${node.bc==='free'?'selected':''}>Free</option><option value="pinned" ${node.bc==='pinned'?'selected':''}>Simple</option><option value="fixed" ${node.bc==='fixed'?'selected':''}>Fixed</option></select></label>
-          <label><span>F (Pos=Down):</span><input id="F" class="swal2-input" value="${node.F}"></label>
-          <label><span>M:</span><input id="M" class="swal2-input" value="${node.M}"></label>
-          <label><span>Kv:</span><input id="Kv" class="swal2-input" value="${node.Kv}"></label>
-          <label><span>Km:</span><input id="Km" class="swal2-input" value="${node.Km}"></label>
-          <hr style='margin:6px 0;'><label><span>Pin Joint:</span><input type="checkbox" id="pinJoint" ${node.pinJoint?'checked':''}></label>
-          <label><span>Set w:</span><input id="w0" class="swal2-input" value="${Number.isFinite(node.w0)? node.w0 : ''}"></label>
-          <label><span>Set θ:</span><input id="th0" class="swal2-input" value="${Number.isFinite(node.th0)? node.th0 : ''}"></label>`,
-        preConfirm: () => {
-          const bcVal=document.getElementById('bc').value, Fv=parseFloat(document.getElementById('F').value), Mv=parseFloat(document.getElementById('M').value);
-          const Kv=parseFloat(document.getElementById('Kv').value), Km=parseFloat(document.getElementById('Km').value), pin=document.getElementById('pinJoint').checked;
-          const w0=document.getElementById('w0').value, th0=document.getElementById('th0').value;
-          return [bcVal, Fv, Mv, Kv, Km, pin && !(bcVal==='fixed'||Km>0), w0===''?null:parseFloat(w0), th0===''?null:parseFloat(th0)];
+      for (let a=0;a<4;a++){
+        for (let b=0;b<4;b++){
+          M[dofs[a]][dofs[b]] += mLocal[a][b];
         }
-      }).then((res)=>{ if(res.value) { const d=res.value; nodes[i]={bc:d[0],F:d[1],M:d[2],Kv:d[3],Km:d[4],pinJoint:d[5],w0:d[6],th0:d[7]}; drawBeam(); }});
-    }
-
-    function editSegment(i) {
-      const seg = segments[i];
-      Swal.fire({
-        title: `Segment ${i}`,
-        html: `<div id="segForm"><label><span>E:</span><input id="E" class="swal2-input" value="${seg.E}"></label>
-            <label><span>I:</span><input id="I" class="swal2-input" value="${seg.I}"></label>
-            <label><span>A:</span><input id="A" class="swal2-input" value="${seg.A}"></label>
-            <label><span>L:</span><input id="L" class="swal2-input" value="${seg.L}"></label>
-            <label><span>St:</span><input id="St" class="swal2-input" value="${seg.St}"></label>
-            <label><span>Sb:</span><input id="Sb" class="swal2-input" value="${seg.Sb}"></label>
-            <label><span>qL (Pos=Down):</span><input id="qL" class="swal2-input" value="${seg.qL}"></label>
-            <label><span>qR (Pos=Down):</span><input id="qR" class="swal2-input" value="${seg.qR}"></label>
-            <label><span>wd:</span><input id="wd" class="swal2-input" value="${seg.wd}"></label>
-            <div id="matRow" style="margin-top:6px;display:flex;gap:6px;"><span style="font-size:12px;color:#555">Mat:</span><button type="button" class="matBtn" data-mat="steel">Steel</button><button type="button" class="matBtn" data-mat="aluminum">Alum</button><button type="button" class="matBtn" data-mat="hardwood">Wood</button></div>
-            <div style="margin-top:6px;"><button id="secCalcToggle" type="button" style="font-size:11px;">Calc Section...</button></div>
-            <div id="secCalc" style="display:none;margin-top:8px;border-top:1px solid #ddd;"><div id="shapeGrid" style="display:flex;gap:4px;margin-top:4px;"><button type="button" class="shapeBtn" data-shape="rect">Rect</button><button type="button" class="shapeBtn" data-shape="circ">Circ</button><button type="button" class="shapeBtn" data-shape="tube">Tube</button><button type="button" class="shapeBtn" data-shape="ibeam">I-Beam</button></div><div id="secInputs" style="margin-top:6px;"></div></div></div>`,
-        didOpen: (el)=>{ setupSectionCalc(el, i); setupMaterialPresets(el, i); },
-        preConfirm: () => [parseFloat(document.getElementById('E').value), parseFloat(document.getElementById('I').value), parseFloat(document.getElementById('A').value), parseFloat(document.getElementById('L').value), parseFloat(document.getElementById('St').value), parseFloat(document.getElementById('Sb').value), parseFloat(document.getElementById('qL').value), parseFloat(document.getElementById('qR').value), parseFloat(document.getElementById('wd').value)]
-      }).then((res)=>{ if(res.value) { const d=res.value; segments[i]={E:d[0],I:d[1],A:d[2],L:d[3],St:d[4],Sb:d[5],qL:d[6],qR:d[7],wd:d[8]}; drawBeam(); }});
-    }
-
-    function setupSectionCalc(el, segIndex){
-        const toggle=el.querySelector('#secCalcToggle'), panel=el.querySelector('#secCalc'), inputs=el.querySelector('#secInputs');
-        if(toggle) toggle.onclick=()=>panel.style.display=panel.style.display==='none'?'block':'none';
-        el.querySelectorAll('.shapeBtn').forEach(b=>b.onclick=()=>{
-            const s=b.dataset.shape;
-            inputs.innerHTML = (s==='rect') ? `<label>b:<input id="sh_b" style="width:50px"></label><label>h:<input id="sh_h" style="width:50px"></label><button id="doSec">OK</button>` :
-                               (s==='circ') ? `<label>OD:<input id="sh_od" style="width:50px"></label><label>ID:<input id="sh_id" value="0" style="width:50px"></label><button id="doSec">OK</button>` :
-                               `<div style="font-size:11px;color:#888">Complete inputs...</div>`; 
-            const ok=el.querySelector('#doSec');
-            if(ok) ok.onclick=()=>{
-                if(s==='rect'){
-                    const b=parseFloat(el.querySelector('#sh_b').value), h=parseFloat(el.querySelector('#sh_h').value);
-                    if(b>0 && h>0){
-                       const I=b*h*h*h/12, A=b*h, S=I/(h/2);
-                       const to3=v=>Number(v).toPrecision(3);
-                       const t=segments[segIndex];
-                       if(t) { t.I=parseFloat(to3(I)); t.A=parseFloat(to3(A)); t.St=parseFloat(to3(S)); t.Sb=parseFloat(to3(S)); drawBeam(); Swal.fire({icon:'success',title:'Updated',timer:800,showConfirmButton:false}); }
-                    }
-                }
-            };
-        });
-    }
-    function setupMaterialPresets(el, segIndex){
-        const presets = { US:{steel:{E:29e6,wd:0.283}, aluminum:{E:10e6,wd:0.098}, hardwood:{E:1.6e6,wd:0.025}}, SI:{steel:{E:200e9,wd:77000}, aluminum:{E:69e9,wd:26500}, hardwood:{E:11e9,wd:7000}} };
-        el.querySelectorAll('.matBtn').forEach(b=>{ b.onclick=()=>{
-            const p = (presets[unitSystem]||presets.US)[b.dataset.mat];
-            if(p){ document.getElementById('E').value=p.E; document.getElementById('wd').value=p.wd; }
-        }});
-    }
-
-    // -------------------- Build & Draw --------------------
-    function buildBeam() {
-      const num = parseInt(document.getElementById("numSegments").value) || 2;
-      if (segments.length !== num) {
-        const seed = segments.length ? segments[0] : { E: 12e6, I: 21.3, L: 96, St: 5.3, Sb: 5.3, qL: 0, qR: 0, wd: 0, A: 0 };
-        segments = Array(num).fill().map((_,i)=> i<segments.length ? segments[i] : {...seed});
-        normalizeSegments();
-        nodes = Array(num + 1).fill().map(() => ({ bc: 'free', F: 0, M: 0, Kv: 0, Km: 0, pinJoint: false, w0: null, th0: null }));
       }
-      elementForces = null; K_global = null; lastU = null; drawBeam();
     }
+  }
 
-    function drawBeam() {
-      const cv = document.getElementById("beamCanvas"), ctx = cv.getContext("2d");
-      ctx.clearRect(0, 0, cv.width, cv.height);
-      if (!segments.length) return;
+  for (let p=0; p<nodes.length; p++){
+    const refIdx = p * (m + 1); 
+    const v = 2*refIdx, r = 2*refIdx+1;
+    const W = Number(nodes[p].W)||0; const Kv = Number(nodes[p].Kv)||0; const Kr = Number(nodes[p].Kr)||0;
+    if (W) M[v][v] += W / g;
+    if (Kv) K[v][v] += Kv;
+    if (Kr) K[r][r] += Kr;
+  }
 
-      const pad = 50, totalL = segments.reduce((s,o)=>s+o.L,0), scaleX = (cv.width - 2*pad)/totalL;
-      const maxEI = Math.max(...segments.map(s=>s.E*s.I)), hMax = 0.4*cv.height*0.25;
-      const eiScale = parseFloat(document.getElementById('eiScale').value)||1;
-      const maxQ = Math.max(...segments.flatMap(s=>[Math.abs(s.qL),Math.abs(s.qR)]),0);
-      const maxF = Math.max(...nodes.map(n=>Math.abs(n.F)),0);
-      const maxW = Math.max(...segments.map(s=>Math.abs(s.wd*s.A)),0);
-      const midY = Math.round(cv.height * 0.35);
+  const constrained = new Set();
+  for (let p=0; p<nodes.length; p++){
+    const bc = nodes[p].bc; const refIdx = p * (m + 1); const v = 2*refIdx, r = 2*refIdx+1;
+    if (bc === 'fixed' || bc === 'pinned') { constrained.add(v); if (bc === 'fixed') constrained.add(r); }
+  }
+  const free = []; for (let i=0;i<N;i++){ if(!constrained.has(i)) free.push(i); }
+  if (!free.length) { Swal.fire("Error", "All DOFs are constrained."); return; }
 
-      // Baseline
-      ctx.strokeStyle = '#aaa'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(pad, midY); ctx.lineTo(cv.width-pad, midY); ctx.stroke();
+  const Kred = submat(K, free); const Mred = submat(M, free);
 
-      // Ticks
-      const nTick = 10, pxTick = (cv.width - 2*pad)/nTick;
-      ctx.fillStyle = '#666'; ctx.textAlign = 'center'; ctx.font = '11px sans-serif';
-      const beamHalf = (hMax*eiScale)/2, tickY = midY + Math.max(beamHalf+26, 36);
-      for(let i=0; i<=nTick; i++){
-          const xx = pad + i*pxTick;
-          ctx.beginPath(); ctx.moveTo(xx, midY-6); ctx.lineTo(xx, midY+6); ctx.strokeStyle='#ddd'; ctx.stroke();
-          ctx.fillText((totalL*i/nTick).toFixed(0), xx, tickY);
-      }
+  let A; try { A = numeric.dot(numeric.inv(Mred), Kred); } catch(e){ Swal.fire('Error','M is singular. Check W/g and density/area.','error'); return; }
+  const eig = numeric.eig(A); const vals = eig.lambda.x; const V = eig.E.x; 
+  const pairs = vals.map((val, i) => ({ val: val, vec: V.map(row => row[i]) }))
+                    .filter(p => p.val > 0 && isFinite(p.val))
+                    .sort((a,b)=> a.val-b.val)
+                    .slice(0, 3);
 
-      let x = pad;
-      for(let i=0; i<segments.length; i++){
-          const seg = segments[i], w = seg.L*scaleX, h = (seg.E*seg.I/maxEI)*hMax*eiScale;
-          
-          // DARKER BEAM
-          const wmag = Math.abs(seg.wd*seg.A), gray = Math.round(75 - (maxW>0 ? Math.min(1,wmag/maxW) : 0)*45);
-          ctx.fillStyle = `hsl(0,0%,${gray}%)`;
-          ctx.fillRect(x, midY-h/2, w, h);
+  let modes = [];
+  pairs.forEach(p => {
+    const freq = Math.sqrt(p.val)/(2*Math.PI);
+    const full = expandToFull(p.vec, free, N);
+    const fullN = normalizeMode(full);
+    modes.push({ lambdaGEP: p.val, freq, vec: fullN });
+  });
 
-          // LOADS ABOVE
-          drawLoadBlanket(ctx, x, midY, w, h, seg.qL, seg.qR, maxQ);
+  lastModes = modes;
+  renderFreqList(modes);
+  buildModeToggles(modes.length);
+  buildAnimControls(modes.length);
+  renderCombinedModes();
+}
 
-          // TEXT BELOW (CLEAN)
-          const txt = [`E:${fmtSig3(seg.E)}`, `I:${fmtSig3(seg.I)}`, `A:${fmtSig3(seg.A)}`, `L:${fmtSig3(seg.L)}`, `q:${fmtSig3(seg.qL)}/${fmtSig3(seg.qR)}`];
-          ctx.fillStyle='#111'; ctx.font='11px sans-serif'; 
-          const startTxt = Math.max(midY+h/2+14, tickY+14);
-          txt.forEach((t,j)=> ctx.fillText(t, x+w/2, startTxt + j*12));
+function buildModeToggles(count){
+  const div = document.getElementById('modeToggles');
+  div.innerHTML = '';
+  if (!count) return;
+  const label = document.createElement('span');
+  label.textContent = 'Show modes:'; label.style.marginRight = '8px';
+  div.appendChild(label);
+  for (let i=1;i<=count;i++){
+    const id = 'showMode' + i;
+    const wrap = document.createElement('label');
+    const cb = document.createElement('input'); cb.type='checkbox'; cb.id=id; cb.checked = true; cb.style.marginRight='4px';
+    cb.addEventListener('change', ()=>{ if (!anim.running) renderCombinedModes(); });
+    wrap.appendChild(cb); wrap.append(`Mode ${i}`);
+    wrap.style.marginRight = '10px';
+    div.appendChild(wrap);
+  }
+}
 
-          drawNodeFeatures(ctx, x, midY, nodes[i], maxF);
-          ctx.beginPath(); ctx.fillStyle='#06f'; ctx.arc(x, midY, 6, 0, 2*Math.PI); ctx.fill();
-          x += w;
-      }
-      drawNodeFeatures(ctx, x, midY, nodes[segments.length], maxF);
-      ctx.beginPath(); ctx.fillStyle='#06f'; ctx.arc(x, midY, 6, 0, 2*Math.PI); ctx.fill();
+function buildAnimControls(count){
+  const btnPlay = document.getElementById('btnPlay');
+  const btnPause = document.getElementById('btnPause');
+  const sel = document.getElementById('animMode');
+  sel.innerHTML = '';
+  for (let i=1;i<=count;i++){
+    const opt = document.createElement('option');
+    opt.value = i-1; opt.textContent = i; sel.appendChild(opt);
+  }
+  const enabled = count > 0;
+  btnPlay.disabled = !enabled; btnPause.disabled = true; sel.disabled = !enabled;
+}
+
+function submat(mat, idx){ return idx.map(i => idx.map(j => mat[i][j])); }
+function expandToFull(vecRed, free, N){ const full = Array(N).fill(0); for(let i=0;i<free.length;i++){ full[free[i]] = vecRed[i]; } return full; }
+function normalizeMode(full){ let maxAbs = 0; for (let i=0;i<full.length;i+=2){ const a = Math.abs(full[i]); if (a > maxAbs) maxAbs = a; } if (maxAbs < 1e-20) return full.slice(); return full.map(v => v / maxAbs); }
+
+function renderFreqList(modes){
+  const div = document.getElementById('freqList');
+  if (!modes || !modes.length){ div.textContent = ''; return; }
+  let html = '<strong>Frequencies (Hz):</strong> ' + modes.map((m,i)=> `f${i+1}=${m.freq.toFixed(3)}`).join(', ');
+  html += ' <span class="muted">(mode shapes normalized to max |w| = 1; consistent element mass used)</span>';
+  div.innerHTML = html;
+}
+
+function renderCombinedModes(){
+  const canvas = document.getElementById('modesCombined');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0,0,canvas.width, canvas.height);
+  if (!lastModes || !lastModes.length) return;
+
+  const m = getRefine();
+  const xPositions = [];
+  let x = 0;
+  for (let i=0;i<segments.length;i++){
+    const L = segments[i].L; const sub = m+1; const Lsub = L/sub;
+    const start = (i===0) ? 0 : 1; 
+    for (let j=start; j<=sub; j++) xPositions.push(x + j*Lsub);
+    x += L;
+  }
+
+  const totalLength = segments.reduce((s,sg)=>s+sg.L,0) || 1;
+  const scaleX = canvas.width / totalLength;
+  const offsetY = canvas.height/2;
+  const scaleY = canvas.height * 0.4; 
+
+  drawGuides(ctx, canvas, offsetY, scaleY);
+
+  const selected = [];
+  for (let i=0;i<lastModes.length;i++){
+    const cb = document.getElementById('showMode' + (i+1));
+    if (!cb || cb.checked) selected.push(i);
+  }
+
+  const colors = ['#1f77b4', '#2ca02c', '#d62728'];
+
+  for (let idx of selected){
+    const mode = lastModes[idx];
+    const full = mode.vec; 
+
+    const w = []; for (let d=0; d<full.length; d+=2) w.push(full[d]);
+
+    ctx.beginPath(); ctx.lineWidth = 2; ctx.strokeStyle = colors[idx % colors.length];
+    const n = Math.min(xPositions.length, w.length);
+    for (let k=0;k<n;k++){
+      const px = xPositions[k]*scaleX; const py = offsetY - (w[k]||0)*scaleY;
+      if (k===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
     }
+    ctx.stroke();
+  }
 
-    function drawLoadBlanket(ctx, x, midY, w, h, qL, qR, maxQ){
-        if((!qL && !qR) || maxQ<=0) return;
-        const nArr = Math.max(6, Math.floor(w/40)), step = w/(nArr+1);
-        const yTop = midY - h/2 - 6; 
-        const maxLen = 48;
+  drawAxesAndLegend(ctx, canvas, lastModes, true);
+}
 
-        ctx.save(); ctx.strokeStyle = '#0a8'; ctx.lineWidth = 1.5; ctx.fillStyle = '#0a8';
-        for(let k=1; k<=nArr; k++){
-            const xi = x + k*step, r = (xi-x)/w;
-            const qx = qL + (qR - qL)*r; 
-            if(Math.abs(qx)<1e-6) continue;
-            const len = Math.max(10, (maxLen * Math.abs(qx))/maxQ);
-            const isPos = qx > 0;
-            const yBase = yTop, ySky = yTop - len;
-            ctx.beginPath();
-            if(isPos){
-                ctx.moveTo(xi, ySky); ctx.lineTo(xi, yBase); ctx.stroke();
-                ctx.beginPath(); ctx.moveTo(xi-4, yBase-6); ctx.lineTo(xi, yBase); ctx.lineTo(xi+4, yBase-6); ctx.stroke();
-            } else {
-                ctx.moveTo(xi, yBase); ctx.lineTo(xi, ySky); ctx.stroke();
-                ctx.beginPath(); ctx.moveTo(xi-4, ySky+6); ctx.lineTo(xi, ySky); ctx.lineTo(xi+4, ySky+6); ctx.stroke();
-            }
-        }
-        ctx.restore();
-    }
+function drawGuides(ctx, canvas, offsetY, scaleY){
+  ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1; ctx.beginPath();
+  ctx.moveTo(0, offsetY - 1*scaleY); ctx.lineTo(canvas.width, offsetY - 1*scaleY);
+  ctx.moveTo(0, offsetY); ctx.lineTo(canvas.width, offsetY);
+  ctx.moveTo(0, offsetY + 1*scaleY); ctx.lineTo(canvas.width, offsetY + 1*scaleY);
+  ctx.stroke();
+  ctx.fillStyle = '#666'; ctx.font = '12px sans-serif';
+  ctx.fillText('+1', 4, offsetY - 1*scaleY - 4);
+  ctx.fillText('0', 4, offsetY - 2);
+  ctx.fillText('-1', 4, offsetY + 1*scaleY + 12);
+}
 
-    function drawNodeFeatures(ctx, x, y, node, maxF){
-        ctx.strokeStyle = '#000'; ctx.lineWidth = 2;
-        if(node.bc==='pinned'){ ctx.beginPath(); ctx.moveTo(x-16, y+18); ctx.lineTo(x, y); ctx.lineTo(x+16, y+18); ctx.stroke(); }
-        else if(node.bc==='fixed'){ ctx.beginPath(); ctx.moveTo(x-6,y-24); ctx.lineTo(x-6,y+24); ctx.stroke(); for(let yy=y-24;yy<=y+24;yy+=8){ctx.beginPath();ctx.moveTo(x-6,yy);ctx.lineTo(x-18,yy+8);ctx.stroke();} }
-        if(node.pinJoint){ ctx.beginPath(); ctx.arc(x,y,9,0,2*Math.PI); ctx.stroke(); }
-        if(node.Kv){ let sy=y+10; ctx.beginPath(); ctx.moveTo(x,sy); for(let i=0;i<5;i++){ ctx.lineTo(x+(i%2?6:-6), sy+6); sy+=6;} ctx.stroke(); }
-        if(node.Km){ ctx.beginPath(); ctx.arc(x-24,y,10,0,2*Math.PI); ctx.stroke(); ctx.beginPath(); ctx.moveTo(x-14,y); ctx.lineTo(x-6,y); ctx.stroke(); }
+function drawAxesAndLegend(ctx, canvas, modes, useToggles){
+  ctx.fillStyle = '#000'; ctx.font = '12px sans-serif';
+  ctx.fillText('x (length units)', canvas.width - 140, canvas.height - 8);
+  ctx.save(); ctx.translate(14, canvas.height/2); ctx.rotate(-Math.PI/2); ctx.fillText('Normalized deflection', 0, 0); ctx.restore();
 
-        if(Math.abs(node.M)>1e-9){
-            const pos = node.M>0, r=22;
-            ctx.beginPath(); ctx.arc(x,y,r, pos?-Math.PI/2:Math.PI/2, pos?Math.PI/2:-Math.PI/2); ctx.stroke();
-            const tx = x + r*Math.cos(pos?Math.PI/2:-Math.PI/2), ty = y + r*Math.sin(pos?Math.PI/2:-Math.PI/2);
-            ctx.beginPath(); ctx.moveTo(tx,ty); ctx.lineTo(tx-10,ty); 
-            ctx.moveTo(tx,ty); ctx.lineTo(tx+12*Math.cos(Math.PI+Math.PI/6), ty+12*Math.sin(Math.PI+Math.PI/6));
-            ctx.moveTo(tx,ty); ctx.lineTo(tx+12*Math.cos(Math.PI-Math.PI/6), ty+12*Math.sin(Math.PI-Math.PI/6));
-            ctx.stroke();
-        }
+  const colors = ['#1f77b4', '#2ca02c', '#d62728'];
+  const legendX = canvas.width - 260; let legendY = 18;
+  for (let i=0;i<modes.length;i++){
+    const mode = modes[i];
+    const cb = document.getElementById('showMode' + (i+1));
+    const visible = !useToggles || !cb || cb.checked;
+    ctx.strokeStyle = colors[i % colors.length]; ctx.lineWidth = visible ? 3 : 1; ctx.globalAlpha = visible ? 1 : 0.3;
+    ctx.beginPath(); ctx.moveTo(legendX, legendY); ctx.lineTo(legendX+22, legendY); ctx.stroke(); ctx.globalAlpha = 1;
+    ctx.fillStyle = '#000';
+    ctx.fillText(`Mode ${i+1} (f${i+1}=${mode.freq.toFixed(3)} Hz) ${visible ? '' : '(hidden)'}`, legendX + 28, legendY + 4);
+    legendY += 18;
+  }
+}
 
-        if(Math.abs(node.F)>1e-9){
-            const pos = node.F > 0, baseLen = 16, extra = 34;
-            const len = maxF ? baseLen + extra*(Math.abs(node.F)/maxF) : baseLen+20;
-            const yNode = y, ySky  = y - len;
-            ctx.beginPath();
-            if(pos){
-                ctx.moveTo(x, ySky); ctx.lineTo(x, yNode); ctx.stroke();
-                ctx.beginPath(); ctx.moveTo(x-6, yNode-8); ctx.lineTo(x, yNode); ctx.lineTo(x+6, yNode-8); ctx.fill();
-            } else {
-                ctx.moveTo(x, yNode); ctx.lineTo(x, ySky); ctx.stroke();
-                ctx.beginPath(); ctx.moveTo(x-6, ySky+8); ctx.lineTo(x, ySky); ctx.lineTo(x+6, ySky+8); ctx.fill();
-            }
-        }
-    }
+function startAnimation(){
+  if (!lastModes || !lastModes.length) return;
+  const sel = document.getElementById('animMode');
+  anim.modeIndex = parseInt(sel.value||'0') || 0;
+  anim.speed = parseFloat(document.getElementById('animSpeed').value)||1;
+  anim.amp = parseFloat(document.getElementById('animAmp').value)||1;
+  if (anim.running) cancelAnimationFrame(anim.rafId);
+  anim.running = true; anim.t0 = performance.now();
+  document.getElementById('btnPlay').disabled = true;
+  document.getElementById('btnPause').disabled = false;
+  const step = (ts)=>{ if (!anim.running) return; drawAnimatedFrame((ts-anim.t0)/1000); anim.rafId = requestAnimationFrame(step); };
+  anim.rafId = requestAnimationFrame(step);
+}
+function stopAnimation(){
+  anim.running = false; if (anim.rafId) cancelAnimationFrame(anim.rafId); anim.rafId = 0;
+  const btnPlay = document.getElementById('btnPlay'); const btnPause = document.getElementById('btnPause');
+  if (btnPlay) btnPlay.disabled = !(lastModes && lastModes.length);
+  if (btnPause) btnPause.disabled = true;
+  renderCombinedModes();
+}
 
-    // --- HIT TEST LOGIC (FIXED) ---
-    const beamCanvas = document.getElementById('beamCanvas');
-    beamCanvas.addEventListener('click', (e) => {
-      if (segments.length === 0) return;
-      const rect = beamCanvas.getBoundingClientRect();
-      const scaleMapX = beamCanvas.width / rect.width;
-      const scaleMapY = beamCanvas.height / rect.height;
-      const xClick = (e.clientX - rect.left) * scaleMapX;
-      const yClick = (e.clientY - rect.top) * scaleMapY;
+function drawAnimatedFrame(t){
+  const canvas = document.getElementById('modesCombined');
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0,0,canvas.width, canvas.height);
+  if (!lastModes || !lastModes.length) return;
+  const mode = lastModes[Math.min(anim.modeIndex, lastModes.length-1)];
 
-      const margin = 50; 
-      const midY = Math.round(beamCanvas.height * 0.35);
-      const totalLength = segments.reduce((sum, seg) => sum + seg.L, 0);
-      const scaleX = (beamCanvas.width - 2 * margin) / totalLength;
+  const m = getRefine();
+  const xPositions = [];
+  let x = 0;
+  for (let i=0;i<segments.length;i++){
+    const L = segments[i].L; const sub = m+1; const Lsub = L/sub;
+    const start = (i===0)?0:1; for (let j=start;j<=sub;j++) xPositions.push(x + j*Lsub);
+    x += L;
+  }
+  const totalLength = segments.reduce((s,sg)=>s+sg.L,0) || 1;
+  const scaleX = canvas.width / totalLength;
+  const offsetY = canvas.height/2;
+  const scaleY = canvas.height * 0.4 * anim.amp; 
 
-      const maxEI = Math.max(...segments.map(seg => seg.E * seg.I));
-      const maxHeight = 0.40 * beamCanvas.height * 0.25;
-      const eiScale = parseFloat(document.getElementById('eiScale').value || '1');
+  drawGuides(ctx, canvas, offsetY, canvas.height*0.4);
 
-      // Nodes
-      const nodeXs = [margin];
-      let accX = margin;
-      for (let i = 0; i < segments.length; i++) { accX += segments[i].L * scaleX; nodeXs.push(accX); }
-      for (let i = 0; i < nodes.length; i++) {
-        if (Math.hypot(xClick - nodeXs[i], yClick - midY) < 20) { editNode(i); return; }
-      }
+  const full = mode.vec; const w = []; for (let d=0; d<full.length; d+=2) w.push(full[d]);
+  const omega = 2*Math.PI*mode.freq*anim.speed;
 
-      // Segments
-      accX = margin;
-      for (let i = 0; i < segments.length; i++) {
-        const seg = segments[i], w = seg.L * scaleX;
-        const h = ((seg.E * seg.I) / maxEI) * maxHeight * eiScale;
-        const hitLimit = Math.max(20, h / 2 + 10);
-        if (xClick >= accX && xClick <= accX + w && Math.abs(yClick - midY) <= hitLimit) { editSegment(i); return; }
-        accX += w;
+  ctx.beginPath(); ctx.lineWidth = 2.5; ctx.strokeStyle = '#1f77b4';
+  const n = Math.min(xPositions.length, w.length);
+  for (let k=0;k<n;k++){
+    const px = xPositions[k]*scaleX; const py = offsetY - (w[k]||0)*scaleY * Math.sin(omega*t);
+    if (k===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+  }
+  ctx.stroke();
+
+  drawAxesAndLegend(ctx, canvas, [mode], false);
+}
+
+// 6 & 7: Export Functions
+function getModeDataForExport() {
+  if (!lastModes || !lastModes.length) return null;
+  const m = getRefine();
+  const xPositions = [];
+  let x = 0;
+  // Reconstruct X positions based on refined grid
+  for (let i=0;i<segments.length;i++){
+    const L = segments[i].L; const sub = m+1; const Lsub = L/sub;
+    const start = (i===0)?0:1; 
+    for (let j=start;j<=sub;j++) xPositions.push(x + j*Lsub);
+    x += L;
+  }
+
+  const rows = [];
+  const numPoints = xPositions.length;
+  for(let i=0; i<numPoints; i++){
+    let row = { x: xPositions[i] };
+    lastModes.forEach((mode, idx) => {
+      // vec has [w0, th0, w1, th1...] -> we want w (even indices)
+      // i corresponds to node index i, so we want vec[2*i]
+      if (2*i < mode.vec.length) {
+        row[`Mode ${idx+1} (${mode.freq.toFixed(2)}Hz)`] = mode.vec[2*i];
       }
     });
+    rows.push(row);
+  }
+  return rows;
+}
 
-    // -------------------- Solver --------------------
-    function solveBeam(){
-      if(nodes.length<2){ Swal.fire('Err','Build beam first','error'); return; }
-      const map = buildDOFMap(), dof=map.ndof, K=Array(dof).fill().map(()=>Array(dof).fill(0)), F=Array(dof).fill(0);
-      
-      for(let e=0; e<segments.length; e++){
-          const s=segments[e], L=s.L, EI=s.E*s.I, k = [ [12,6*L,-12,6*L], [6*L,4*L*L,-6*L,2*L*L], [-12,-6*L,12,-6*L], [6*L,2*L*L,-6*L,4*L*L] ].map(r=>r.map(v=> v*EI/(L*L*L)));
-          const idx = [map.idxW[e], map.thRight[e], map.idxW[e+1], map.thLeft[e+1]];
-          for(let r=0;r<4;r++) for(let c=0;c<4;c++) K[idx[r]][idx[c]] += k[r][c];
-          
-          const qw = -s.wd*s.A, qL=s.qL+qw, qR=s.qR+qw;
-          const gauss = [{t:-0.7746,w:0.5556},{t:0,w:0.8889},{t:0.7746,w:0.5556}];
-          const fe=[0,0,0,0];
-          for(const g of gauss){
-              const xLoc=(g.t+1)*L/2, N=[1-3*(xLoc/L)**2+2*(xLoc/L)**3, xLoc*(1-2*(xLoc/L)+(xLoc/L)**2), 3*(xLoc/L)**2-2*(xLoc/L)**3, xLoc*((xLoc/L)**2-(xLoc/L))];
-              const qx = qL + (qR-qL)*(xLoc/L);
-              for(let z=0;z<4;z++) fe[z] += g.w * (L/2) * N[z] * qx;
-          }
-          for(let z=0;z<4;z++) if(idx[z]!==undefined) F[idx[z]] += fe[z];
-      }
+function exportJSON() {
+  const data = getModeDataForExport();
+  if (!data) { Swal.fire("No data", "Compute modes first.", "warning"); return; }
+  
+  const output = {
+    version: "1.0",
+    date: new Date().toLocaleDateString(),
+    timestamp: new Date().toLocaleTimeString(),
+    modes: data
+  };
+  
+  const blob = new Blob([JSON.stringify(output, null, 2)], {type: "application/json"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "beam_modes.json";
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
-      for(let i=0; i<nodes.length; i++){
-          const n=nodes[i], wIdx=map.idxW[i];
-          F[wIdx] += n.F; 
-          if(n.Kv) K[wIdx][wIdx]+=n.Kv;
-          if(n.Km && !isHinge(n)){ const t=map.thRight[i]; if(t!==undefined) K[t][t]+=n.Km; }
-          if(n.M){
-               if(!isHinge(n)) F[map.thRight[i]] += n.M;
-               else { if(map.thLeft[i]) F[map.thLeft[i]]+=n.M/2; if(map.thRight[i]) F[map.thRight[i]]+=n.M/2; }
-          }
-      }
+function exportCSV() {
+  const data = getModeDataForExport();
+  if (!data) { Swal.fire("No data", "Compute modes first.", "warning"); return; }
+  
+  // Headers
+  const headers = Object.keys(data[0]);
+  const csvRows = [];
+  csvRows.push(headers.join(","));
+  
+  data.forEach(row => {
+    const values = headers.map(header => row[header]);
+    csvRows.push(values.join(","));
+  });
+  
+  const blob = new Blob([csvRows.join("\n")], {type: "text/csv"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "beam_modes.csv";
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
-      const fixIdx=[], fixVal=[];
-      for(let i=0; i<nodes.length; i++){
-          const n=nodes[i], w=map.idxW[i], tL=map.thLeft[i], tR=map.thRight[i];
-          if(n.bc==='fixed'){ fixIdx.push(w); fixVal.push(0); if(tL) {fixIdx.push(tL);fixVal.push(0);} if(tR&&tR!==tL) {fixIdx.push(tR);fixVal.push(0);} }
-          if(n.bc==='pinned'){ fixIdx.push(w); fixVal.push(0); }
-          if(n.w0!==null){ fixIdx.push(w); fixVal.push(n.w0); }
-          if(n.th0!==null){ if(tL){fixIdx.push(tL);fixVal.push(n.th0);} if(tR&&tR!==tL){fixIdx.push(tR);fixVal.push(n.th0);} }
-      }
-      
-      const freeIdx = [...Array(dof).keys()].filter(k=> !fixIdx.includes(k));
-      if(!freeIdx.length){ Swal.fire('Error','Fully constrained','error'); return; }
-      
-      const Kff = freeIdx.map(r=> freeIdx.map(c=> K[r][c]));
-      const Kfs = freeIdx.map(r=> fixIdx.map(c=> K[r][c]));
-      const Ff  = freeIdx.map(r=> F[r]);
-      const Rs  = numeric.sub(Ff, numeric.dot(Kfs, fixVal));
-      
-      try {
-          const Uf = numeric.solve(Kff, Rs);
-          const U = Array(dof).fill(0);
-          freeIdx.forEach((idx,i)=> U[idx]=Uf[i]);
-          fixIdx.forEach((idx,i)=> U[idx]=fixVal[i]);
-          lastU = {u:U, map}; K_global=K;
-          elementForces = computeForces(U, map);
-          drawBeam();
-          plotDisplacement(U, map); plotMoment(); plotShearFromMoment(); plotBendingStress();
-      } catch(e) { Swal.fire('Error','Singular Matrix (Unstable)','error'); }
-    }
+(function(){
+  const btnPlay = document.getElementById('btnPlay');
+  const btnPause = document.getElementById('btnPause');
+  const sel = document.getElementById('animMode');
+  const speed = document.getElementById('animSpeed');
+  const amp = document.getElementById('animAmp');
+  const speedVal = document.getElementById('animSpeedVal');
+  const ampVal = document.getElementById('animAmpVal');
+  if (btnPlay) btnPlay.addEventListener('click', startAnimation);
+  if (btnPause) btnPause.addEventListener('click', stopAnimation);
+  if (sel) sel.addEventListener('change', ()=>{ if (anim.running) startAnimation(); });
+  if (speed) speed.addEventListener('input', ()=>{ speedVal.textContent = parseFloat(speed.value).toFixed(2); if (anim.running) startAnimation(); });
+  if (amp) amp.addEventListener('input', ()=>{ ampVal.textContent = parseFloat(amp.value).toFixed(1); if (anim.running) startAnimation(); });
+})();
 
-    function computeForces(U, map){
-        return segments.map((s,e)=>{
-            const L=s.L, EI=s.E*s.I, k = [ [12,6*L,-12,6*L], [6*L,4*L*L,-6*L,2*L*L], [-12,-6*L,12,-6*L], [6*L,2*L*L,-6*L,4*L*L] ].map(r=>r.map(v=> v*EI/(L*L*L)));
-            const idx = [map.idxW[e], map.thRight[e], map.idxW[e+1], map.thLeft[e+1]];
-            const u = idx.map(i=>U[i]);
-            const fe = numeric.dot(k, u);
-            const qw=-s.wd*s.A, qL=s.qL+qw, qR=s.qR+qw, feq=[0,0,0,0];
-            const gauss = [{t:-0.7746,w:0.5556},{t:0,w:0.8889},{t:0.7746,w:0.5556}];
-            for(const g of gauss){
-                const xLoc=(g.t+1)*L/2, N=[1-3*(xLoc/L)**2+2*(xLoc/L)**3, xLoc*(1-2*(xLoc/L)+(xLoc/L)**2), 3*(xLoc/L)**2-2*(xLoc/L)**3, xLoc*((xLoc/L)**2-(xLoc/L))];
-                const qx = qL + (qR-qL)*(xLoc/L);
-                for(let z=0;z<4;z++) feq[z] += g.w*(L/2)*N[z]*qx;
-            }
-            const f = numeric.sub(fe, feq);
-            return {V1:-f[0], M1:-f[1], V2:-f[2], M2:-f[3], L};
-        });
-    }
+window.buildBeam = buildBeam;
+window.computeModesRefined = computeModesRefined;
+window.exportJSON = exportJSON;
+window.exportCSV = exportCSV;
 
-    // -------------------- Plotting --------------------
-    function plotDisplacement(U, map){
-        const pts=[]; let x=0;
-        segments.forEach((s,e)=>{
-            const L=s.L, u=[U[map.idxW[e]], U[map.thRight[e]], U[map.idxW[e+1]], U[map.thLeft[e+1]]];
-            for(let i=0;i<=20;i++){
-                const xi=i*L/20, r=xi/L, h=[1-3*r*r+2*r*r*r, xi*(1-2*r+r*r), 3*r*r-2*r*r*r, xi*(r*r-r)];
-                pts.push({x:x+xi, y: h.reduce((a,b,k)=>a+b*u[k],0)});
-            }
-            x+=L;
-        });
-        chart('dispPlot', 'Deflection', pts, 'y');
-    }
-    function plotMoment(){
-        const pts=[]; let x=0;
-        elementForces.forEach((f,i)=>{
-             const s=segments[i], qw=-s.wd*s.A, qL=s.qL+qw, qR=s.qR+qw;
-             for(let k=0;k<=40;k++){
-                 const xi=k*f.L/40, M = -f.M2 + f.V1*(f.L-xi) - 0.5*qL*(f.L**2-xi**2) - ((qR-qL)/(6*f.L))*(f.L**3-xi**3);
-                 pts.push({x:x+xi, y:M});
-             }
-             x+=f.L;
-        });
-        chart('momentPlot', 'Moment', pts, 'Moment');
-    }
-    function plotShearFromMoment(){
-        const pts=[]; let x=0;
-        elementForces.forEach((f,i)=>{
-             const s=segments[i], qw=-s.wd*s.A, qL=s.qL+qw, qR=s.qR+qw;
-             for(let k=0;k<=20;k++){
-                 const xi=k*f.L/20, V = f.V1 - (qL*xi + (qR-qL)*xi*xi/(2*f.L));
-                 pts.push({x:x+xi, y:V});
-             }
-             x+=f.L;
-        });
-        chart('shearPlot', 'Shear', pts, 'Shear');
-    }
-    function plotBendingStress(){
-        const ptT=[], ptB=[]; let x=0;
-        elementForces.forEach((f,i)=>{
-             const s=segments[i], qw=-s.wd*s.A, qL=s.qL+qw, qR=s.qR+qw;
-             if(!s.St && !s.Sb) { x+=f.L; return; }
-             for(let k=0;k<=40;k++){
-                 const xi=k*f.L/40, M = -f.M2 + f.V1*(f.L-xi) - 0.5*qL*(f.L**2-xi**2) - ((qR-qL)/(6*f.L))*(f.L**3-xi**3);
-                 if(s.St) ptT.push({x:x+xi, y: -M/s.St});
-                 if(s.Sb) ptB.push({x:x+xi, y: M/s.Sb});
-             }
-             x+=f.L;
-        });
-        if(window.stressChart) window.stressChart.destroy();
-        const ctx = document.getElementById('stressPlot').getContext('2d');
-        window.stressChart = new Chart(ctx, { type:'line', data:{datasets:[
-            {label:'Top', data:ptT, borderColor:'red', borderWidth:1, pointRadius:0},
-            {label:'Bot', data:ptB, borderColor:'blue', borderWidth:1, pointRadius:0}
-        ]}, options:{responsive:false, scales:{x:{type:'linear'},y:{title:{display:true,text:'Stress (Tens +)'}}}}});
-    }
-
-    function chart(id, label, data, yTitle){
-        const ctx = document.getElementById(id).getContext('2d');
-        if(id==='dispPlot' && window.dCh) window.dCh.destroy();
-        if(id==='momentPlot' && window.mCh) window.mCh.destroy();
-        if(id==='shearPlot' && window.sCh) window.sCh.destroy();
-        const cfg = { type:'line', data:{datasets:[{label, data, borderColor:'#333', borderWidth:2, pointRadius:0}]}, options:{responsive:false, scales:{x:{type:'linear'}, y:{title:{display:true,text:yTitle}}}} };
-        const c = new Chart(ctx, cfg);
-        if(id==='dispPlot') window.dCh=c; if(id==='momentPlot') window.mCh=c; if(id==='shearPlot') window.sCh=c;
-    }
-
-    // -------------------- EXPORT JSON --------------------
-    function exportJSON(){
-        if(!elementForces){ Swal.fire('Note','Solve first','info'); return; }
-        
-        const results = [];
-        let xTot = 0;
-        const { u, map } = lastU;
-
-        segments.forEach((s, e) => {
-            const L = s.L;
-            const qw = -s.wd*s.A, qL = s.qL+qw, qR = s.qR+qw;
-            const uVals = [u[map.idxW[e]], u[map.thRight[e]], u[map.idxW[e+1]], u[map.thLeft[e+1]]];
-            const f = elementForces[e];
-            
-            // 20 points per segment
-            for(let i=0; i<=20; i++){
-                const xi = i*L/20;
-                const r = xi/L;
-                
-                // Displacement
-                const h = [1-3*r*r+2*r*r*r, xi*(1-2*r+r*r), 3*r*r-2*r*r*r, xi*(r*r-r)];
-                const w = h.reduce((acc, val, k) => acc + val*uVals[k], 0);
-                
-                // Shear
-                const V = f.V1 - (qL*xi + (qR-qL)*xi*xi/(2*L));
-                
-                // Moment
-                const M = -f.M2 + f.V1*(L-xi) - 0.5*qL*(L**2-xi**2) - ((qR-qL)/(6*L))*(L**3-xi**3);
-                
-                // Stress
-                const sigT = s.St ? -M/s.St : null;
-                const sigB = s.Sb ? M/s.Sb : null;
-
-                results.push({
-                    x: parseFloat((xTot + xi).toFixed(4)),
-                    displacement: parseFloat(w.toPrecision(5)),
-                    shear: parseFloat(V.toPrecision(5)),
-                    moment: parseFloat(M.toPrecision(5)),
-                    sigma_top: sigT !== null ? parseFloat(sigT.toPrecision(5)) : null,
-                    sigma_bottom: sigB !== null ? parseFloat(sigB.toPrecision(5)) : null
-                });
-            }
-            xTot += L;
-        });
-
-        const dataObj = {
-            version: "1.0",
-            date: new Date().toLocaleDateString(),
-            time: new Date().toLocaleTimeString(),
-            results: results
-        };
-
-        const blob = new Blob([JSON.stringify(dataObj, null, 2)], {type: 'application/json'});
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = `beam_results_${Date.now()}.json`;
-        a.click();
-        URL.revokeObjectURL(a.href);
-    }
-
-    function exportCSV(){
-        if(!elementForces) return;
-        const rows = [['x','w','V','M','SigTop','SigBot']];
-        let x=0;
-        segments.forEach((s,e)=>{
-             const L=s.L, qw=-s.wd*s.A, qL=s.qL+qw, qR=s.qR+qw;
-             const u = [lastU.u[lastU.map.idxW[e]], lastU.u[lastU.map.thRight[e]], lastU.u[lastU.map.idxW[e+1]], lastU.u[lastU.map.thLeft[e+1]]];
-             const f = elementForces[e];
-             for(let i=0; i<=20; i++){
-                 const xi=i*L/20, r=xi/L;
-                 const h=[1-3*r*r+2*r*r*r, xi*(1-2*r+r*r), 3*r*r-2*r*r*r, xi*(r*r-r)];
-                 const w = h.reduce((a,b,k)=>a+b*u[k],0);
-                 const V = f.V1 - (qL*xi + (qR-qL)*xi*xi/(2*L));
-                 const M = -f.M2 + f.V1*(L-xi) - 0.5*qL*(L**2-xi**2) - ((qR-qL)/(6*L))*(L**3-xi**3);
-                 rows.push([(x+xi).toFixed(4), w, V, M, s.St?-M/s.St:0, s.Sb?M/s.Sb:0]);
-             }
-             x+=L;
-        });
-        const blob = new Blob([rows.map(r=>r.join(',')).join('\n')], {type:'text/csv'});
-        const a = document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='beam.csv'; a.click();
-    }
-
-    // Expose API
-    window.buildBeam = buildBeam;
-    window.solveBeam = solveBeam;
-    window.exportCSV = exportCSV;
-    window.exportJSON = exportJSON;
-
-    buildBeam();
-  </script>
+// initial
+buildBeam();
+</script>
 </body>
 </html>
 
