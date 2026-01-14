@@ -11,7 +11,7 @@
     body { background: #f4f4f4; font-family: sans-serif; margin: 20px; }
     h2 { margin-bottom: 10px; }
     
-    /* 1. CHANGED: Reduced width from 900px to 720px */
+    /* 1. WIDTH SETTING: 720px (Reduced from 900px) */
     #container { width: 720px; }
 
     #beamCanvas { border: 1px solid #ccc; margin-top: 12px; cursor: pointer; background: #fff; display: block; }
@@ -21,21 +21,19 @@
     .swal2-html-container label { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
     .swal2-html-container label span { margin-right: 10px; }
 
-    /* Updated Toolbar Layout */
+    /* Toolbar Layout */
     .toolbar { 
       display: flex; 
       gap: 8px; 
       align-items: center;
-      flex-wrap: wrap; /* Added wrapping for narrower width */
-      /* 2. CHANGED: Reduced width from 900px to 720px */
-      width: 720px; 
+      flex-wrap: wrap;
+      width: 720px; /* Match container */
       background: #e0e0e0;
       padding: 8px;
       box-sizing: border-box;
       border-radius: 4px;
     }
 
-    /* 3. CHANGED: Reduced width from 900px to 720px */
     .results { margin-top: 8px; font-size: 14px; width: 720px; }
     .muted { color:#666; font-size: 12px; }
     
@@ -70,7 +68,6 @@
       <label>Gravity (G): <input id="gravityInput" type="number" value="386" style="width:60px"></label>
       <button onclick="buildBeam()">Build Beam</button>
       <button onclick="computeModesRefined()">Compute Modes</button>
-      
       <button onclick="exportJSON()">Export JSON</button>
       <button onclick="exportCSV()">Export CSV</button>
     </div>
@@ -163,10 +160,10 @@ function drawBeam() {
   const scaleX = (canvas.width - 2 * margin) / totalLength;
   const maxEI = Math.max(...segments.map(seg => seg.E * seg.I));
   
-  // Height scaling set to 0.12 (approx 1/3 of previous 0.35)
+  // Height scaling set to 0.12 (Reduced to ~1/3 size)
   const maxHeight = 0.12 * canvas.height; 
 
-  // PASS 1: Draw all Segments
+  // PASS 1: Draw all Segments (Gray bars)
   let x = margin;
   for (let i = 0; i < segments.length; i++) {
     const seg = segments[i];
@@ -188,7 +185,7 @@ function drawBeam() {
     x += width;
   }
 
-  // PASS 2: Draw all Nodes on top (so blue dots are fully exposed)
+  // PASS 2: Draw all Nodes on top (Blue dots)
   x = margin;
   // Draw first node
   drawNodeFeatures(ctx, x, midY, nodes[0]);
@@ -275,8 +272,11 @@ function drawNodeFeatures(ctx, x, y, node = { bc: 'free', W:0, Kv:0, Kr:0 }){
 const beamCanvas = document.getElementById("beamCanvas");
 beamCanvas.addEventListener("click", function (e) {
   const rect = beamCanvas.getBoundingClientRect();
-  const xClick = e.clientX - rect.left;
-  const yClick = e.clientY - rect.top;
+  // Fixed: map click coordinates to internal canvas size
+  const scaleMapX = beamCanvas.width / rect.width;
+  const scaleMapY = beamCanvas.height / rect.height;
+  const xClick = (e.clientX - rect.left) * scaleMapX;
+  const yClick = (e.clientY - rect.top) * scaleMapY;
 
   const margin = 50; 
   const midY = beamCanvas.height/2;
@@ -284,7 +284,7 @@ beamCanvas.addEventListener("click", function (e) {
   if (totalLength <= 0) return;
   const scaleX = (beamCanvas.width - 2 * margin) / totalLength;
   const maxEI = Math.max(...segments.map(seg => seg.E * seg.I)) || 1;
-  const maxHeight = 0.12 * beamCanvas.height; // Updated height match
+  const maxHeight = 0.12 * beamCanvas.height;
 
   const map = buildPrimaryNodePositionMap();
   const nodeXs = map.xs;
@@ -311,7 +311,8 @@ beamCanvas.addEventListener("click", function (e) {
     const right = x + width - (nodeHitR + 2);
 
     if (right > left) {
-      if (xClick >= left && xClick <= right && yClick >= (midY - height/2 - 10) && yClick <= (midY + height/2 + 10)) {
+      // Allow clicking a bit above/below the visual segment
+      if (xClick >= left && xClick <= right && yClick >= (midY - height/2 - 20) && yClick <= (midY + height/2 + 20)) {
         editSegment(i);
         return;
       }
