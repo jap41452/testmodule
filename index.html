@@ -6,39 +6,63 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/numeric/1.2.6/numeric.min.js"></script>
+  
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
   <style>
-    body { background: #f4f4f4; font-family: sans-serif; }
-    /* Change 3: Width reduced to 900px */
-    #beamCanvas { border: 1px solid #ccc; margin-top: 12px; cursor: pointer; background: #fff; width: 900px; }
+    body { background: #f4f4f4; font-family: sans-serif; padding: 10px; }
+    
+    /* Main container width constraint */
+    #beamCanvas, .modeCanvas, .toolbar, .results, .legend {
+      max-width: 900px;
+      width: 900px;
+      box-sizing: border-box; /* Ensures padding doesn't add to width */
+    }
+
+    #beamCanvas { border: 1px solid #ccc; margin-top: 12px; cursor: pointer; background: #fff; }
+    
+    /* SweetAlert Tweaks */
     .swal2-popup { font-size: 12px !important; width: auto !important; min-width: 220px !important; }
     .swal2-input, .swal2-select { font-size: 12px !important; width: 90px !important; margin: 4px !important; }
     .swal2-html-container label { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
     .swal2-html-container label span { margin-right: 8px; }
 
+    /* Toolbar Layout */
     .toolbar { 
-      display: grid; 
-      grid-auto-flow: column; 
-      grid-auto-columns: max-content; 
-      grid-template-columns: repeat(12, max-content); 
-      gap: 4px; 
+      display: flex; 
+      flex-wrap: wrap; 
+      gap: 10px; 
       align-items: center; 
-      max-width: 900px; /* Change 3 */
+      margin-bottom: 6px;
     }
-    .toolbar label { display: inline-flex; align-items: center; gap: 6px; color: #000 !important; text-indent: 0 !important; }
-    .toolbar label::before { content: none !important; }
-    .toolbar label .field-text { color:#000 !important; font-size:14px !important; display:inline !important; }
-    .toolbar input[type=number], .toolbar input[type=text], .toolbar select, .toolbar input[type=range], .toolbar button { height: 24px; }
-    .toolbar input[type=number], .toolbar input[type=text] { width: 56px; padding: 2px 4px; line-height: 24px; }
-    #numSegments { width: 52px; }
-    #gravityInput { width: 60px !important; }
-    .toolbar button { padding: 3px 8px; font-size: 12px; line-height: 1.1; cursor: pointer; }
-    #btnAnimToggle { padding: 3px 6px; width: auto; min-width: 0; }
+    .toolbar-row {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+    }
+    
+    .toolbar label { display: inline-flex; align-items: center; gap: 4px; color: #000 !important; font-size: 14px; }
+    .toolbar input[type=number], .toolbar input[type=text], .toolbar select { 
+      height: 24px; padding: 2px 4px; line-height: 24px; font-size: 13px; border: 1px solid #999;
+    }
+    .toolbar button { 
+      height: 28px; padding: 0 12px; font-size: 13px; cursor: pointer; 
+      background: #eee; border: 1px solid #999; border-radius: 3px;
+    }
+    .toolbar button:hover { background: #ddd; }
+    
+    /* Specific Input Widths */
+    #numSegments { width: 40px; }
+    #gravityInput { width: 50px; }
+    #dtInput, #durInput { width: 60px; }
+    #eInput, #zetaInput { width: 50px; }
+    #freqOutput { width: 70px; text-align: right; background: #f0f0f0; border: 1px solid #ccc; }
 
-    .results { margin-top: 6px; font-size: 14px; max-width: 900px; }
+    .results { margin-top: 6px; font-size: 14px; }
     .muted { color:#666; font-size: 12px; }
-    .modeCanvas { display:block; margin: 10px 0; border: 1px solid #ccc; background:#fff; max-width: 900px; }
-    .legend { font-size: 12px; color:#333; margin-top:4px; max-width: 900px; }
+    .modeCanvas { display:block; margin: 10px 0; border: 1px solid #ccc; background:#fff; }
+    .legend { font-size: 12px; color:#333; margin-top:4px; }
 
     .busy { pointer-events: none; opacity: 0.6; }
   </style>
@@ -46,56 +70,66 @@
 <body>
   <h2>Beam Drop Response (RK4)</h2>
 
-  <div class="toolbar" id="row1">
-    <label><span class="field-text">Segments (max 10):</span> <input id="numSegments" type="number" min="1" max="10" value="4"></label>
-    <button id="btnBuild">Build Beam</button>
-    <button id="btnFreq">1st Mode Freq</button>
-    <label><span class="field-text">f₁ (Hz):</span>
-      <input id="freqOutput" type="text" readonly style="width:70px; text-align:right;">
-    </label>
+  <div class="toolbar">
+    <div class="toolbar-row">
+      <label><span>Segments (max 10):</span> <input id="numSegments" type="number" min="1" max="10" value="2"></label>
+      <button id="btnBuild">Build Beam</button>
+      <div style="width: 20px;"></div> <button id="btnFreq">1st Mode Freq</button>
+      <label><span>f₁ (Hz):</span>
+        <input id="freqOutput" type="text" readonly>
+      </label>
+    </div>
   </div>
 
-  <div class="toolbar" id="row2" style="margin-top:5px;">
-    <label><span class="field-text">Gravity (G):</span> <input id="gravityInput" type="number" value="386"></label>
-    <label><span class="field-text">Δt (s):</span> <input id="dtInput" type="number" min="1e-6" step="0.0001" value="0.001" style="width:64px"></label>
-    <label><span class="field-text">T (s):</span> <input id="durInput" type="number" min="0.01" step="0.01" value="1.5" style="width:64px"></label>
+  <div class="toolbar">
+    <div class="toolbar-row">
+      <label><span>Gravity (G):</span> <input id="gravityInput" type="number" value="386"></label>
+      <label><span>Δt (s):</span> <input id="dtInput" type="number" min="1e-6" step="0.0001" value="0.001"></label>
+      <label><span>T (s):</span> <input id="durInput" type="number" min="0.01" step="0.01" value="1.5"></label>
+      <div style="border-left: 1px solid #ccc; height: 20px; margin: 0 4px;"></div>
+      <label><span>Impact:</span>
+        <select id="impactMode">
+          <option value="stick">Stick (e=0)</option>
+          <option value="bounce">Bounce (e&gt;0)</option>
+        </select>
+      </label>
+      <label><span>e:</span> <input id="eInput" type="number" min="0" max="1" step="0.01" value="0.5"></label>
+      <label><span>ζ (%):</span> <input id="zetaInput" type="number" min="0" step="0.1" value="2.0"></label>
+    </div>
+  </div>
 
-    <label><span class="field-text">Impact:</span>
-      <select id="impactMode">
-        <option value="stick">Stick (e=0)</option>
-        <option value="bounce">Bounce (e&gt;0)</option>
-      </select>
-    </label>
-    <label><span class="field-text">e:</span> <input id="eInput" type="number" min="0" max="1" step="0.01" value="0.5" style="width:54px"></label>
-    <label><span class="field-text">ζ (%):</span> <input id="zetaInput" type="number" min="0" step="0.1" value="2.0" style="width:54px"></label>
-
-    <button id="btnDrop">Simulate Drop</button>
-    <button id="btnImportJSON">Import JSON</button>
-    <button id="btnExportJSON">Export JSON</button>
-    <button id="btnExport">Export CSV</button>
-    
-    <input type="file" id="fileInput" style="display:none" accept=".json">
+  <div class="toolbar">
+    <div class="toolbar-row" style="background: #e8e8e8; padding: 6px; border-radius: 4px;">
+      <button id="btnDrop" style="font-weight: bold; background: #ddd;">Simulate Drop</button>
+      <div style="flex-grow:1"></div> <button id="btnImportJSON">Import JSON</button>
+      <button id="btnExportJSON">Export JSON</button>
+      <button id="btnExport">Export CSV</button>
+      <input type="file" id="fileInput" style="display:none" accept=".json">
+    </div>
   </div>
 
   <canvas id="beamCanvas" width="900" height="220"></canvas>
   <div id="dropSummary" class="results"></div>
   <canvas id="timePlot" width="900" height="260" class="modeCanvas"></canvas>
 
-  <div class="toolbar" style="grid-template-columns:auto auto auto; align-items:center; gap:8px; margin-top:4px; max-width:900px;">
-    <button id="btnAnimToggle">Play</button>
-    <label style="align-items:center"><span class="field-text">Speed:</span>
-      <input id="animSpeed" type="range" min="0.01" max="1" step="0.01" value="0.5" style="width:140px"></label>
-    <span id="animStatus" class="muted"></span>
+  <div class="toolbar" style="margin-top:4px;">
+    <div class="toolbar-row">
+      <button id="btnAnimToggle">Play</button>
+      <label style="align-items:center"><span>Speed:</span>
+        <input id="animSpeed" type="range" min="0.01" max="1" step="0.01" value="0.5" style="width:140px"></label>
+      <span id="animStatus" class="muted"></span>
+    </div>
   </div>
+  
   <canvas id="animCanvas" width="900" height="240" class="modeCanvas"></canvas>
-  <div class="legend">Blue line: beam deflection; Black filled circle: dropped mass (attached for stick; free-flight for bounce). Damping: modal (structural) with uniform ζ.</div>
+  <div class="legend">Blue line: beam deflection. Gray blocks: beam segments. Black circle: dropped mass.</div>
 
 <script>
 // ===== Config & State =====
 const INTERNAL_NODES_PER_SEG = 10; 
 const MARGIN_X = 60; 
-// Change 1: Define Blue Color
-const BEAM_COLOR = "#1976D2"; 
+// Change 1: Moderate Gray Color
+const BEAM_COLOR = "#9E9E9E"; 
 
 let segments = [];
 let nodes = [];      
@@ -113,17 +147,23 @@ let lastSim = null;
 
 // ===== Build / Draw =====
 function buildBeam() {
-  const S = Math.max(1, Math.min(10, parseInt(document.getElementById("numSegments").value)));
+  const segInput = document.getElementById("numSegments");
+  // Default to 2 if input is empty or invalid
+  const S = Math.max(1, Math.min(10, parseInt(segInput.value) || 2));
+  
   const totalL = 96; 
   segments = [];
   for (let i = 0; i < S; i++) {
     segments.push({ E: 12e6, I: 21.3, L: totalL / S, rho: 0.28, A: 2.0 });
   }
   nodes = Array(S + 1).fill().map(() => ({ bc: "free", W: 0, Kv: 0, Kr: 0, H: 0 }));
+  
+  // Ensure we redraw
   safeDrawBeam();
   renderDropSummary(null);
   drawTimeHistory([], []);
   lastSim = null;
+  
   const outEl = document.getElementById('freqOutput');
   if (outEl) outEl.value = '';
 }
@@ -176,23 +216,22 @@ function drawBeam() {
     const maxEI = Math.max(...segments.map(seg => seg.E * seg.I));
     const maxHeight = 0.05 * canvas.height;
 
-    // Change 2: Drawing Order - Draw ALL segments first
+    // Draw ALL segments first
     let x = margin;
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i];
       const width = seg.L * scaleX;
       const height = (seg.E * seg.I / maxEI) * maxHeight;
 
-      // Change 1: Blue Color for Module
       ctx.fillStyle = BEAM_COLOR;
       ctx.fillRect(x, midY - height / 2, width, height);
       
-      // Border for segment to see separation
+      // Border
       ctx.strokeStyle = "#fff";
       ctx.lineWidth = 1;
       ctx.strokeRect(x, midY - height / 2, width, height);
 
-      // Segment text
+      // Text
       ctx.fillStyle = "black";
       ctx.textAlign = "center";
       const props = [ `E: ${seg.E}`, `I: ${seg.I}`, `L: ${seg.L}`, `ρ: ${seg.rho}`, `A: ${seg.A}` ];
@@ -203,12 +242,9 @@ function drawBeam() {
       x += width;
     }
 
-    // Change 2: Drawing Order - Draw ALL nodes second (on top)
+    // Draw ALL nodes second (on top)
     x = margin;
-    // Draw first node
     drawNodeFeatures(ctx, x, midY, nodes[0], maxHeight);
-    
-    // Draw remaining nodes
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i];
       const width = seg.L * scaleX;
@@ -262,21 +298,19 @@ function drawFixedSupport(ctx, x, y) {
 
 function drawNodeFeatures(ctx, x, y, node = { bc: 'free', W:0, Kv:0, Kr:0, H:0 }, maxEIHeight = 20){
   ctx.save();
-  // Change 1: Nodes match beam blue
+  // Nodes match beam color
   ctx.strokeStyle = BEAM_COLOR; 
   ctx.lineWidth = 2; 
   ctx.fillStyle = BEAM_COLOR;
 
   if (node.bc === "pinned") {
-    // Pin is usually black outline
     ctx.strokeStyle = "#000"; 
     ctx.beginPath(); ctx.moveTo(x - 15, y + 17); ctx.lineTo(x, y); ctx.lineTo(x + 15, y + 17); ctx.closePath(); ctx.stroke();
   } else if (node.bc === "fixed") {
     drawFixedSupport(ctx, x, y);
   }
 
-  // Springs
-  ctx.strokeStyle = "#000"; // Springs are black
+  ctx.strokeStyle = "#000";
   if (node.Kv > 0) {
     ctx.beginPath(); let springY = y + 8; ctx.moveTo(x, springY);
     for (let i=0;i<4;i++){ ctx.lineTo(x + (i%2? -6:6), springY += 6); }
@@ -292,17 +326,14 @@ function drawNodeFeatures(ctx, x, y, node = { bc: 'free', W:0, Kv:0, Kr:0, H:0 }
     ctx.stroke();
   }
 
-  // Mass marker - The actual node circle
   const hasW = (node.W && node.W > 0);
-  const r = hasW ? 16 : 8; // Increased slightly for visibility
+  const r = hasW ? 16 : 8; 
   const lift = (hasW && (Number(node.H)||0) > 0) ? (3 * maxEIHeight) : 0;
   const yMass = y - lift;
 
-  // Change 1: Blue circle for node
+  // Node Circle
   ctx.fillStyle = BEAM_COLOR;
   ctx.beginPath(); ctx.arc(x, yMass, r, 0, Math.PI*2); ctx.fill();
-  
-  // White border to pop against blue beam if they overlap
   ctx.strokeStyle = "#fff"; ctx.lineWidth=1;
   ctx.stroke();
 
@@ -422,9 +453,8 @@ async function editNode(i) {
         <label><span>Kr:</span><input id=\"Kr\" class=\"swal2-input\" value=\"${node.Kr}\"></label>
         <label><span>Drop H:</span><input id=\"H\" class=\"swal2-input\" value=\"${node.H}\"></label>
         <div class=\"muted\" style=\"max-width:180px;text-align:left;line-height:1.2\">
-          <div>Impact options are set above.</div>
-          <div>Stick: attach mass W/G and conserve momentum.</div>
-          <div>Bounce: restitution e; mass detaches.</div>
+          <div>Stick: attach mass W/G.</div>
+          <div>Bounce: restitution e.</div>
         </div>`,
       focusConfirm: false,
       preConfirm: () => [
@@ -491,6 +521,9 @@ function assembleMK(includeDropMassIdx, g){
 }
 
 function simulateDrop(){
+  // Check library
+  if(typeof numeric === 'undefined') { Swal.fire('Error','Numeric.js library not loaded. Check internet connection.','error'); return; }
+
   console.time('simulateDrop');
   lastSim = null;
 
@@ -724,6 +757,8 @@ function simulateDrop(){
 }
 
 function computeFirstMode(){
+  if(typeof numeric === 'undefined') { Swal.fire('Error','Numeric.js library not loaded','error'); return; }
+  
   const outEl = document.getElementById('freqOutput');
   if (outEl) outEl.value = '';
   if (!segments.length) { buildBeam(); }
@@ -797,6 +832,7 @@ function drawAnimFrame(i){
   const defaultX = margin + 0.1 * totalL * scaleX;
   const Xc = anim.dropXpx || defaultX;
 
+  // Pre-drop
   if (i < Npre && Npre > 0) {
     ctx.strokeStyle = '#aaa'; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(margin, midY); ctx.lineTo(margin + totalL * scaleX, midY); ctx.stroke();
@@ -809,6 +845,7 @@ function drawAnimFrame(i){
     return;
   }
 
+  // Beam Response
   const j = Math.max(0, i - Npre);
   const frameIdx = Math.min(j, anim.frames.length - 1);
   const xs = anim.xs;
@@ -817,9 +854,12 @@ function drawAnimFrame(i){
   if (!w || !xs || !xs.length) return;
   const scaleY = (canvas.height*0.40) / anim.maxAbs;
 
-  ctx.strokeStyle = '#aaa'; ctx.lineWidth = 1;
+  // Static Reference Line
+  ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(margin, midY); ctx.lineTo(margin + totalL*scaleX, midY); ctx.stroke();
-  ctx.strokeStyle = BEAM_COLOR; ctx.lineWidth = 2;
+  
+  // Deflected Beam (Keep this BLUE for visibility against gray segments)
+  ctx.strokeStyle = '#1976D2'; ctx.lineWidth = 3;
   ctx.beginPath();
   for (let k=0;k<xs.length;k++){
     const X = margin + xs[k]*scaleX;
@@ -869,7 +909,7 @@ function drawTimeHistory(ts, ys){
   });
 }
 
-// ===== Change 4: JSON Export =====
+// ===== JSON Export =====
 function exportJSON() {
   const data = {
     timestamp: new Date().toISOString(),
@@ -898,7 +938,7 @@ function exportJSON() {
   URL.revokeObjectURL(url);
 }
 
-// ===== Change 5: JSON Import =====
+// ===== JSON Import =====
 function triggerImportJSON() {
   document.getElementById('fileInput').click();
 }
@@ -922,7 +962,6 @@ function handleFileSelect(event) {
         if(data.inputs.e) document.getElementById('eInput').value = data.inputs.e;
         if(data.inputs.zeta) document.getElementById('zetaInput').value = data.inputs.zeta;
         
-        // Trigger select change event manually for UI state
         document.getElementById('impactMode').dispatchEvent(new Event('change'));
       }
 
@@ -935,7 +974,6 @@ function handleFileSelect(event) {
       drawTimeHistory([], []); 
       renderDropSummary(null);
       
-      // Reset file input so same file can be loaded again if needed
       document.getElementById('fileInput').value = '';
 
       Swal.fire({
@@ -954,12 +992,11 @@ function handleFileSelect(event) {
   reader.readAsText(file);
 }
 
-// ===== CSV Export (Change 6: Add Date) =====
+// ===== CSV Export =====
 function exportCSV(){
   if (!lastSim){ Swal.fire('No data','Run a simulation first.','info'); return; }
   const { ts, wDrop, nodeNames, nodeW } = lastSim;
   
-  // Add Date Header
   const rows = [`Simulation Date: ${new Date().toLocaleString()}`];
   
   const headers = ['time','w_drop', ...nodeNames];
@@ -986,29 +1023,46 @@ function l2norm(v){ let s=0; for (let i=0;i<v.length;i++) s+=v[i]*v[i]; return M
 // ===== DOM wiring =====
 document.addEventListener('DOMContentLoaded', () => {
   beamCanvasEl = document.getElementById('beamCanvas');
-  attachCanvasHandlers();
-  document.getElementById('btnBuild').addEventListener('click', buildBeam);
-  document.getElementById('btnDrop').addEventListener('click', simulateDrop);
-  document.getElementById('btnExport').addEventListener('click', exportCSV);
   
-  // New Event Listeners
-  document.getElementById('btnExportJSON').addEventListener('click', exportJSON);
-  document.getElementById('btnImportJSON').addEventListener('click', triggerImportJSON);
-  document.getElementById('fileInput').addEventListener('change', handleFileSelect);
+  // Attach Event Listeners
+  attachCanvasHandlers();
+  
+  const btnBuild = document.getElementById('btnBuild');
+  if(btnBuild) btnBuild.addEventListener('click', buildBeam);
+  
+  const btnDrop = document.getElementById('btnDrop');
+  if(btnDrop) btnDrop.addEventListener('click', simulateDrop);
+  
+  const btnExport = document.getElementById('btnExport');
+  if(btnExport) btnExport.addEventListener('click', exportCSV);
+  
+  const btnExportJSON = document.getElementById('btnExportJSON');
+  if(btnExportJSON) btnExportJSON.addEventListener('click', exportJSON);
+  
+  const btnImportJSON = document.getElementById('btnImportJSON');
+  if(btnImportJSON) btnImportJSON.addEventListener('click', triggerImportJSON);
+  
+  const fileInput = document.getElementById('fileInput');
+  if(fileInput) fileInput.addEventListener('change', handleFileSelect);
 
-  document.getElementById('btnFreq').addEventListener('click', computeFirstMode);
+  const btnFreq = document.getElementById('btnFreq');
+  if(btnFreq) btnFreq.addEventListener('click', computeFirstMode);
 
   const btnAnim = document.getElementById('btnAnimToggle');
   const rng = document.getElementById('animSpeed');
-  btnAnim.addEventListener('click', ()=>{ if (anim.running) stopAnimation(); else startAnimation(); });
-  rng.addEventListener('input', ()=>{ anim.speed = parseFloat(rng.value)||0.5; });
-  anim.speed = parseFloat(rng.value)||0.5;
+  if(btnAnim) btnAnim.addEventListener('click', ()=>{ if (anim.running) stopAnimation(); else startAnimation(); });
+  if(rng) {
+    rng.addEventListener('input', ()=>{ anim.speed = parseFloat(rng.value)||0.5; });
+    anim.speed = parseFloat(rng.value)||0.5;
+  }
 
   const modeSel = document.getElementById('impactMode');
   const eInput = document.getElementById('eInput');
   const setEState = ()=>{ eInput.disabled = (modeSel.value !== 'bounce'); };
-  modeSel.addEventListener('change', setEState); setEState();
+  if(modeSel) modeSel.addEventListener('change', setEState); 
+  setEState();
 
+  // Initial Build
   buildBeam();
 });
 </script>
