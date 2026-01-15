@@ -1,1071 +1,1115 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Beam Drop Response (RK4)</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/numeric/1.2.6/numeric.min.js"></script>
-  
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
-  <style>
-    body { background: #f4f4f4; font-family: sans-serif; padding: 10px; }
-    
-    /* Main container width constraint */
-    #beamCanvas, .modeCanvas, .toolbar, .results, .legend {
-      max-width: 800px;
-      width: 800px;
-      box-sizing: border-box; /* Ensures padding doesn't add to width */
-    }
-
-    #beamCanvas { border: 1px solid #ccc; margin-top: 12px; cursor: pointer; background: #fff; }
-    
-    /* SweetAlert Tweaks */
-    .swal2-popup { font-size: 12px !important; width: auto !important; min-width: 220px !important; }
-    .swal2-input, .swal2-select { font-size: 12px !important; width: 90px !important; margin: 4px !important; }
-    .swal2-html-container label { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
-    .swal2-html-container label span { margin-right: 8px; }
-
-    /* Toolbar Layout */
-    .toolbar { 
-      display: flex; 
-      flex-wrap: wrap; 
-      gap: 10px; 
-      align-items: center; 
-      margin-bottom: 6px;
-    }
-    .toolbar-row {
-      display: flex;
-      flex-direction: row;
-      align-items: center;
-      gap: 8px;
-      width: 100%;
-    }
-    
-    .toolbar label { display: inline-flex; align-items: center; gap: 4px; color: #000 !important; font-size: 14px; }
-    .toolbar input[type=number], .toolbar input[type=text], .toolbar select { 
-      height: 24px; padding: 2px 4px; line-height: 24px; font-size: 13px; border: 1px solid #999;
-    }
-    .toolbar button { 
-      height: 28px; padding: 0 12px; font-size: 13px; cursor: pointer; 
-      background: #eee; border: 1px solid #999; border-radius: 3px;
-    }
-    .toolbar button:hover { background: #ddd; }
-    
-    /* Specific Input Widths */
-    #numSegments { width: 40px; }
-    #gravityInput { width: 50px; }
-    #dtInput, #durInput { width: 60px; }
-    #eInput, #zetaInput { width: 50px; }
-    #freqOutput { width: 70px; text-align: right; background: #f0f0f0; border: 1px solid #ccc; }
-
-    .results { margin-top: 6px; font-size: 14px; }
-    .muted { color:#666; font-size: 12px; }
-    .modeCanvas { display:block; margin: 10px 0; border: 1px solid #ccc; background:#fff; }
-    .legend { font-size: 12px; color:#333; margin-top:4px; }
-
-    .busy { pointer-events: none; opacity: 0.6; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-Story House Builder</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
 </head>
 <body>
-  <h2>Beam Drop Response (RK4)</h2>
+    <div id="root"></div>
 
-  <div class="toolbar">
-    <div class="toolbar-row">
-      <label><span>Segments (max 10):</span> <input id="numSegments" type="number" min="1" max="10" value="2"></label>
-      <button id="btnBuild">Build Beam</button>
-      <div style="width: 20px;"></div> <button id="btnFreq">1st Mode Freq</button>
-      <label><span>f₁ (Hz):</span>
-        <input id="freqOutput" type="text" readonly>
-      </label>
-    </div>
-  </div>
+    <script type="text/babel">
 
-  <div class="toolbar">
-    <div class="toolbar-row">
-      <label><span>Gravity (G):</span> <input id="gravityInput" type="number" value="386"></label>
-      <label><span>Δt (s):</span> <input id="dtInput" type="number" min="1e-6" step="0.0001" value="0.001"></label>
-      <label><span>T (s):</span> <input id="durInput" type="number" min="0.01" step="0.01" value="1.5"></label>
-      <div style="border-left: 1px solid #ccc; height: 20px; margin: 0 4px;"></div>
-      <label><span>Impact:</span>
-        <select id="impactMode">
-          <option value="stick">Stick (e=0)</option>
-          <option value="bounce">Bounce (e&gt;0)</option>
-        </select>
-      </label>
-      <label><span>e:</span> <input id="eInput" type="number" min="0" max="1" step="0.01" value="0.5"></label>
-      <label><span>ζ (%):</span> <input id="zetaInput" type="number" min="0" step="0.1" value="2.0"></label>
-    </div>
-  </div>
+const { useState, useEffect, useRef } = React;
 
-  <div class="toolbar">
-    <div class="toolbar-row" style="background: #e8e8e8; padding: 6px; border-radius: 4px;">
-      <button id="btnDrop" style="font-weight: bold; background: #ddd;">Simulate Drop</button>
-      <div style="flex-grow:1"></div> <button id="btnImportJSON">Import JSON</button>
-      <button id="btnExportJSON">Export JSON</button>
-      <button id="btnExport">Export CSV</button>
-      <input type="file" id="fileInput" style="display:none" accept=".json">
-    </div>
-  </div>
+// --- CONSTANTS ---
+const INSULATION_OPTIONS = [
+    { id: 'none', name: 'No Insulation', rValue: 2, color: 0xe5e7eb },
+    { id: 'fiberglass-r13', name: 'Fiberglass Batt R-13', rValue: 13, color: 0xfbbf24 },
+    { id: 'fiberglass-r19', name: 'Fiberglass Batt R-19', rValue: 19, color: 0xf59e0b },
+    { id: 'fiberglass-r21', name: 'Fiberglass Batt R-21', rValue: 21, color: 0xd97706 },
+    { id: 'spray-foam-r25', name: 'Spray Foam R-25', rValue: 25, color: 0x10b981 },
+    { id: 'spray-foam-r30', name: 'Spray Foam R-30', rValue: 30, color: 0x059669 },
+    { id: 'rigid-foam-r20', name: 'Rigid Foam R-20', rValue: 20, color: 0x3b82f6 },
+];
 
-  <canvas id="beamCanvas" width="900" height="220"></canvas>
-  <div id="dropSummary" class="results"></div>
-  <canvas id="timePlot" width="900" height="260" class="modeCanvas"></canvas>
+const EXTERIOR_MATERIALS = [
+    { id: 'brick-red', name: 'Red Brick', color: 0x8B4513 },
+    { id: 'brick-tan', name: 'Tan Brick', color: 0xD2B48C },
+    { id: 'vinyl-white', name: 'White Vinyl Siding', color: 0xF5F5F5 },
+    { id: 'vinyl-gray', name: 'Gray Vinyl Siding', color: 0x808080 },
+    { id: 'vinyl-beige', name: 'Beige Vinyl Siding', color: 0xF5F5DC },
+    { id: 'clapboard-white', name: 'White Clapboard', color: 0xFAFAFA },
+    { id: 'clapboard-blue', name: 'Blue Clapboard', color: 0x4682B4 },
+    { id: 'stucco-white', name: 'White Stucco', color: 0xFFFFF0 },
+    { id: 'stucco-tan', name: 'Tan Stucco', color: 0xD2B48C },
+    { id: 'stone-gray', name: 'Gray Stone', color: 0x708090 },
+];
 
-  <div class="toolbar" style="margin-top:4px;">
-    <div class="toolbar-row">
-      <button id="btnAnimToggle">Play</button>
-      <label style="align-items:center"><span>Speed:</span>
-        <input id="animSpeed" type="range" min="0.01" max="1" step="0.01" value="0.5" style="width:140px"></label>
-      <span id="animStatus" class="muted"></span>
-    </div>
-  </div>
-  
-  <canvas id="animCanvas" width="900" height="240" class="modeCanvas"></canvas>
-  <div class="legend">Blue line: beam deflection. Gray blocks: beam segments. Black circle: dropped mass.</div>
+const ROOF_MATERIALS = [
+    { id: 'asphalt-black', name: 'Black Asphalt Shingles', color: 0x2F2F2F, reflectivity: 0.05 },
+    { id: 'asphalt-gray', name: 'Gray Asphalt Shingles', color: 0x808080, reflectivity: 0.15 },
+    { id: 'asphalt-brown', name: 'Brown Asphalt Shingles', color: 0x654321, reflectivity: 0.10 },
+    { id: 'metal-white', name: 'White Metal Roof', color: 0xF5F5F5, reflectivity: 0.65 },
+    { id: 'metal-black', name: 'Black Metal Roof', color: 0x1C1C1C, reflectivity: 0.05 },
+    { id: 'metal-silver', name: 'Silver Metal Roof', color: 0xC0C0C0, reflectivity: 0.55 },
+    { id: 'tile-terracotta', name: 'Terracotta Tiles', color: 0xE2725B, reflectivity: 0.25 },
+    { id: 'tile-concrete', name: 'Concrete Tiles', color: 0x999999, reflectivity: 0.30 },
+];
 
-<script>
-// ===== Config & State =====
-const INTERNAL_NODES_PER_SEG = 10; 
-const MARGIN_X = 60; 
-// Change 1: Moderate Gray Color
-const BEAM_COLOR = "#9E9E9E"; 
-
-let segments = [];
-let nodes = [];      
-let timeChart = null;
-let beamCanvasEl = null;
-let isDrawing = false;
-let isEditing = false;
-let canvasClickHandler = null;
-let suppressClicksUntil = 0;
-
-function getRefine(){ return INTERNAL_NODES_PER_SEG; }
-function safeDrawBeam(){ requestAnimationFrame(drawBeam); }
-
-let lastSim = null; 
-
-// ===== Build / Draw =====
-function buildBeam() {
-  const segInput = document.getElementById("numSegments");
-  // Default to 2 if input is empty or invalid
-  const S = Math.max(1, Math.min(10, parseInt(segInput.value) || 2));
-  
-  const totalL = 96; 
-  segments = [];
-  for (let i = 0; i < S; i++) {
-    segments.push({ E: 12e6, I: 21.3, L: totalL / S, rho: 0.28, A: 2.0 });
-  }
-  nodes = Array(S + 1).fill().map(() => ({ bc: "free", W: 0, Kv: 0, Kr: 0, H: 0 }));
-  
-  // Ensure we redraw
-  safeDrawBeam();
-  renderDropSummary(null);
-  drawTimeHistory([], []);
-  lastSim = null;
-  
-  const outEl = document.getElementById('freqOutput');
-  if (outEl) outEl.value = '';
-}
-
-async function editSegment(i){
-  if (isEditing) return;
-  isEditing = true; toggleCanvasBusy(true);
-  try {
-    const s = segments[i];
-    const { value: data } = await Swal.fire({
-      title: `Segment ${i} Properties`,
-      html:
-        `<label><span>E:</span><input id="segE" class="swal2-input" value="${s.E}"></label>
-         <label><span>I:</span><input id="segI" class="swal2-input" value="${s.I}"></label>
-         <label><span>L:</span><input id="segL" class="swal2-input" value="${s.L}"></label>
-         <label><span>ρ:</span><input id="segRho" class="swal2-input" value="${s.rho}"></label>
-         <label><span>A:</span><input id="segA" class="swal2-input" value="${s.A}"></label>`,
-      focusConfirm:false,
-      preConfirm:()=>[
-        parseFloat(document.getElementById('segE').value),
-        parseFloat(document.getElementById('segI').value),
-        parseFloat(document.getElementById('segL').value),
-        parseFloat(document.getElementById('segRho').value),
-        parseFloat(document.getElementById('segA').value)
-      ]
-    });
-    if (data){
-      const [E,I,L,rho,A] = data.map(v=> (isFinite(v)? v:0));
-      segments[i] = { E,I,L,rho,A };
-      safeDrawBeam();
-    }
-  } finally { isEditing = false; markSuppressClicks(); toggleCanvasBusy(false); }
-}
-
-function drawBeam() {
-  if (isDrawing) return;
-  isDrawing = true;
-  try {
-    const canvas = beamCanvasEl || document.getElementById("beamCanvas");
-    const ctx = canvas.getContext("2d");
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    if (!segments.length) return;
-
-    const margin = MARGIN_X;
-    const midY = canvas.height / 2;
-
-    const totalLength = segments.reduce((sum, seg) => sum + seg.L, 0);
-    const scaleX = (canvas.width - 2 * margin) / totalLength;
-
-    const maxEI = Math.max(...segments.map(seg => seg.E * seg.I));
-    const maxHeight = 0.05 * canvas.height;
-
-    // Draw ALL segments first
-    let x = margin;
-    for (let i = 0; i < segments.length; i++) {
-      const seg = segments[i];
-      const width = seg.L * scaleX;
-      const height = (seg.E * seg.I / maxEI) * maxHeight;
-
-      ctx.fillStyle = BEAM_COLOR;
-      ctx.fillRect(x, midY - height / 2, width, height);
-      
-      // Border
-      ctx.strokeStyle = "#fff";
-      ctx.lineWidth = 1;
-      ctx.strokeRect(x, midY - height / 2, width, height);
-
-      // Text
-      ctx.fillStyle = "black";
-      ctx.textAlign = "center";
-      const props = [ `E: ${seg.E}`, `I: ${seg.I}`, `L: ${seg.L}`, `ρ: ${seg.rho}`, `A: ${seg.A}` ];
-      const startY = midY + height / 2 + 12;
-      ctx.font = "11px sans-serif";
-      for (let j = 0; j < props.length; j++) ctx.fillText(props[j], x + width / 2, startY + j * 14);
-
-      x += width;
-    }
-
-    // Draw ALL nodes second (on top)
-    x = margin;
-    drawNodeFeatures(ctx, x, midY, nodes[0], maxHeight);
-    for (let i = 0; i < segments.length; i++) {
-      const seg = segments[i];
-      const width = seg.L * scaleX;
-      x += width;
-      drawNodeFeatures(ctx, x, midY, nodes[i+1], maxHeight);
-    }
-
-  } finally { isDrawing = false; }
-}
-
-function buildPrimaryNodePositionMap(){
-  const margin = MARGIN_X;
-  const totalLength = segments.reduce((sum, seg) => sum + seg.L, 0) || 1;
-  const scaleX = ((beamCanvasEl||document.getElementById('beamCanvas')).width - 2 * margin) / totalLength;
-  const xs = [];
-  let cumL = 0;
-  xs.push(margin);
-  for (let i=0;i<segments.length;i++){
-    cumL += segments[i].L;
-    xs.push(margin + cumL * scaleX);
-  }
-  const is = xs.map((_,idx)=> idx);
-  return { xs, is };
-}
-
-// ===== Supports / Node graphics =====
-function drawFixedSupport(ctx, x, y) {
-  ctx.save();
-  ctx.strokeStyle = "black";
-  ctx.lineWidth = 2;
-
-  const height = 22;
-  const offset = 6;
-  const hatchDx = 12;
-  const hatchDy = 8;
-  const spacing = 6;
-
-  ctx.beginPath();
-  ctx.moveTo(x - offset, y - height);
-  ctx.lineTo(x - offset, y + height);
-  ctx.stroke();
-
-  for (let yy = y - height; yy <= y + height; yy += spacing){
-    ctx.beginPath();
-    ctx.moveTo(x - offset, yy);
-    ctx.lineTo(x - offset - hatchDx, yy - hatchDy);
-    ctx.stroke();
-  }
-  ctx.restore();
-}
-
-function drawNodeFeatures(ctx, x, y, node = { bc: 'free', W:0, Kv:0, Kr:0, H:0 }, maxEIHeight = 20){
-  ctx.save();
-  // Nodes match beam color
-  ctx.strokeStyle = BEAM_COLOR; 
-  ctx.lineWidth = 2; 
-  ctx.fillStyle = BEAM_COLOR;
-
-  if (node.bc === "pinned") {
-    ctx.strokeStyle = "#000"; 
-    ctx.beginPath(); ctx.moveTo(x - 15, y + 17); ctx.lineTo(x, y); ctx.lineTo(x + 15, y + 17); ctx.closePath(); ctx.stroke();
-  } else if (node.bc === "fixed") {
-    drawFixedSupport(ctx, x, y);
-  }
-
-  ctx.strokeStyle = "#000";
-  if (node.Kv > 0) {
-    ctx.beginPath(); let springY = y + 8; ctx.moveTo(x, springY);
-    for (let i=0;i<4;i++){ ctx.lineTo(x + (i%2? -6:6), springY += 6); }
-    ctx.lineTo(x, springY + 6); ctx.stroke();
-  }
-  if (node.Kr > 0) {
-    ctx.beginPath();
-    ctx.moveTo(x-35, y-20); ctx.lineTo(x-25, y-20); ctx.lineTo(x-22, y-30);
-    ctx.lineTo(x-16, y-10); ctx.lineTo(x-10, y-30); ctx.lineTo(x-8,  y-20);
-    ctx.lineTo(x,    y-20); ctx.lineTo(x,    y+20); ctx.lineTo(x+8,  y+20);
-    ctx.lineTo(x+10, y+30); ctx.lineTo(x+16, y+10); ctx.lineTo(x+22, y+30);
-    ctx.lineTo(x+25, y+20); ctx.lineTo(x+35, y+20);
-    ctx.stroke();
-  }
-
-  const hasW = (node.W && node.W > 0);
-  const r = hasW ? 16 : 8; 
-  const lift = (hasW && (Number(node.H)||0) > 0) ? (3 * maxEIHeight) : 0;
-  const yMass = y - lift;
-
-  // Node Circle
-  ctx.fillStyle = BEAM_COLOR;
-  ctx.beginPath(); ctx.arc(x, yMass, r, 0, Math.PI*2); ctx.fill();
-  ctx.strokeStyle = "#fff"; ctx.lineWidth=1;
-  ctx.stroke();
-
-  function fmt(v){
-    if (!isFinite(v)) return '0';
-    const a = Math.abs(v);
-    if (a >= 1000) return v.toFixed(0);
-    if (a >= 100)  return v.toFixed(1);
-    if (a >= 10)   return v.toFixed(2);
-    if (a >= 1)    return v.toFixed(3);
-    if (a >= 0.01) return v.toFixed(4);
-    return v.toExponential(2);
-  }
-  const labels = [];
-  if (Math.abs(Number(node.W)||0)  > 1e-12) labels.push(`W:${fmt(Number(node.W))}`);
-  if (Math.abs(Number(node.H)||0)  > 1e-12) labels.push(`H:${fmt(Number(node.H))}`);
-  if (Math.abs(Number(node.Kv)||0) > 1e-12) labels.push(`Kv:${fmt(Number(node.Kv))}`);
-  if (Math.abs(Number(node.Kr)||0) > 1e-12) labels.push(`Kr:${fmt(Number(node.Kr))}`);
-
-  if (labels.length){
-    const canvas = (ctx.canvas ?? document.getElementById('beamCanvas'));
-    ctx.font = "11px sans-serif";
-    ctx.fillStyle = "#000";
-    ctx.textAlign = "left";
-
-    let tx = x + r + 6;
-    let tyTop = yMass - r - (labels.length-1)*12;
-
-    const maxW = Math.max(...labels.map(t => ctx.measureText(t).width));
-    if (tx + maxW + 4 > canvas.width) tx = Math.max(4, canvas.width - maxW - 4);
-    if (tyTop < 8) tyTop = 8;
-
-    for (let i=0;i<labels.length;i++){
-      ctx.fillText(labels[i], tx, tyTop + i*12);
-    }
-  }
-
-  ctx.restore();
-}
-
-// ===== Interaction on canvas =====
-function attachCanvasHandlers(){
-  const canvas = beamCanvasEl;
-  if (canvasClickHandler) canvas.removeEventListener("click", canvasClickHandler);
-  canvasClickHandler = function(e){
-    const now = performance.now();
-    if (isDrawing || isEditing || now < suppressClicksUntil) return;
-    e.preventDefault(); e.stopPropagation();
-    const rect = canvas.getBoundingClientRect();
-    const xClick = e.clientX - rect.left;
-    const yClick = e.clientY - rect.top;
-
-    const margin = MARGIN_X;
-    const midY = canvas.height/2;
-    const totalLength = segments.reduce((sum, seg) => sum + seg.L, 0);
-    if (totalLength <= 0) return;
-    const scaleX = (canvas.width - 2 * margin) / totalLength;
-    const maxEI = Math.max(...segments.map(seg => seg.E * seg.I)) || 1;
-    const maxHeight = 0.05 * canvas.height;
-
-    const map = buildPrimaryNodePositionMap();
-    const nodeXs = map.xs; const nodeIs = map.is;
-
-    const nodeHitR = 20;
-    for (let k = 0; k < nodeXs.length; k++) {
-      const dx0 = xClick - nodeXs[k];
-      const dy0 = yClick - midY;
-      if (Math.hypot(dx0, dy0) <= nodeHitR) {
-        const idx = nodeIs[k];
-        if (idx >= 0 && idx < nodes.length) { setTimeout(()=>editNode(idx), 0); }
-        return;
-      }
-    }
-
-    let x = margin;
-    for (let i = 0; i < segments.length; i++) {
-      const seg = segments[i];
-      const width = seg.L * scaleX;
-      const height = (seg.E * seg.I / maxEI) * maxHeight;
-      const left = x + nodeHitR + 2;
-      const right = x + width - (nodeHitR + 2);
-      if (right > left) {
-        if (xClick >= left && xClick <= right && yClick >= (midY - height/2 - 10) && yClick <= (midY + height/2 + 10)) {
-          setTimeout(()=>editSegment(i), 0);
-          return;
-        }
-      }
-      x += width;
-    }
-  };
-  canvas.addEventListener("click", canvasClickHandler);
-}
-
-function toggleCanvasBusy(on){
-  const c = beamCanvasEl || document.getElementById('beamCanvas');
-  if (!c) return;
-  if (on) c.classList.add('busy'); else c.classList.remove('busy');
-}
-function markSuppressClicks(){ suppressClicksUntil = performance.now() + 300; }
-
-async function editNode(i) {
-  if (i < 0 || i >= nodes.length) return;
-  if (isEditing) return;
-  isEditing = true; toggleCanvasBusy(true);
-  try {
-    const node = nodes[i] || { bc:'free', W:0, Kv:0, Kr:0, H:0 };
-    const { value: data } = await Swal.fire({
-      title: `Node ${i} Properties`,
-      html:
-        `<label><span>BC:</span><select id=\"bc\" class=\"swal2-select\" style=\"width:90px\">
-          <option value=\"free\" ${node.bc === 'free' ? 'selected' : ''}>Free</option>
-          <option value=\"pinned\" ${node.bc === 'pinned' ? 'selected' : ''}>Simple support (w=0, θ free)</option>
-          <option value=\"fixed\" ${node.bc === 'fixed' ? 'selected' : ''}>Fixed</option>
-        </select></label>
-        <label><span>W:</span><input id=\"W\" class=\"swal2-input\" value=\"${node.W}\"></label>
-        <label><span>Kv:</span><input id=\"Kv\" class=\"swal2-input\" value=\"${node.Kv}\"></label>
-        <label><span>Kr:</span><input id=\"Kr\" class=\"swal2-input\" value=\"${node.Kr}\"></label>
-        <label><span>Drop H:</span><input id=\"H\" class=\"swal2-input\" value=\"${node.H}\"></label>
-        <div class=\"muted\" style=\"max-width:180px;text-align:left;line-height:1.2\">
-          <div>Stick: attach mass W/G.</div>
-          <div>Bounce: restitution e.</div>
-        </div>`,
-      focusConfirm: false,
-      preConfirm: () => [
-        document.getElementById("bc").value,
-        parseFloat(document.getElementById("W").value),
-        parseFloat(document.getElementById("Kv").value),
-        parseFloat(document.getElementById("Kr").value),
-        parseFloat(document.getElementById("H").value)
-      ]
-    });
-    if (data) nodes[i] = { ...nodes[i], bc: data[0], W: (isFinite(data[1])? data[1]:0), Kv: (isFinite(data[2])? data[2]:0), Kr: (isFinite(data[3])? data[3]:0), H: (isFinite(data[4])? data[4]:0) };
-    safeDrawBeam();
-  } finally { isEditing = false; markSuppressClicks(); toggleCanvasBusy(false); }
-}
-
-// ===== RK4 Simulation Logic =====
-let anim = {
-  frames: [], times: [], xs: [], maxAbs: 0, running: false, rafId: 0, idx: 0,
-  speed: 0.5, mode: 'stick', dropRef: 0, g: 386, massY: [], dropXpx: 0, preN: 60, preYs: [], tFall: 0
+const FEATURE_STATS = {
+    'window-std': { name: 'Std Window', rValue: 3, width: 3, height: 4, color: 0x87ceeb },
+    'window-pic': { name: 'Picture Window', rValue: 3, width: 6, height: 5, color: 0x87ceeb },
+    'door': { name: 'Door', rValue: 5, width: 3, height: 7, color: 0x8b4513 }
 };
 
-function computeRefinedXs(){
-  const m = getRefine();
-  const S = segments.length; const xs = [];
-  let x=0; for (let i=0;i<S;i++){ const L=segments[i].L; const sub=m+1; const dx=L/sub; for (let j=0;j<sub;j++){ xs.push(x + j*dx); } x+=L; }
-  xs.push(x);
-  return xs;
-}
+// Icons
+const HomeIcon = () => (<svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>);
+const FireIcon = () => (<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.879 16.121A3 3 0 1012.015 11L11 14H9c0 .768.293 1.536.879 2.121z" /></svg>);
+const SnowIcon = () => (<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>); 
+const TrashIcon = () => (<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>);
+const SunIcon = () => (<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>);
+const MoonIcon = () => (<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>);
+const DownloadIcon = () => (<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>);
+const UploadIcon = () => (<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>);
+const FileTextIcon = () => (<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>);
 
-function assembleMK(includeDropMassIdx, g){
-  const m = getRefine();
-  const S = segments.length; 
-  const Nn_ref = S * (m + 1) + 1;
-  const dofPerNode = 2; const N = dofPerNode * Nn_ref;
-  const M = numeric.rep([N, N], 0); const K = numeric.rep([N, N], 0);
-  for (let i = 0; i < S; i++) {
-    const seg = segments[i];
-    const EI = seg.E * seg.I;
-    const mu = (seg.rho / g) * seg.A; 
-    const sub = m + 1; const Lsub = seg.L / sub; const startRef = i * (m + 1);
-    const kcoef = EI / (Lsub*Lsub*Lsub);
-    const a = 12*kcoef, b = 6*Lsub*kcoef, c = 4*Lsub*Lsub*kcoef, d = 2*Lsub*Lsub*kcoef;
-    for (let j = 0; j < sub; j++) {
-      const n1 = startRef + j, n2 = n1 + 1;
-      const dofs = [ 2*n1, 2*n1+1, 2*n2, 2*n2+1 ];
-      const kk = [ [ a,  b, -a,  b], [ b,  c, -b,  d], [ -a, -b,  a, -b], [ b,  d, -b,  c] ];
-      for (let r=0;r<4;r++){ const Kr = kk[r]; for (let s=0;s<4;s++) K[dofs[r]][dofs[s]] += Kr[s]; }
-      const cfac = (mu * Lsub) / 420; const L = Lsub;
-      const mLoc = [ [156, 22*L, 54, -13*L], [22*L, 4*L*L, 13*L, -3*L*L], [54, 13*L, 156, -22*L], [-13*L, -3*L*L, -22*L, 4*L*L] ];
-      for (let r=0;r<4;r++){ const Mr = mLoc[r]; for (let s=0;s<4;s++) M[dofs[r]][dofs[s]] += Mr[s]*cfac; }
+// OrbitControls (Standard)
+class OrbitControls {
+    constructor(camera, domElement) {
+        this.camera = camera;
+        this.domElement = domElement;
+        this.target = new THREE.Vector3(0, 15, 0);
+        this.minDistance = 20;
+        this.maxDistance = 200;
+        this.rotateSpeed = 0.5;
+        this.scale = 1;
+        this.spherical = new THREE.Spherical();
+        this.sphericalDelta = new THREE.Spherical();
+        this.panOffset = new THREE.Vector3();
+        this.state = 'none';
+        this.rotateStart = new THREE.Vector2();
+        this.rotateEnd = new THREE.Vector2();
+        this.rotateDelta = new THREE.Vector2();
+        this.panStart = new THREE.Vector2();
+        this.panEnd = new THREE.Vector2();
+        this.panDelta = new THREE.Vector2();
+        this.domElement.addEventListener('mousedown', this.onMouseDown.bind(this));
+        this.domElement.addEventListener('wheel', this.onMouseWheel.bind(this));
+        this.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
     }
-  }
-  for (let p=0; p<nodes.length; p++){
-    const refIdx = p * (m + 1); const v = 2*refIdx, r = 2*refIdx+1;
-    const Kv = Number(nodes[p].Kv)||0; const Kr = Number(nodes[p].Kr)||0;
-    if (Kv) K[v][v] += Kv; if (Kr) K[r][r] += Kr;
-  }
-  if (includeDropMassIdx != null){
-    const v = includeDropMassIdx;
-    const W = Number(nodes[Math.round(v/2/(m+1))]?.W)||0;
-    if (W){ M[v][v] += W / g; }
-  }
-  return { M, K, N };
-}
-
-function simulateDrop(){
-  // Check library
-  if(typeof numeric === 'undefined') { Swal.fire('Error','Numeric.js library not loaded. Check internet connection.','error'); return; }
-
-  console.time('simulateDrop');
-  lastSim = null;
-
-  if (!segments.length) { buildBeam(); return; }
-  const dropNode = nodes.findIndex(nd => (Number(nd.H)||0) > 0);
-  if (dropNode < 0){ Swal.fire('Set drop height','Edit a node and set a positive Drop H.','info'); return; }
-  const W = Number(nodes[dropNode].W)||0; if (W <= 0){ Swal.fire('Missing weight','The drop node needs a positive W (lbf).','info'); return; }
-  const bc = nodes[dropNode].bc; if (bc === 'pinned' || bc === 'fixed'){ Swal.fire('Unsupported location','Drop node vertical DOF is constrained by support. Choose a free node.','error'); return; }
-
-  const g = parseFloat(document.getElementById("gravityInput").value) || 386;
-  const H = Math.max(0, Number(nodes[dropNode].H)||0);
-  const vImpact = Math.sqrt(2*g*H);
-  const m_drop = W / g;
-
-  (function setupPreDrop(){
-    const Npre = anim.preN || 60;
-    const tFall = (H > 0 && g > 0) ? Math.sqrt(2 * H / g) : 0;
-    anim.tFall = tFall;
-    anim.preYs = [];
-    for (let k = 0; k < Npre; k++) {
-      const tau = (Npre === 1) ? 0 : (k / (Npre - 1));
-      const t_pre = tau * tFall;
-      let y_phys = H - 0.5 * g * t_pre * t_pre;
-      if (y_phys < 0) y_phys = 0;
-      const yNorm = (H > 0) ? (y_phys / H) : 0;
-      anim.preYs.push(yNorm);
+    
+    onMouseDown(event) {
+        event.preventDefault();
+        if (event.button === 0) {
+            this.state = 'rotate';
+            this.rotateStart.set(event.clientX, event.clientY);
+        } else if (event.button === 2) {
+            this.state = 'pan';
+            this.panStart.set(event.clientX, event.clientY);
+        }
+        this.domElement.addEventListener('mousemove', this.onMouseMove.bind(this));
+        this.domElement.addEventListener('mouseup', this.onMouseUp.bind(this));
     }
-  })();
-
-  const m = getRefine();
-  const S = segments.length; 
-  const dropRef = dropNode * (m + 1);
-  const dropVGlob = 2*dropRef;
-
-  const { M: M_beam, K, N } = assembleMK(null, g);
-
-  const constrained = new Set();
-  for (let p=0; p<nodes.length; p++){
-    const b = nodes[p].bc; const refIdx = p * (m + 1); const v = 2*refIdx, r = 2*refIdx+1;
-    if (b === 'fixed' || b === 'pinned') { constrained.add(v); if (b === 'fixed') constrained.add(r); }
-  }
-  const free = []; for (let i=0;i<N;i++){ if(!constrained.has(i)) free.push(i); }
-  if (!free.length) { Swal.fire("Error", "All DOFs are constrained."); return; }
-
-  const Mred_beam = submat(M_beam, free);
-  const Kred = submat(K, free);
-  let Minv_beam; try { Minv_beam = numeric.inv(Mred_beam); } catch(e){ Swal.fire('Error','M is singular (beam). Check density/area.','error'); return; }
-
-  const dropIdx = free.indexOf(dropVGlob);
-  if (dropIdx < 0){ Swal.fire('Unsupported location','Chosen drop node is constrained in reduced system.','error'); return; }
-
-  const ei = new Array(free.length).fill(0); ei[dropIdx] = 1;
-  const m_eff = 1 / numeric.dot([ei], numeric.dot(Minv_beam, ei))[0];
-
-  let dt = parseFloat(document.getElementById('dtInput').value);
-  let T  = parseFloat(document.getElementById('durInput').value);
-  const zeta_all = Math.max(0, parseFloat(document.getElementById('zetaInput').value)||0) / 100.0;
-  if (!isFinite(dt) || dt <= 0) { Swal.fire('Invalid Δt', 'Provide a positive time step.', 'error'); return; }
-  if (!isFinite(T)  || T  <= 0) { Swal.fire('Invalid duration', 'Provide a positive total time.', 'error'); return; }
-
-  const mode = document.getElementById('impactMode').value;
-  const e = Math.max(0, Math.min(1, parseFloat(document.getElementById('eInput').value)||0));
-
-  let J;
-  if (mode === 'stick') {
-    J = (m_eff * m_drop / (m_eff + m_drop)) * vImpact;
-  } else {
-    J = (1 + e) * (m_eff * m_drop / (m_eff + m_drop)) * vImpact;
-  }
-
-  let q0 = Array(free.length).fill(0);
-  let v0 = numeric.dot(Minv_beam, ei.map(x=> x*J));
-
-  let M_used = M_beam; let F_full = new Array(N).fill(0);
-  if (mode === 'stick'){
-    M_used = numeric.clone(M_beam);
-    M_used[dropVGlob][dropVGlob] += m_drop;
-    F_full[dropVGlob] += W;
-  }
-
-  const Mred = submat(M_used, free);
-
-  let A; try { A = numeric.dot(numeric.inv(Mred), Kred); } catch(e){ Swal.fire('Error','M is singular during modal decomposition.','error'); return; }
-  let eig; try { eig = numeric.eig(A); } catch(e){ Swal.fire('Error','Eigen decomposition failed; try fewer segments or larger Δt.','error'); return; }
-  const vals = eig.lambda.x; const vecsR = eig.E.x;
-
-  const pairs = [];
-  for (let j=0;j<vals.length;j++){
-    if (Math.abs(eig.lambda.y?.[j]||0) < 1e-8 && vals[j] > 1e-12){
-      const phi = vecsR.map(row => row[j]);
-      const m_j = numeric.dot([phi], numeric.dot(Mred, phi))[0];
-      if (m_j <= 0 || !isFinite(m_j)) continue;
-      const phi_n = phi.map(v => v / Math.sqrt(m_j));
-      const w2 = numeric.dot([phi_n], numeric.dot(Kred, phi_n))[0];
-      const w = Math.sqrt(Math.max(w2, 0));
-      if (isFinite(w)) pairs.push({ w, phi: phi_n });
+    
+    onMouseMove(event) {
+        event.preventDefault();
+        if (this.state === 'rotate') {
+            this.rotateEnd.set(event.clientX, event.clientY);
+            this.rotateDelta.subVectors(this.rotateEnd, this.rotateStart).multiplyScalar(this.rotateSpeed);
+            this.rotateLeft(2 * Math.PI * this.rotateDelta.x / this.domElement.clientHeight);
+            this.rotateUp(2 * Math.PI * this.rotateDelta.y / this.domElement.clientHeight);
+            this.rotateStart.copy(this.rotateEnd);
+        } else if (this.state === 'pan') {
+            this.panEnd.set(event.clientX, event.clientY);
+            this.panDelta.subVectors(this.panEnd, this.panStart).multiplyScalar(0.5);
+            this.pan(this.panDelta.x, this.panDelta.y);
+            this.panStart.copy(this.panEnd);
+        }
+        this.update();
     }
-  }
-  pairs.sort((a,b)=> a.w - b.w);
-  const p = Math.min(8, pairs.length);
-  if (p === 0){ Swal.fire('Error','No usable modes found.','error'); return; }
-  const Wvec = new Array(p); const PHI = new Array(p);
-  for (let j=0;j<p;j++){ Wvec[j] = pairs[j].w; PHI[j] = pairs[j].phi; }
-
-  function Mmul(vec){ return numeric.dot(Mred, vec); }
-  function PHIT_M_vec(vec){
-    const Mv = Mmul(vec); const y = new Array(p).fill(0);
-    for (let j=0;j<p;j++) y[j] = numeric.dot([PHI[j]], Mv)[0];
-    return y;
-  }
-  function PHI_times_y(y){
-    const q = new Array(free.length).fill(0);
-    for (let j=0;j<p;j++){
-      const cj = y[j]; if (!cj) continue;
-      const ph = PHI[j]; for (let i=0;i<q.length;i++) q[i] += ph[i]*cj;
+    
+    onMouseUp() {
+        this.domElement.removeEventListener('mousemove', this.onMouseMove.bind(this));
+        this.domElement.removeEventListener('mouseup', this.onMouseUp.bind(this));
+        this.state = 'none';
     }
-    return q;
-  }
-  const Fred = free.map(i => F_full[i]||0);
-  const f_modal = (function(){
-    const y = new Array(p).fill(0);
-    const FF = Fred;
-    for (let j=0;j<p;j++) y[j] = numeric.dot([PHI[j]], FF)[0];
-    return y;
-  })();
-
-  const y0  = new Array(p).fill(0);
-  const yd0 = PHIT_M_vec(v0);
-
-  const steps = Math.max(10, Math.floor(T/dt));
-  if (steps > 200000) { Swal.fire('Too many steps', `T/dt = ${steps.toLocaleString()} steps. Increase Δt or reduce T.`, 'warning'); return; }
-
-  const ts = new Array(steps+1); const ys_drop = new Array(steps+1);
-  ts[0] = 0;
-
-  let y = y0.slice();
-  let yd = yd0.slice();
-
-  function sdofAcc(j, yj, ydj){ return f_modal[j] - 2*zeta_all*Wvec[j]*ydj - (Wvec[j]*Wvec[j])*yj; }
-
-  stopAnimation();
-  const xsRef = computeRefinedXs();
-  const frames = []; const times = [];
-  let maxAbs = 0; const stride = Math.max(1, Math.floor(steps/300));
-
-  const Nglob = 2 * xsRef.length;
-  const mapRed = new Int32Array(Nglob).fill(-1);
-  for (let i = 0; i < free.length; i++) mapRed[free[i]] = i;
-  const drop_r = free.indexOf(dropVGlob);
-
-  const nodeNames = Array(nodes.length).fill(0).map((_,i)=>`w_node${i}`);
-  const nodeW = Array(nodes.length).fill(0).map(()=> new Array(steps+1).fill(0));
-
-  let massY = new Array(steps+1).fill(0);
-  let v_m_post = 0;
-  if (mode === 'bounce'){
-    v_m_post = ((m_drop - e*m_eff)/(m_drop + m_eff)) * vImpact;
-  }
-
-  let q = PHI_times_y(y);
-  ys_drop[0] = (drop_r>=0 ? q[drop_r] : 0);
-  for (let pnode=0;pnode<nodes.length;pnode++){
-    const ref = pnode*(m+1); const gi = 2*ref; const ri = mapRed[gi];
-    nodeW[pnode][0] = (ri>=0 ? q[ri] : 0);
-  }
-
-  for (let k=0; k<steps; k++){
-    const k1y  = yd.slice();
-    const k1yd = y.map((yj,j)=> sdofAcc(j, y[j], yd[j]));
-    const y2  = y.map((yj,j)=> yj  + 0.5*dt*k1y[j]);
-    const yd2 = yd.map((vj,j)=> vj + 0.5*dt*k1yd[j]);
-    const k2y  = yd2;
-    const k2yd = y2.map((yj,j)=> sdofAcc(j, y2[j], yd2[j]));
-    const y3  = y.map((yj,j)=> yj  + 0.5*dt*k2y[j]);
-    const yd3 = yd.map((vj,j)=> vj + 0.5*dt*k2yd[j]);
-    const k3y  = yd3;
-    const k3yd = y3.map((yj,j)=> sdofAcc(j, y3[j], yd3[j]));
-    const y4  = y.map((yj,j)=> yj  + dt*k3y[j]);
-    const yd4 = yd.map((vj,j)=> vj + dt*k3yd[j]);
-    const k4y  = yd4;
-    const k4yd = y4.map((yj,j)=> sdofAcc(j, y4[j], yd4[j]));
-
-    for (let j=0;j<p;j++){
-      y[j]  += (dt/6)*(k1y[j]  + 2*k2y[j]  + 2*k3y[j]  + k4y[j]);
-      yd[j] += (dt/6)*(k1yd[j] + 2*k2yd[j] + 2*k3yd[j] + k4yd[j]);
+    
+    onMouseWheel(event) {
+        event.preventDefault();
+        if (event.deltaY < 0) this.scale /= 0.95; else this.scale *= 0.95;
+        this.update();
     }
-    const tnext = (k+1)*dt; ts[k+1] = tnext;
-    q = PHI_times_y(y);
-    ys_drop[k+1] = (drop_r>=0 ? q[drop_r] : 0);
-
-    for (let pnode=0;pnode<nodes.length;pnode++){
-      const ref = pnode*(m+1); const gi = 2*ref; const ri = mapRed[gi];
-      nodeW[pnode][k+1] = (ri>=0 ? q[ri] : 0);
+    rotateLeft(angle) { this.sphericalDelta.theta -= angle; }
+    rotateUp(angle) { this.sphericalDelta.phi -= angle; }
+    pan(deltaX, deltaY) {
+        const offset = new THREE.Vector3().copy(this.camera.position).sub(this.target);
+        let targetDistance = offset.length() * Math.tan((this.camera.fov / 2) * Math.PI / 180.0);
+        const panLeft = new THREE.Vector3().setFromMatrixColumn(this.camera.matrix, 0).multiplyScalar(-2 * deltaX * targetDistance / this.domElement.clientHeight);
+        const panUp = new THREE.Vector3().setFromMatrixColumn(this.camera.matrix, 1).multiplyScalar(2 * deltaY * targetDistance / this.domElement.clientHeight);
+        this.panOffset.add(panLeft).add(panUp);
     }
-    if (mode === 'bounce'){
-      massY[k+1] = v_m_post * tnext - 0.5 * g * tnext * tnext;
+    update() {
+        const offset = new THREE.Vector3().copy(this.camera.position).sub(this.target);
+        this.spherical.setFromVector3(offset);
+        this.spherical.theta += this.sphericalDelta.theta;
+        this.spherical.phi += this.sphericalDelta.phi;
+        this.spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, this.spherical.phi));
+        this.spherical.radius *= this.scale;
+        this.spherical.radius = Math.max(this.minDistance, Math.min(this.maxDistance, this.spherical.radius));
+        this.target.add(this.panOffset);
+        offset.setFromSpherical(this.spherical);
+        this.camera.position.copy(this.target).add(offset);
+        this.camera.lookAt(this.target);
+        this.sphericalDelta.set(0, 0, 0);
+        this.panOffset.set(0, 0, 0);
+        this.scale = 1;
     }
-    if (k % stride === 0 || k === steps-1){
-      const Nn_ref = xsRef.length; const w = new Float32Array(Nn_ref);
-      for (let n=0;n<Nn_ref;n++){
-        const gi = 2*n; const ri = mapRed[gi];
-        w[n] = (ri>=0)? q[ri] : 0; 
-        maxAbs = Math.max(maxAbs, Math.abs(w[n]));
-      }
-      frames.push(w); times.push(tnext);
-    }
-  }
-
-  renderDropSummary({ node: dropNode, H, vImpact, dt, T, peak: Math.max(...ys_drop.map(Math.abs)), mode, e, zeta_all });
-  drawTimeHistory(ts, ys_drop);
-
-  const margin = MARGIN_X; 
-  const totalL = segments.reduce((s,seg)=> s+seg.L, 0) || 1; 
-  const scaleX = (document.getElementById('animCanvas').width - 2*margin)/totalL;
-  anim.frames = frames;
-  anim.times = times;
-  anim.xs = xsRef;
-  anim.maxAbs = maxAbs || 1;
-  anim.idx = 0;
-  anim.mode = mode;
-  anim.dropRef = dropRef;
-  anim.g = g;
-  anim.massY = (mode==='bounce')
-    ? massY.filter((_,i)=> (i % Math.max(1, Math.floor(steps/frames.length))) === 0)
-    : new Array(frames.length).fill(0);
-  anim.dropXpx = margin + (xsRef[dropRef]||0) * scaleX;
-
-  startAnimation();
-  lastSim = { ts, wDrop: ys_drop, nodeNames, nodeW };
-  console.timeEnd('simulateDrop');
 }
 
-function computeFirstMode(){
-  if(typeof numeric === 'undefined') { Swal.fire('Error','Numeric.js library not loaded','error'); return; }
-  
-  const outEl = document.getElementById('freqOutput');
-  if (outEl) outEl.value = '';
-  if (!segments.length) { buildBeam(); }
-  const g = parseFloat(document.getElementById("gravityInput").value) || 386;
-  const { M, K, N } = assembleMK(null, g);
-  const mRef = getRefine();
-  const constrained = new Set();
-  for (let p=0; p<nodes.length; p++){
-    const b = nodes[p].bc;
-    const refIdx = p * (mRef + 1);
-    const v = 2*refIdx;
-    const r = 2*refIdx + 1;
-    if (b === 'fixed' || b === 'pinned') constrained.add(v);
-    if (b === 'fixed') constrained.add(r);
-  }
-  const free = []; for (let i=0; i<N; i++){ if (!constrained.has(i)) free.push(i); }
-  if (!free.length){ Swal.fire('Error','All DOFs are constrained; cannot compute modes.','error'); return; }
-  const Mred = submat(M, free);
-  const Kred = submat(K, free);
-  let A, eig;
-  try { const Minv = numeric.inv(Mred); A = numeric.dot(Minv, Kred); eig = numeric.eig(A); } catch (e){ Swal.fire('Error','Failed to compute eigenvalues.','error'); return; }
-  const lamR = eig.lambda.x; const lamI = eig.lambda.y || [];
-  let w1 = null;
-  for (let i=0; i<lamR.length; i++){
-    const re = lamR[i]; const im = lamI[i] || 0;
-    if (Math.abs(im) > 1e-6) continue;
-    if (re <= 1e-8) continue;
-    const w = Math.sqrt(re);
-    if (!isFinite(w)) continue;
-    if (w1 === null || w < w1) w1 = w;
-  }
-  if (w1 === null){ Swal.fire('Error','No positive real eigenvalues found.','error'); return; }
-  const f1 = w1 / (2*Math.PI);
-  if (outEl){ outEl.value = f1.toFixed(3); outEl.title = `ω₁ ≈ ${w1.toFixed(3)} rad/s`; }
+// Helper for Textures (Compass Text)
+function createTextTexture(text, color = 'black') {
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = color;
+    ctx.font = 'bold 48px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, 32, 32);
+    const texture = new THREE.CanvasTexture(canvas);
+    return texture;
 }
 
-function startAnimation(){
-  const btn = document.getElementById('btnAnimToggle');
-  const status = document.getElementById('animStatus');
-  const totalFrames = (anim.preYs?.length || 0) + anim.frames.length;
-  if (!totalFrames){ status.textContent='(no frames)'; return; }
-  if (anim.running) return;
-  anim.running = true;
-  btn.textContent = 'Pause';
-  status.textContent = '';
-  const step = () => {
-    if (!anim.running) return;
-    drawAnimFrame(Math.floor(anim.idx));
-    anim.idx += Math.max(0.01, anim.speed);
-    if (anim.idx >= totalFrames) anim.idx = 0;
-    anim.rafId = requestAnimationFrame(step);
-  };
-  anim.rafId = requestAnimationFrame(step);
-}
-function stopAnimation(){
-  if (anim.running){ cancelAnimationFrame(anim.rafId); anim.running=false; }
-  const btn=document.getElementById('btnAnimToggle');
-  if (btn) btn.textContent='Play';
-}
+function HouseBuilder() {
+    const [dimensions, setDimensions] = useState({ length: 40, width: 30 });
+    const [numStories, setNumStories] = useState(2);
+    const [selectedWall, setSelectedWall] = useState(null);
+    const [wallInsulation, setWallInsulation] = useState({});
+    const [wallExterior, setWallExterior] = useState({});
+    const [roofMaterial, setRoofMaterial] = useState('asphalt-gray');
+    const [viewMode, setViewMode] = useState('3d');
+    const [selectionMode, setSelectionMode] = useState('exterior');
+    const [wallFeatures, setWallFeatures] = useState({});
+    const [hvacMode, setHvacMode] = useState('heating'); 
 
-function drawAnimFrame(i){
-  const canvas = document.getElementById('animCanvas');
-  const ctx = canvas.getContext('2d');
-  ctx.clearRect(0,0,canvas.width, canvas.height);
+    // Environmental State
+    const [outsideTemp, setOutsideTemp] = useState(32);
+    const [groundTemp, setGroundTemp] = useState(50);
+    const [insideTemp, setInsideTemp] = useState(70);
+    const [windSpeed, setWindSpeed] = useState(10);
+    const [windDirection, setWindDirection] = useState('north');
+    
+    // Scenario State
+    const [timeOfDay, setTimeOfDay] = useState('day'); 
+    const [sunVisible, setSunVisible] = useState(true); 
+    const [latitude, setLatitude] = useState(45); 
+    const [nightCondition, setNightCondition] = useState('clear'); 
+    const [atticRValue, setAtticRValue] = useState(40);
+    const [furnaceEfficiency, setFurnaceEfficiency] = useState(80); 
 
-  const margin = MARGIN_X;
-  const midY = canvas.height/2;
-  const totalL = segments.reduce((s,seg)=> s+seg.L, 0) || 1;
-  const scaleX = (canvas.width - 2*margin)/totalL;
-  const Npre = anim.preYs ? anim.preYs.length : 0;
-  const defaultX = margin + 0.1 * totalL * scaleX;
-  const Xc = anim.dropXpx || defaultX;
+    const [humidity, setHumidity] = useState(50); 
+    const [occupants, setOccupants] = useState(4); 
+    const [appliances, setAppliances] = useState('medium'); 
 
-  // Pre-drop
-  if (i < Npre && Npre > 0) {
-    ctx.strokeStyle = '#aaa'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(margin, midY); ctx.lineTo(margin + totalL * scaleX, midY); ctx.stroke();
-    const yNorm = anim.preYs[i];
-    const Yimpact = midY;
-    const topOffset = canvas.height * 0.35;
-    const Ytop = midY - topOffset;
-    const Ymass = Yimpact + (Ytop - Yimpact) * yNorm;
-    ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(Xc, Ymass, 16, 0, Math.PI * 2); ctx.fill();
-    return;
-  }
+    const mountRef = useRef(null);
+    const sceneRef = useRef(null);
+    const cameraRef = useRef(null);
+    const rendererRef = useRef(null);
+    const controlsRef = useRef(null);
+    const wallMeshesRef = useRef({});
+    const roofMeshesRef = useRef([]);
+    const sunLightRef = useRef(null);
+    const ambientLightRef = useRef(null);
+    const fileInputRef = useRef(null);
 
-  // Beam Response
-  const j = Math.max(0, i - Npre);
-  const frameIdx = Math.min(j, anim.frames.length - 1);
-  const xs = anim.xs;
-  const w = anim.frames[frameIdx];
+    const WALL_HEIGHT = 9;
+    const ROOF_PITCH = 3/8;
+    
+    const getFloors = () => {
+        const base = ['basement'];
+        if(numStories >= 1) base.push('first');
+        if(numStories >= 2) base.push('second');
+        if(numStories >= 3) base.push('third');
+        return base;
+    };
+    
+    const floors = getFloors();
 
-  if (!w || !xs || !xs.length) return;
-  const scaleY = (canvas.height*0.40) / anim.maxAbs;
+    useEffect(() => {
+        if (hvacMode === 'cooling') {
+            setOutsideTemp(90); setInsideTemp(72); setTimeOfDay('day'); setSunVisible(true);
+        } else {
+            setOutsideTemp(32); setInsideTemp(70);
+        }
+    }, [hvacMode]);
 
-  // Static Reference Line
-  ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(margin, midY); ctx.lineTo(margin + totalL*scaleX, midY); ctx.stroke();
-  
-  // Deflected Beam (Keep this BLUE for visibility against gray segments)
-  ctx.strokeStyle = '#1976D2'; ctx.lineWidth = 3;
-  ctx.beginPath();
-  for (let k=0;k<xs.length;k++){
-    const X = margin + xs[k]*scaleX;
-    const Y = midY - w[k]*scaleY;
-    if (k===0) ctx.moveTo(X,Y); else ctx.lineTo(X,Y);
-  }
-  ctx.stroke();
+    useEffect(() => {
+        if (viewMode !== '3d' || !mountRef.current) return;
 
-  const wNode = w[anim.dropRef] || 0;
-  let Ymass = midY - wNode*scaleY;
-  if (anim.mode === 'bounce'){
-    const idx = Math.min(frameIdx, anim.massY.length-1);
-    Ymass = midY - (wNode + anim.massY[idx]) * scaleY;
-  }
-  ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(Xc, Ymass, 16, 0, Math.PI*2); ctx.fill();
+        const scene = new THREE.Scene();
+        sceneRef.current = scene;
 
-  const t = (anim.times && anim.times.length) ? anim.times[Math.max(0, Math.min(frameIdx, anim.times.length-1))] : 0;
-  const label = `t = ${Number(t).toFixed(3)} s`;
-  ctx.font = '12px sans-serif';
-  const pad = 6; const boxH = 18; const wText = ctx.measureText(label).width;
-  const boxW = wText + 2*pad; const x = canvas.width - boxW - 10; const y = 10;
-  ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.fillRect(x, y, boxW, boxH);
-  ctx.strokeStyle = '#444'; ctx.strokeRect(x, y, boxW, boxH);
-  ctx.fillStyle = '#000'; ctx.fillText(label, x + pad, y + boxH - 6);
-}
+        const width = mountRef.current.clientWidth;
+        const height = 600;
 
-function renderDropSummary(info){
-  const div = document.getElementById('dropSummary');
-  if (!info){ div.textContent=''; return; }
-  div.innerHTML = `<strong>Drop Simulation:</strong> H=${info.H.toFixed(3)}, v₀=${info.vImpact.toFixed(3)}, e=${info.e.toFixed(2)}, dt=${info.dt.toExponential(2)}, T=${info.T.toFixed(2)}, ζ=${(info.zeta_all*100).toFixed(1)}%, peak |w|≈${info.peak.toFixed(4)}`;
-}
+        const camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 1000);
+        camera.position.set(60, 40, 60);
+        cameraRef.current = camera;
 
-function drawTimeHistory(ts, ys){
-  const el = document.getElementById('timePlot');
-  const ctx = el.getContext('2d');
-  if (timeChart){ timeChart.destroy(); timeChart = null; }
-  if (!ts.length){ ctx.clearRect(0,0,el.width, el.height); return; }
-  const series = ts.map((t,i)=> ({ x: +t, y: ys[i] }));
-  timeChart = new Chart(ctx, {
-    type: 'line',
-    data: { datasets: [{ label: 'w_drop (at node)', data: series, borderWidth: 2, pointRadius: 0, fill:false }] },
-    options: {
-      responsive:false,
-      scales: { x:{ type:'linear', title:{ display:true, text:'time (s)' } }, y:{ title:{ display:true, text:'deflection'} } },
-      plugins:{ tooltip:{ callbacks:{ label:(ctx)=>`w = ${Number(ctx.parsed.y).toFixed(4)}`, title:(items)=>`t = ${Number(items[0]?.parsed?.x).toFixed(3)} s` } } }
-    }
-  });
-}
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(width, height);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        mountRef.current.appendChild(renderer.domElement);
+        rendererRef.current = renderer;
 
-// ===== JSON Export =====
-function exportJSON() {
-  const data = {
-    timestamp: new Date().toISOString(),
-    dateString: new Date().toLocaleString(),
-    inputs: {
-      numSegments: document.getElementById('numSegments').value,
-      gravity: document.getElementById('gravityInput').value,
-      dt: document.getElementById('dtInput').value,
-      dur: document.getElementById('durInput').value,
-      impactMode: document.getElementById('impactMode').value,
-      e: document.getElementById('eInput').value,
-      zeta: document.getElementById('zetaInput').value
-    },
-    segments: segments,
-    nodes: nodes
-  };
-  const jsonStr = JSON.stringify(data, null, 2);
-  const blob = new Blob([jsonStr], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `beam_drop_data_${new Date().getTime()}.json`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.update();
+        controlsRef.current = controls;
 
-// ===== JSON Import =====
-function triggerImportJSON() {
-  document.getElementById('fileInput').click();
-}
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+        ambientLightRef.current = ambientLight;
 
-function handleFileSelect(event) {
-  const file = event.target.files[0];
-  if (!file) return;
+        const sunLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        sunLight.castShadow = true;
+        sunLight.shadow.mapSize.width = 2048;
+        sunLight.shadow.mapSize.height = 2048;
+        scene.add(sunLight);
+        sunLightRef.current = sunLight;
 
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    try {
-      const data = JSON.parse(e.target.result);
-      
-      // Update Inputs
-      if(data.inputs) {
-        if(data.inputs.numSegments) document.getElementById('numSegments').value = data.inputs.numSegments;
-        if(data.inputs.gravity) document.getElementById('gravityInput').value = data.inputs.gravity;
-        if(data.inputs.dt) document.getElementById('dtInput').value = data.inputs.dt;
-        if(data.inputs.dur) document.getElementById('durInput').value = data.inputs.dur;
-        if(data.inputs.impactMode) document.getElementById('impactMode').value = data.inputs.impactMode;
-        if(data.inputs.e) document.getElementById('eInput').value = data.inputs.e;
-        if(data.inputs.zeta) document.getElementById('zetaInput').value = data.inputs.zeta;
+        const groundGeometry = new THREE.PlaneGeometry(200, 200);
+        const groundMaterial = new THREE.MeshStandardMaterial({ 
+            color: 0x3a7d3a, roughness: 0.8, side: THREE.DoubleSide, transparent: true, opacity: 0.4 
+        });
+        const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+        ground.rotation.x = -Math.PI / 2;
+        ground.receiveShadow = true;
+        scene.add(ground);
+
+        const gridHelper = new THREE.GridHelper(100, 50, 0x444444, 0x888888);
+        gridHelper.material.transparent = true;
+        gridHelper.material.opacity = 0.3;
+        scene.add(gridHelper);
+
+        // CREATE COMPASS ON GROUND
+        const compassGroup = new THREE.Group();
         
-        document.getElementById('impactMode').dispatchEvent(new Event('change'));
-      }
+        const nMat = new THREE.LineBasicMaterial({ color: 0xff0000, linewidth: 3 });
+        const nGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0.5,0), new THREE.Vector3(0,0.5,-15)]);
+        const nLine = new THREE.Line(nGeo, nMat);
+        
+        const arrowGeo = new THREE.ConeGeometry(1, 2, 8);
+        const arrowMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+        const arrowHead = new THREE.Mesh(arrowGeo, arrowMat);
+        arrowHead.position.set(0, 0.5, -15);
+        arrowHead.rotation.x = -Math.PI/2;
+        
+        const crossMat = new THREE.LineBasicMaterial({ color: 0x444444 });
+        const ewGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-10,0.5,0), new THREE.Vector3(10,0.5,0)]);
+        const sGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0.5,0), new THREE.Vector3(0,0.5,10)]);
+        const ewLine = new THREE.Line(ewGeo, crossMat);
+        const sLine = new THREE.Line(sGeo, crossMat);
 
-      // Restore Arrays
-      if(data.segments && Array.isArray(data.segments)) segments = data.segments;
-      if(data.nodes && Array.isArray(data.nodes)) nodes = data.nodes;
+        const labelSize = 5;
+        const labels = [
+            { text: 'N', pos: [0, 0.6, -18], color: '#AA0000' },
+            { text: 'S', pos: [0, 0.6, 12], color: '#444444' },
+            { text: 'E', pos: [12, 0.6, 0], color: '#444444' },
+            { text: 'W', pos: [-12, 0.6, 0], color: '#444444' }
+        ];
 
-      // Redraw
-      safeDrawBeam();
-      drawTimeHistory([], []); 
-      renderDropSummary(null);
-      
-      document.getElementById('fileInput').value = '';
+        labels.forEach(l => {
+            const tex = createTextTexture(l.text, l.color);
+            const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide });
+            const mesh = new THREE.Mesh(new THREE.PlaneGeometry(labelSize, labelSize), mat);
+            mesh.position.set(...l.pos);
+            mesh.rotation.x = -Math.PI/2;
+            compassGroup.add(mesh);
+        });
 
-      Swal.fire({
-        title: 'Import Successful',
-        text: `Loaded data from ${data.dateString || 'JSON file'}`,
-        icon: 'success',
-        timer: 2000,
-        showConfirmButton: false
-      });
+        compassGroup.add(nLine);
+        compassGroup.add(arrowHead);
+        compassGroup.add(ewLine);
+        compassGroup.add(sLine);
+        
+        compassGroup.position.set(-35, 0, 35); 
+        scene.add(compassGroup);
 
-    } catch (err) {
-      Swal.fire('Import Error', 'Invalid JSON file.', 'error');
-      console.error(err);
+        buildHouse();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        const handleResize = () => {
+            if (!mountRef.current) return;
+            const newWidth = mountRef.current.clientWidth;
+            camera.aspect = newWidth / height;
+            camera.updateProjectionMatrix();
+            renderer.setSize(newWidth, height);
+        };
+        window.addEventListener('resize', handleResize);
+
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        function onMouseClick(event) {
+            const rect = renderer.domElement.getBoundingClientRect();
+            mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(Object.values(wallMeshesRef.current));
+
+            if (intersects.length > 0) {
+                let target = intersects[0].object;
+                while (target.parent && !target.userData.wallId) { target = target.parent; }
+                if (target.userData.wallId) setSelectedWall(target.userData.wallId);
+            }
+        }
+
+        renderer.domElement.addEventListener('click', onMouseClick);
+
+        return () => {
+            window.removeEventListener('resize', handleResize);
+            renderer.domElement.removeEventListener('click', onMouseClick);
+            mountRef.current?.removeChild(renderer.domElement);
+            renderer.dispose();
+        };
+    }, [viewMode]);
+
+    useEffect(() => {
+        if (!sceneRef.current || !sunLightRef.current || !ambientLightRef.current) return;
+
+        if (timeOfDay === 'day') {
+            sceneRef.current.background = new THREE.Color(0x87ceeb);
+            ambientLightRef.current.intensity = sunVisible ? 0.6 : 0.4;
+            sunLightRef.current.intensity = sunVisible ? 0.9 : 0.2;
+            sunLightRef.current.color.setHex(0xffffff);
+            const latRad = latitude * (Math.PI / 180);
+            const sunDist = 100;
+            const sunY = Math.cos(latRad) * sunDist;
+            const sunZ = Math.sin(latRad) * sunDist;
+            sunLightRef.current.position.set(20, sunY, sunZ);
+        } else {
+            sceneRef.current.background = new THREE.Color(0x050520);
+            ambientLightRef.current.intensity = 0.2;
+            sunLightRef.current.intensity = nightCondition === 'clear' ? 0.3 : 0.1;
+            sunLightRef.current.color.setHex(0xaaccff);
+            sunLightRef.current.position.set(20, 60, 20);
+        }
+    }, [timeOfDay, sunVisible, latitude, nightCondition, viewMode]);
+
+    useEffect(() => {
+        if (viewMode === '3d') buildHouse();
+    }, [dimensions, numStories, wallInsulation, wallExterior, roofMaterial, wallFeatures]);
+
+    const buildHouse = () => {
+        if (!sceneRef.current) return;
+        Object.values(wallMeshesRef.current).forEach(mesh => sceneRef.current.remove(mesh));
+        roofMeshesRef.current.forEach(mesh => sceneRef.current.remove(mesh));
+        sceneRef.current.children = sceneRef.current.children.filter(c => 
+            c.type !== 'Mesh' || (c.geometry.type === 'PlaneGeometry' && c.rotation.x === -Math.PI/2) || (c.geometry.type === 'BoxGeometry' && c.scale.y === 0.5) || c.type === 'Group' || c.type === 'Line'
+        );
+
+        wallMeshesRef.current = {};
+        roofMeshesRef.current = [];
+        const wallThickness = 0.5;
+        
+        floors.forEach((floor, floorIndex) => {
+            const floorY = (floorIndex - 1) * WALL_HEIGHT;
+            const isBasement = floor === 'basement';
+
+            const floorMesh = new THREE.Mesh(new THREE.BoxGeometry(dimensions.length, 0.5, dimensions.width), new THREE.MeshStandardMaterial({ color: 0x8b7355 }));
+            floorMesh.position.set(0, floorY, 0);
+            floorMesh.castShadow = true;
+            floorMesh.receiveShadow = true;
+            sceneRef.current.add(floorMesh);
+            roofMeshesRef.current.push(floorMesh);
+
+            const directions = [
+                { id: 'north', pos: [0, floorY + WALL_HEIGHT / 2, -dimensions.width / 2], dim: [dimensions.length, WALL_HEIGHT, wallThickness] },
+                { id: 'south', pos: [0, floorY + WALL_HEIGHT / 2, dimensions.width / 2], dim: [dimensions.length, WALL_HEIGHT, wallThickness] },
+                { id: 'east', pos: [dimensions.length / 2, floorY + WALL_HEIGHT / 2, 0], dim: [wallThickness, WALL_HEIGHT, dimensions.width] },
+                { id: 'west', pos: [-dimensions.length / 2, floorY + WALL_HEIGHT / 2, 0], dim: [wallThickness, WALL_HEIGHT, dimensions.width] },
+            ];
+
+            directions.forEach(dir => {
+                const wallId = `${floor}-${dir.id}`;
+                const exterior = getWallExterior(wallId);
+                let material = isBasement ? 
+                    new THREE.MeshPhysicalMaterial({ color: 0x708090, transparent: true, opacity: 0.7, roughness: 0.5, metalness: 0.1 }) : 
+                    new THREE.MeshStandardMaterial({ color: exterior.color });
+
+                const mesh = new THREE.Mesh(new THREE.BoxGeometry(...dir.dim), material);
+                mesh.position.set(...dir.pos);
+                mesh.castShadow = !isBasement;
+                mesh.receiveShadow = true;
+                mesh.userData.wallId = wallId;
+                sceneRef.current.add(mesh);
+                wallMeshesRef.current[wallId] = mesh;
+
+                const features = wallFeatures[wallId] || [];
+                const wallWidth = dir.id === 'north' || dir.id === 'south' ? dimensions.length : dimensions.width;
+                const spacing = wallWidth / (features.length + 1);
+
+                features.forEach((feature, idx) => {
+                    const stats = FEATURE_STATS[feature.type];
+                    const featureGeom = new THREE.BoxGeometry(
+                        dir.id === 'north' || dir.id === 'south' ? stats.width : wallThickness + 0.2, 
+                        stats.height, 
+                        dir.id === 'north' || dir.id === 'south' ? wallThickness + 0.2 : stats.width
+                    );
+                    const featureMat = new THREE.MeshStandardMaterial({ color: stats.color, roughness: 0.2, metalness: 0.8 });
+                    const featureMesh = new THREE.Mesh(featureGeom, featureMat);
+                    const offset = -wallWidth/2 + (spacing * (idx + 1));
+                    let fx = 0, fz = 0;
+                    const yOffset = feature.type.includes('door') ? (-WALL_HEIGHT/2 + stats.height/2) : 0; 
+                    if (dir.id === 'north') { fx = offset; fz = 0; }
+                    if (dir.id === 'south') { fx = -offset; fz = 0; } 
+                    if (dir.id === 'east')  { fx = 0; fz = -offset; }
+                    if (dir.id === 'west')  { fx = 0; fz = offset; }
+                    featureMesh.position.set(mesh.position.x + fx, mesh.position.y + yOffset, mesh.position.z + fz);
+                    sceneRef.current.add(featureMesh);
+                    roofMeshesRef.current.push(featureMesh);
+                });
+            });
+
+            const trim = new THREE.Mesh(new THREE.BoxGeometry(dimensions.length + 0.8, 0.4, dimensions.width + 0.8), new THREE.MeshStandardMaterial({ color: 0xFFFFFF }));
+            trim.position.set(0, floorY + WALL_HEIGHT, 0);
+            sceneRef.current.add(trim);
+            roofMeshesRef.current.push(trim);
+        });
+
+        const roofY = (floors.length - 1) * WALL_HEIGHT; 
+        const roofRise = (dimensions.width / 2) * ROOF_PITCH;
+        const roofMat = ROOF_MATERIALS.find(m => m.id === roofMaterial);
+        const roofColor = roofMat ? roofMat.color : 0x808080;
+        
+        const gableShape = new THREE.Shape();
+        gableShape.moveTo(-dimensions.width / 2, 0).lineTo(dimensions.width / 2, 0).lineTo(0, roofRise).lineTo(-dimensions.width / 2, 0);
+        const gableGeometry = new THREE.ShapeGeometry(gableShape);
+        const gableMaterial = new THREE.MeshStandardMaterial({ color: 0xE8E8E8, side: THREE.DoubleSide });
+        
+        const westGable = new THREE.Mesh(gableGeometry, gableMaterial);
+        westGable.position.set(-dimensions.length / 2, roofY, 0);
+        westGable.rotation.y = Math.PI / 2;
+        sceneRef.current.add(westGable);
+        roofMeshesRef.current.push(westGable);
+        
+        const eastGable = new THREE.Mesh(gableGeometry, gableMaterial);
+        eastGable.position.set(dimensions.length / 2, roofY, 0);
+        eastGable.rotation.y = -Math.PI / 2;
+        sceneRef.current.add(eastGable);
+        roofMeshesRef.current.push(eastGable);
+
+        const roofSlantLength = Math.sqrt(Math.pow(dimensions.width / 2, 2) + Math.pow(roofRise, 2));
+        const roofAngle = Math.atan2(roofRise, dimensions.width / 2);
+        const roofMaterialMesh = new THREE.MeshStandardMaterial({ color: roofColor, side: THREE.DoubleSide, roughness: 0.9 });
+        
+        const northRoof = new THREE.Mesh(new THREE.PlaneGeometry(dimensions.length + 1, roofSlantLength), roofMaterialMesh);
+        northRoof.position.set(0, roofY + roofRise / 2, -dimensions.width / 4);
+        northRoof.rotation.x = -Math.PI / 2 - roofAngle; 
+        sceneRef.current.add(northRoof);
+        roofMeshesRef.current.push(northRoof);
+
+        const southRoof = new THREE.Mesh(new THREE.PlaneGeometry(dimensions.length + 1, roofSlantLength), roofMaterialMesh.clone());
+        southRoof.position.set(0, roofY + roofRise / 2, dimensions.width / 4);
+        southRoof.rotation.x = -Math.PI / 2 + roofAngle;
+        sceneRef.current.add(southRoof);
+        roofMeshesRef.current.push(southRoof);
+    };
+
+    const getWallData = () => {
+        const walls = [];
+        floors.forEach(floor => {
+            const directions = ['north', 'south', 'east', 'west'];
+            directions.forEach(dir => {
+                const isLong = dir === 'north' || dir === 'south';
+                walls.push({ id: `${floor}-${dir}`, floor, orientation: dir, length: isLong ? dimensions.length : dimensions.width, height: WALL_HEIGHT, area: (isLong ? dimensions.length : dimensions.width) * WALL_HEIGHT });
+            });
+        });
+        return walls;
+    };
+
+    const addFeature = (type) => {
+        if (!selectedWall) return;
+        setWallFeatures(prev => {
+            const current = prev[selectedWall] || [];
+            return { ...prev, [selectedWall]: [...current, { type, id: Date.now() }] };
+        });
+    };
+
+    const removeFeature = (wallId, featureId) => {
+        setWallFeatures(prev => ({ ...prev, [wallId]: prev[wallId].filter(f => f.id !== featureId) }));
+    };
+
+    const handleMaterialSelect = (materialId) => {
+        if (selectionMode === 'exterior' && selectedWall) {
+            setWallExterior(prev => ({ ...prev, [selectedWall]: materialId }));
+        } else if (selectionMode === 'insulation' && selectedWall) {
+            setWallInsulation(prev => ({ ...prev, [selectedWall]: materialId }));
+        }
+    };
+
+    const getWallExterior = (wallId) => {
+        const exteriorId = wallExterior[wallId] || 'brick-red';
+        return EXTERIOR_MATERIALS.find(mat => mat.id === exteriorId) || EXTERIOR_MATERIALS[0];
+    };
+
+    const getWallInsulation = (wallId) => {
+        const insulationId = wallInsulation[wallId] || 'none';
+        return INSULATION_OPTIONS.find(opt => opt.id === insulationId);
+    };
+
+    const calculateHVAC = () => {
+        const walls = getWallData();
+        let totalLoad = 0;
+
+        walls.forEach(wall => {
+            const features = wallFeatures[wall.id] || [];
+            let featureArea = 0;
+            let featureLoad = 0;
+            
+            let tempDiff = 0;
+            if (hvacMode === 'heating') {
+                tempDiff = wall.floor === 'basement' ? (insideTemp - groundTemp) : (insideTemp - outsideTemp);
+            } else {
+                tempDiff = wall.floor === 'basement' ? (groundTemp - insideTemp) : (outsideTemp - insideTemp);
+            }
+            tempDiff = Math.max(0, tempDiff);
+
+            features.forEach(f => {
+                const stats = FEATURE_STATS[f.type];
+                const area = stats.width * stats.height;
+                featureArea += area;
+                let uValue = 1 / stats.rValue;
+                if (hvacMode === 'heating' && timeOfDay === 'night' && nightCondition === 'clear') uValue *= 1.15; 
+                let load = area * uValue * tempDiff;
+
+                if (hvacMode === 'cooling' && f.type.includes('window') && timeOfDay === 'day' && sunVisible) {
+                    const SHGC = 0.5;
+                    let solarIntensity = 200;
+                    if (wall.orientation === 'east' || wall.orientation === 'west') solarIntensity *= 1.2;
+                    else if (wall.orientation === 'south') solarIntensity *= Math.sin(latitude * Math.PI/180);
+                    else if (wall.orientation === 'north') solarIntensity *= 0.2;
+                    load += (area * SHGC * solarIntensity);
+                } else if (hvacMode === 'heating' && f.type.includes('window') && timeOfDay === 'day' && sunVisible && wall.orientation === 'south') {
+                    const solarIntensity = 20 * Math.sin(latitude * Math.PI/180);
+                    load -= (area * solarIntensity);
+                }
+                featureLoad += load;
+            });
+
+            const netWallArea = Math.max(0, wall.area - featureArea);
+            const insulation = getWallInsulation(wall.id);
+            let rValue = insulation.rValue + 3;
+            if (hvacMode === 'heating' && wall.floor !== 'basement' && wall.orientation === windDirection) rValue *= 0.85;
+
+            const wallLoad = (netWallArea / rValue) * tempDiff;
+            totalLoad += (wallLoad + featureLoad);
+        });
+
+        const roofArea = dimensions.length * dimensions.width;
+        let effectiveAtticR = atticRValue;
+        if (hvacMode === 'heating' && timeOfDay === 'night' && nightCondition === 'clear') effectiveAtticR *= 0.8;
+        
+        let roofTempDiff = 0;
+        if (hvacMode === 'heating') {
+            roofTempDiff = Math.max(0, insideTemp - outsideTemp);
+        } else {
+            let effectiveOutside = outsideTemp;
+            if (timeOfDay === 'day' && sunVisible) {
+                const roofMat = ROOF_MATERIALS.find(m => m.id === roofMaterial);
+                const reflectivity = roofMat ? roofMat.reflectivity : 0.1;
+                effectiveOutside += (1 - reflectivity) * 50; 
+            }
+            roofTempDiff = Math.max(0, effectiveOutside - insideTemp);
+        }
+        totalLoad += (roofArea / effectiveAtticR) * roofTempDiff;
+
+        const volume = dimensions.length * dimensions.width * (floors.length * WALL_HEIGHT);
+        const acph = 0.5 + (windSpeed * 0.05);
+        const infiltrationLoad = volume * 0.018 * Math.abs(insideTemp - outsideTemp) * acph;
+        totalLoad += infiltrationLoad;
+
+        if (hvacMode === 'cooling') {
+            const peopleLoad = occupants * 450;
+            const applianceLoad = appliances === 'high' ? 3000 : (appliances === 'medium' ? 1500 : 500);
+            totalLoad += peopleLoad + applianceLoad;
+            if (humidity > 50) {
+                const factor = 1 + ((humidity - 50) / 100);
+                totalLoad *= factor;
+            }
+        }
+
+        // Apply Furnace Efficiency
+        let finalRequired = totalLoad;
+        if (hvacMode === 'heating') {
+            finalRequired = totalLoad / (furnaceEfficiency / 100);
+        }
+
+        return Math.max(0, Math.round(finalRequired));
+    };
+
+    const finalLoad = calculateHVAC();
+    const displayValue = hvacMode === 'heating' ? finalLoad.toLocaleString() : (finalLoad / 12000).toFixed(2);
+    const displayUnit = hvacMode === 'heating' ? 'BTU/hr' : 'Tons';
+    const themeColor = hvacMode === 'heating' ? 'orange' : 'cyan';
+
+    // --- DATA EXPORT / IMPORT FUNCTIONS ---
+
+    const exportJSON = () => {
+        const data = {
+            timestamp: new Date().toISOString(),
+            config: {
+                dimensions, numStories, wallInsulation, wallExterior, roofMaterial, wallFeatures, 
+                hvacMode, outsideTemp, groundTemp, insideTemp, windSpeed, windDirection,
+                timeOfDay, sunVisible, latitude, nightCondition, atticRValue, furnaceEfficiency,
+                humidity, occupants, appliances
+            }
+        };
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `house_project_${new Date().getTime()}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+    };
+
+    const importJSON = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            try {
+                const data = JSON.parse(event.target.result);
+                if (data.config) {
+                    const c = data.config;
+                    if(c.dimensions) setDimensions(c.dimensions);
+                    if(c.numStories) setNumStories(c.numStories);
+                    if(c.wallInsulation) setWallInsulation(c.wallInsulation);
+                    if(c.wallExterior) setWallExterior(c.wallExterior);
+                    if(c.roofMaterial) setRoofMaterial(c.roofMaterial);
+                    if(c.wallFeatures) setWallFeatures(c.wallFeatures);
+                    if(c.hvacMode) setHvacMode(c.hvacMode);
+                    if(c.outsideTemp) setOutsideTemp(c.outsideTemp);
+                    if(c.groundTemp) setGroundTemp(c.groundTemp);
+                    if(c.insideTemp) setInsideTemp(c.insideTemp);
+                    if(c.windSpeed) setWindSpeed(c.windSpeed);
+                    if(c.windDirection) setWindDirection(c.windDirection);
+                    if(c.timeOfDay) setTimeOfDay(c.timeOfDay);
+                    if(c.sunVisible !== undefined) setSunVisible(c.sunVisible);
+                    if(c.latitude) setLatitude(c.latitude);
+                    if(c.nightCondition) setNightCondition(c.nightCondition);
+                    if(c.atticRValue) setAtticRValue(c.atticRValue);
+                    if(c.furnaceEfficiency) setFurnaceEfficiency(c.furnaceEfficiency);
+                    if(c.humidity) setHumidity(c.humidity);
+                    if(c.occupants) setOccupants(c.occupants);
+                    if(c.appliances) setAppliances(c.appliances);
+                }
+            } catch (err) {
+                alert("Error parsing JSON file");
+            }
+        };
+        reader.readAsText(file);
+        e.target.value = null; // reset input
+    };
+
+    const exportCSV = () => {
+        const walls = getWallData();
+        let csvContent = "data:text/csv;charset=utf-8,";
+        
+        // Header Info
+        csvContent += `Report Date,${new Date().toLocaleString()}\n`;
+        csvContent += `Mode,${hvacMode.toUpperCase()}\n`;
+        csvContent += `Total Load,${displayValue} ${displayUnit}\n`;
+        csvContent += `Efficiency,${furnaceEfficiency}%\n`;
+        csvContent += `Design Temps,In: ${insideTemp}F | Out: ${outsideTemp}F | Ground: ${groundTemp}F\n\n`;
+
+        // Table Headers
+        csvContent += "Component ID,Type,Gross Area (sqft),Net Area (sqft),R-Value,Delta T,Load (BTU/hr)\n";
+
+        let runningTotal = 0;
+
+        // Wall & Features Logic (Similar to calculateHVAC but logging rows)
+        walls.forEach(wall => {
+            const features = wallFeatures[wall.id] || [];
+            let featureArea = 0;
+            
+            let tempDiff = 0;
+            if (hvacMode === 'heating') {
+                tempDiff = wall.floor === 'basement' ? (insideTemp - groundTemp) : (insideTemp - outsideTemp);
+            } else {
+                tempDiff = wall.floor === 'basement' ? (groundTemp - insideTemp) : (outsideTemp - insideTemp);
+            }
+            tempDiff = Math.max(0, tempDiff);
+
+            features.forEach(f => {
+                const stats = FEATURE_STATS[f.type];
+                const area = stats.width * stats.height;
+                featureArea += area;
+                let uValue = 1 / stats.rValue;
+                if (hvacMode === 'heating' && timeOfDay === 'night' && nightCondition === 'clear') uValue *= 1.15; 
+                let load = area * uValue * tempDiff;
+
+                // Simple Solar Gain logic for CSV display (simplified from main calc for brevity)
+                let solarLoad = 0;
+                if (hvacMode === 'cooling' && f.type.includes('window') && timeOfDay === 'day' && sunVisible) {
+                    // Re-calc solar portion
+                    const SHGC = 0.5;
+                    let solarIntensity = 200;
+                    if (wall.orientation === 'east' || wall.orientation === 'west') solarIntensity *= 1.2;
+                    else if (wall.orientation === 'south') solarIntensity *= Math.sin(latitude * Math.PI/180);
+                    else if (wall.orientation === 'north') solarIntensity *= 0.2;
+                    solarLoad = (area * SHGC * solarIntensity);
+                    load += solarLoad;
+                } else if (hvacMode === 'heating' && f.type.includes('window') && timeOfDay === 'day' && sunVisible && wall.orientation === 'south') {
+                     const solarIntensity = 20 * Math.sin(latitude * Math.PI/180);
+                     solarLoad = -(area * solarIntensity);
+                     load += solarLoad;
+                }
+
+                csvContent += `${wall.id} - ${stats.name},Window/Door,${area},${area},${stats.rValue},${tempDiff.toFixed(1)},${Math.round(load)}\n`;
+                runningTotal += load;
+            });
+
+            const netWallArea = Math.max(0, wall.area - featureArea);
+            const insulation = getWallInsulation(wall.id);
+            let rValue = insulation.rValue + 3;
+            if (hvacMode === 'heating' && wall.floor !== 'basement' && wall.orientation === windDirection) rValue *= 0.85;
+
+            const wallLoad = (netWallArea / rValue) * tempDiff;
+            csvContent += `${wall.id},Wall,${wall.area},${netWallArea},${rValue.toFixed(1)},${tempDiff.toFixed(1)},${Math.round(wallLoad)}\n`;
+            runningTotal += wallLoad;
+        });
+
+        // Roof
+        const roofArea = dimensions.length * dimensions.width;
+        let effectiveAtticR = atticRValue;
+        if (hvacMode === 'heating' && timeOfDay === 'night' && nightCondition === 'clear') effectiveAtticR *= 0.8;
+        let roofTempDiff = hvacMode === 'heating' ? Math.max(0, insideTemp - outsideTemp) : Math.max(0, outsideTemp - insideTemp); 
+        // Note: Simplified roof temp logic for CSV report to avoid complexity
+        const roofLoad = (roofArea / effectiveAtticR) * roofTempDiff;
+        csvContent += `Roof,Ceiling,${roofArea},${roofArea},${effectiveAtticR},${roofTempDiff.toFixed(1)},${Math.round(roofLoad)}\n`;
+
+        // Infiltration
+        const volume = dimensions.length * dimensions.width * (floors.length * WALL_HEIGHT);
+        const acph = 0.5 + (windSpeed * 0.05);
+        const infiltrationLoad = volume * 0.018 * Math.abs(insideTemp - outsideTemp) * acph;
+        csvContent += `Infiltration (ACH: ${acph.toFixed(2)}),Air,N/A,N/A,N/A,${Math.abs(insideTemp - outsideTemp)},${Math.round(infiltrationLoad)}\n`;
+
+        // Internals
+        if (hvacMode === 'cooling') {
+             const peopleLoad = occupants * 450;
+             const applianceLoad = appliances === 'high' ? 3000 : (appliances === 'medium' ? 1500 : 500);
+             csvContent += `Occupants (${occupants}),Internal,N/A,N/A,N/A,N/A,${peopleLoad}\n`;
+             csvContent += `Appliances (${appliances}),Internal,N/A,N/A,N/A,N/A,${applianceLoad}\n`;
+        }
+
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", `hvac_report_${new Date().getTime()}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     }
-  };
-  reader.readAsText(file);
+
+    const renderFloorPlan = () => {
+       const scale = 5;
+       return (
+            <svg width="100%" height={220 * floors.length} viewBox={`0 0 800 ${220 * floors.length}`} className="border border-gray-300 bg-white">
+                {floors.map((floor, floorIndex) => (
+                    <g key={floor} transform={`translate(50, ${50 + floorIndex * 220})`}>
+                        <text x={0} y={-10} fontSize="16" fontWeight="bold" className="uppercase">{floor} Floor</text>
+                        <rect x={0} y={0} width={dimensions.length * scale} height={20} fill={`#${getWallInsulation(`${floor}-north`).color.toString(16).padStart(6, '0')}`} stroke="#1f2937" strokeWidth="2" className="cursor-pointer hover:opacity-80" onClick={() => setSelectedWall(`${floor}-north`)} />
+                        <text x={dimensions.length * scale / 2} y={12} textAnchor="middle" fontSize="10" fill="#1f2937">N</text>
+                        <rect x={0} y={dimensions.width * scale - 20} width={dimensions.length * scale} height={20} fill={`#${getWallInsulation(`${floor}-south`).color.toString(16).padStart(6, '0')}`} stroke="#1f2937" strokeWidth="2" className="cursor-pointer hover:opacity-80" onClick={() => setSelectedWall(`${floor}-south`)} />
+                        <text x={dimensions.length * scale / 2} y={dimensions.width * scale - 8} textAnchor="middle" fontSize="10" fill="#1f2937">S</text>
+                        <rect x={0} y={20} width={20} height={dimensions.width * scale - 40} fill={`#${getWallInsulation(`${floor}-west`).color.toString(16).padStart(6, '0')}`} stroke="#1f2937" strokeWidth="2" className="cursor-pointer hover:opacity-80" onClick={() => setSelectedWall(`${floor}-west`)} />
+                        <text x={10} y={dimensions.width * scale / 2} textAnchor="middle" fontSize="10" fill="#1f2937">W</text>
+                        <rect x={dimensions.length * scale - 20} y={20} width={20} height={dimensions.width * scale - 40} fill={`#${getWallInsulation(`${floor}-east`).color.toString(16).padStart(6, '0')}`} stroke="#1f2937" strokeWidth="2" className="cursor-pointer hover:opacity-80" onClick={() => setSelectedWall(`${floor}-east`)} />
+                        <text x={dimensions.length * scale - 10} y={dimensions.width * scale / 2} textAnchor="middle" fontSize="10" fill="#1f2937">E</text>
+                        <rect x={20} y={20} width={dimensions.length * scale - 40} height={dimensions.width * scale - 40} fill="#f3f4f6" stroke="none" />
+                        <text x={dimensions.length * scale / 2} y={dimensions.width * scale + 20} textAnchor="middle" fontSize="12">{dimensions.length}' × {dimensions.width}'</text>
+                    </g>
+                ))}
+            </svg>
+        );
+    };
+
+    return (
+        <div className="min-h-screen bg-gray-50 p-2">
+            <div className="max-w-[950px] mx-auto">
+                <div className="bg-white rounded-lg shadow-lg p-4 mb-6">
+                    <div className="flex items-center gap-3 mb-6">
+                        <div className={`text-${themeColor}-600`}><HomeIcon /></div>
+                        <h1 className="text-3xl font-bold text-gray-900">Multi-Story House Builder & HVAC Calculator</h1>
+                    </div>
+
+                    <div className="grid grid-cols-[1fr_300px] gap-4">
+                        {/* Left Column: 3D/Floor Plan */}
+                        <div>
+                            <div className="flex items-end gap-4 mb-4 bg-gray-50 p-3 rounded-lg border border-gray-200">
+                                <div>
+                                    <label className="block text-xs font-semibold text-gray-600 mb-1">View Mode</label>
+                                    <div className="flex gap-1">
+                                        <button onClick={() => setViewMode('3d')} className={`px-3 py-1 rounded text-sm font-medium transition-colors ${viewMode === '3d' ? `bg-${themeColor}-600 text-white` : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>3D</button>
+                                        <button onClick={() => setViewMode('floor')} className={`px-3 py-1 rounded text-sm font-medium transition-colors ${viewMode === 'floor' ? `bg-${themeColor}-600 text-white` : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>Plan</button>
+                                    </div>
+                                </div>
+                                
+                                <div>
+                                    <label className="block text-xs font-semibold text-gray-600 mb-1">Length (ft)</label>
+                                    <input type="number" value={dimensions.length} onChange={(e) => setDimensions(prev => ({ ...prev, length: parseInt(e.target.value) || 0 }))} className="w-24 px-2 py-1 text-sm border border-gray-300 rounded" min="10" max="100" />
+                                </div>
+                                
+                                <div>
+                                    <label className="block text-xs font-semibold text-gray-600 mb-1">Width (ft)</label>
+                                    <input type="number" value={dimensions.width} onChange={(e) => setDimensions(prev => ({ ...prev, width: parseInt(e.target.value) || 0 }))} className="w-24 px-2 py-1 text-sm border border-gray-300 rounded" min="10" max="100" />
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-semibold text-gray-600 mb-1">Stories</label>
+                                    <select value={numStories} onChange={(e) => setNumStories(parseInt(e.target.value))} className="w-24 px-2 py-1 text-sm border border-gray-300 rounded bg-white">
+                                        <option value="1">1 Story</option>
+                                        <option value="2">2 Stories</option>
+                                        <option value="3">3 Stories</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div className="mb-6 flex justify-center w-full">
+                                {viewMode === '3d' ? (
+                                    <div className="w-full">
+                                        <div ref={mountRef} className={`h-[600px] w-full border-4 border-gray-300 rounded-lg ${hvacMode==='cooling'?'bg-cyan-50':'bg-blue-50'}`}></div>
+                                        <p className="text-xs text-gray-500 mt-2 text-center">Drag to rotate • Right-click to pan • Scroll to zoom</p>
+                                    </div>
+                                ) : (
+                                    <div className="w-full overflow-auto h-[600px] border-4 border-gray-300 rounded-lg p-4 bg-gray-50">
+                                        {renderFloorPlan()}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Right Column: HVAC Controls (Fixed Width) */}
+                        <div className="space-y-6">
+                            
+                            {/* HVAC CALCULATOR PANEL */}
+                            <div className={`bg-${themeColor}-50 border border-${themeColor}-200 rounded-lg p-5`}>
+                                <div className="flex justify-between items-center mb-4">
+                                    <h3 className={`text-lg font-bold text-${themeColor}-900 flex items-center gap-2`}>
+                                        {hvacMode==='heating' ? <FireIcon/> : <SnowIcon/>} 
+                                        {hvacMode==='heating' ? 'Heating' : 'Cooling'}
+                                    </h3>
+                                    <div className="flex bg-white rounded border border-gray-300 overflow-hidden">
+                                        <button onClick={()=>setHvacMode('heating')} className={`px-3 py-1 text-xs font-bold ${hvacMode==='heating'?'bg-orange-500 text-white':'text-gray-600 hover:bg-gray-100'}`}>Heat</button>
+                                        <button onClick={()=>setHvacMode('cooling')} className={`px-3 py-1 text-xs font-bold ${hvacMode==='cooling'?'bg-cyan-500 text-white':'text-gray-600 hover:bg-gray-100'}`}>Cool</button>
+                                    </div>
+                                </div>
+                                
+                                <div className="space-y-3">
+                                    {/* SCENARIO TOGGLES */}
+                                    <div className={`flex bg-${themeColor}-200 rounded p-1 mb-2`}>
+                                        <button onClick={()=>setTimeOfDay('day')} className={`flex-1 flex items-center justify-center gap-1 py-1 text-xs font-bold rounded ${timeOfDay==='day' ? `bg-white text-${themeColor}-900 shadow` : `text-${themeColor}-800`}`}><SunIcon/> Day</button>
+                                        <button onClick={()=>setTimeOfDay('night')} className={`flex-1 flex items-center justify-center gap-1 py-1 text-xs font-bold rounded ${timeOfDay==='night' ? `bg-white text-blue-900 shadow` : `text-${themeColor}-800`}`}><MoonIcon/> Night</button>
+                                    </div>
+
+                                    {timeOfDay === 'day' ? (
+                                        <div className="bg-white p-2 rounded border border-gray-200 mb-2 space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-xs font-semibold text-gray-700">Overhead Sun</span>
+                                                <input type="checkbox" checked={sunVisible} onChange={e=>setSunVisible(e.target.checked)} />
+                                            </div>
+                                            <div>
+                                                <div className="flex justify-between text-xs font-semibold text-gray-700 mb-1">
+                                                    <span>Latitude</span>
+                                                    <span>{latitude}°</span>
+                                                </div>
+                                                <input type="range" min="0" max="90" value={latitude} onChange={e=>setLatitude(Number(e.target.value))} className="w-full" />
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="bg-white p-2 rounded border border-gray-200 mb-2">
+                                            <label className="block text-xs font-semibold text-gray-700 mb-1">Sky Condition</label>
+                                            <select value={nightCondition} onChange={e=>setNightCondition(e.target.value)} className="w-full text-xs p-1 border rounded">
+                                                <option value="clear">Clear (Radiant Loss)</option>
+                                                <option value="cloudy">Cloudy (Insulated)</option>
+                                            </select>
+                                        </div>
+                                    )}
+
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div><label className={`block text-xs font-semibold text-${themeColor}-800 mb-1`}>Outside °F</label><input type="number" value={outsideTemp} onChange={(e) => setOutsideTemp(Number(e.target.value))} className={`w-full px-2 py-1 border border-${themeColor}-200 rounded text-sm`} /></div>
+                                        <div><label className={`block text-xs font-semibold text-${themeColor}-800 mb-1`}>Inside °F</label><input type="number" value={insideTemp} onChange={(e) => setInsideTemp(Number(e.target.value))} className={`w-full px-2 py-1 border border-${themeColor}-200 rounded text-sm`} /></div>
+                                        <div><label className={`block text-xs font-semibold text-${themeColor}-800 mb-1`}>Ground °F</label><input type="number" value={groundTemp} onChange={(e) => setGroundTemp(Number(e.target.value))} className={`w-full px-2 py-1 border border-${themeColor}-200 rounded text-sm`} /></div>
+                                        <div><label className={`block text-xs font-semibold text-${themeColor}-800 mb-1`}>Wind mph</label><input type="number" value={windSpeed} onChange={(e) => setWindSpeed(Number(e.target.value))} className={`w-full px-2 py-1 border border-${themeColor}-200 rounded text-sm`} /></div>
+                                    </div>
+                                    
+                                    {/* COOLING EXTRAS */}
+                                    {hvacMode === 'cooling' && (
+                                        <div className="bg-white p-2 rounded border border-cyan-200 space-y-2">
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <div><label className="block text-xs font-bold text-gray-700">Humidity %</label><input type="number" value={humidity} onChange={e=>setHumidity(Number(e.target.value))} className="w-full p-1 border rounded text-xs"/></div>
+                                                <div><label className="block text-xs font-bold text-gray-700">Occupants</label><input type="number" value={occupants} onChange={e=>setOccupants(Number(e.target.value))} className="w-full p-1 border rounded text-xs"/></div>
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-bold text-gray-700">Appliances</label>
+                                                <select value={appliances} onChange={e=>setAppliances(e.target.value)} className="w-full p-1 border rounded text-xs">
+                                                    <option value="low">Low (Basic)</option>
+                                                    <option value="medium">Medium (Typical)</option>
+                                                    <option value="high">High (Servers/Ovens)</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div>
+                                        <label className={`block text-xs font-semibold text-${themeColor}-800 mb-1`}>Attic Insulation (R)</label>
+                                        <input type="number" value={atticRValue} onChange={(e) => setAtticRValue(Number(e.target.value))} className={`w-full px-2 py-1 border border-${themeColor}-200 rounded text-sm`} />
+                                    </div>
+
+                                    <div>
+                                        <label className={`block text-xs font-semibold text-${themeColor}-800 mb-1`}>Wind Direction</label>
+                                        <select value={windDirection} onChange={(e) => setWindDirection(e.target.value)} className={`w-full px-2 py-1 border border-${themeColor}-200 rounded text-sm bg-white`}>
+                                            <option value="north">North</option>
+                                            <option value="south">South</option>
+                                            <option value="east">East</option>
+                                            <option value="west">West</option>
+                                        </select>
+                                    </div>
+                                    
+                                    {/* HEATING: Efficiency */}
+                                    {hvacMode === 'heating' && (
+                                        <div className="bg-white p-2 rounded border border-orange-200">
+                                            <label className="block text-xs font-semibold text-orange-800 mb-1">Furnace Efficiency</label>
+                                            <select value={furnaceEfficiency} onChange={e=>setFurnaceEfficiency(Number(e.target.value))} className="w-full px-2 py-1 border border-orange-200 rounded text-sm">
+                                                <option value="80">Standard (80%)</option>
+                                                <option value="96">High Efficiency (96%)</option>
+                                                <option value="60">Old Unit (60%)</option>
+                                            </select>
+                                        </div>
+                                    )}
+
+                                    <div className={`mt-4 pt-4 border-t border-${themeColor}-200`}>
+                                        <div className={`text-sm text-${themeColor}-800`}>Required Capacity:</div>
+                                        <div className={`text-3xl font-black text-${themeColor}-600`}>{displayValue} {displayUnit}</div>
+                                        <div className={`text-xs text-${themeColor}-700 mt-1 italic`}>
+                                            {hvacMode === 'heating' ? 'Input Rating Required' : 'Total Heat Gain'}
+                                        </div>
+                                        
+                                        {/* New Data Buttons */}
+                                        <div className="flex gap-2 mt-4 pt-2 border-t border-gray-200">
+                                            <button onClick={exportJSON} title="Export Save File" className="p-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded border border-gray-300">
+                                                <DownloadIcon />
+                                            </button>
+                                            <label className="p-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded border border-gray-300 cursor-pointer" title="Import Save File">
+                                                <UploadIcon />
+                                                <input type="file" ref={fileInputRef} onChange={importJSON} className="hidden" accept=".json" />
+                                            </label>
+                                            <button onClick={exportCSV} title="Download Report (CSV)" className="flex-1 px-3 py-2 bg-green-600 hover:bg-green-700 text-white text-xs font-bold rounded flex items-center justify-center gap-2">
+                                                <FileTextIcon /> Export CSV
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Selection Controls */}
+                            <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                                {selectedWall ? (
+                                    <div className="mb-4">
+                                        <h3 className="font-semibold text-gray-900">Edit: {selectedWall.toUpperCase()}</h3>
+                                        <p className="text-xs text-gray-600 mb-2">R-Value: {getWallInsulation(selectedWall).rValue + 3}</p>
+                                    </div>
+                                ) : (
+                                    <div className="mb-4 text-sm text-gray-500 italic">Select a wall to edit materials</div>
+                                )}
+
+                                <div className="flex gap-2 mb-4">
+                                    <button onClick={() => setSelectionMode('exterior')} className={`flex-1 px-2 py-1 rounded text-xs font-medium transition-colors ${selectionMode === 'exterior' ? 'bg-gray-800 text-white' : 'bg-gray-200'}`}>Ext</button>
+                                    <button onClick={() => setSelectionMode('insulation')} className={`flex-1 px-2 py-1 rounded text-xs font-medium transition-colors ${selectionMode === 'insulation' ? 'bg-gray-800 text-white' : 'bg-gray-200'}`}>Insul</button>
+                                    <button onClick={() => setSelectionMode('features')} className={`flex-1 px-2 py-1 rounded text-xs font-medium transition-colors ${selectionMode === 'features' ? 'bg-gray-800 text-white' : 'bg-gray-200'}`}>Features</button>
+                                </div>
+
+                                <div className="h-48 overflow-y-auto">
+                                    {selectionMode === 'exterior' && (
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {EXTERIOR_MATERIALS.map(material => (
+                                                <button key={material.id} onClick={() => handleMaterialSelect(material.id)} disabled={!selectedWall} className={`p-2 rounded border text-left ${selectedWall && wallExterior[selectedWall] === material.id ? 'border-green-600 bg-green-50' : 'border-gray-300'} ${!selectedWall && 'opacity-50'}`}>
+                                                    <div className="w-full h-4 rounded mb-1" style={{ backgroundColor: `#${material.color.toString(16).padStart(6, '0')}` }}></div>
+                                                    <div className="text-xs font-medium">{material.name}</div>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                    
+                                    {selectionMode === 'insulation' && (
+                                        <div className="grid grid-cols-1 gap-2">
+                                            {INSULATION_OPTIONS.map(option => (
+                                                <button key={option.id} onClick={() => handleMaterialSelect(option.id)} disabled={!selectedWall} className={`p-2 rounded border text-left flex justify-between items-center ${selectedWall && wallInsulation[selectedWall] === option.id ? 'border-blue-600 bg-blue-50' : 'border-gray-300'} ${!selectedWall && 'opacity-50'}`}>
+                                                    <div>
+                                                        <div className="text-xs font-medium">{option.name}</div>
+                                                        <div className="text-xs text-gray-500">R-{option.rValue}</div>
+                                                    </div>
+                                                    <div className="w-4 h-4 rounded-full" style={{ backgroundColor: `#${option.color.toString(16).padStart(6, '0')}` }}></div>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {selectionMode === 'features' && selectedWall && (
+                                        <div className="space-y-2">
+                                            <div className="flex gap-1">
+                                                <button onClick={()=>addFeature('window-std')} className="flex-1 bg-green-100 p-2 text-xs border border-green-300 rounded hover:bg-green-200 font-bold">+ Win</button>
+                                                <button onClick={()=>addFeature('window-pic')} className="flex-1 bg-green-100 p-2 text-xs border border-green-300 rounded hover:bg-green-200 font-bold">+ Pic</button>
+                                                <button onClick={()=>addFeature('door')} className="flex-1 bg-amber-100 p-2 text-xs border border-amber-300 rounded hover:bg-amber-200 font-bold">+ Door</button>
+                                            </div>
+                                            
+                                            <div className="mt-2 border-t pt-2">
+                                                <div className="text-xs font-bold text-gray-500 mb-1">Current Features:</div>
+                                                {(wallFeatures[selectedWall] || []).map((f, i) => (
+                                                    <div key={f.id} className="flex justify-between items-center bg-white p-2 mb-1 rounded border text-xs">
+                                                        <span>{FEATURE_STATS[f.type].name}</span>
+                                                        <button onClick={()=>removeFeature(selectedWall, f.id)} className="text-red-500 hover:bg-red-50 rounded p-1"><TrashIcon/></button>
+                                                    </div>
+                                                ))}
+                                                {(!wallFeatures[selectedWall] || wallFeatures[selectedWall].length === 0) && <div className="text-xs italic text-gray-400">No features added</div>}
+                                            </div>
+                                        </div>
+                                    )}
+                                    {selectionMode === 'features' && !selectedWall && <div className="text-xs text-gray-400 italic">Select a wall to add features</div>}
+                                </div>
+                            </div>
+                            
+                            <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                                <h3 className="text-sm font-semibold mb-2">Roof Material</h3>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {ROOF_MATERIALS.map(material => (
+                                        <button key={material.id} onClick={() => setRoofMaterial(material.id)} className={`p-2 rounded border text-left ${roofMaterial === material.id ? 'border-purple-600 bg-purple-50' : 'border-gray-300'}`}>
+                                            <div className="w-full h-4 rounded mb-1" style={{ backgroundColor: `#${material.color.toString(16).padStart(6, '0')}` }}></div>
+                                            <div className="text-xs font-medium">{material.name}</div>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
 }
 
-// ===== CSV Export =====
-function exportCSV(){
-  if (!lastSim){ Swal.fire('No data','Run a simulation first.','info'); return; }
-  const { ts, wDrop, nodeNames, nodeW } = lastSim;
-  
-  const rows = [`Simulation Date: ${new Date().toLocaleString()}`];
-  
-  const headers = ['time','w_drop', ...nodeNames];
-  rows.push(headers.join(','));
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<HouseBuilder />);
 
-  for (let i=0;i<ts.length;i++){
-    const row = [ts[i], wDrop[i]];
-    for (let n=0;n<nodeW.length;n++) row.push(nodeW[n][i]);
-    rows.push(row.join(','));
-  }
-  const blob = new Blob([rows.join('\n')], {type: 'text/csv'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = 'beam_drop_history.csv';
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
-
-// ===== Helpers =====
-function submat(mat, idx){ return idx.map(i => idx.map(j => mat[i][j])); }
-function vecDot(a,b){ let s=0; for (let i=0;i<a.length;i++) s+=a[i]*b[i]; return s; }
-function l2norm(v){ let s=0; for (let i=0;i<v.length;i++) s+=v[i]*v[i]; return Math.sqrt(s); }
-
-// ===== DOM wiring =====
-document.addEventListener('DOMContentLoaded', () => {
-  beamCanvasEl = document.getElementById('beamCanvas');
-  
-  // Attach Event Listeners
-  attachCanvasHandlers();
-  
-  const btnBuild = document.getElementById('btnBuild');
-  if(btnBuild) btnBuild.addEventListener('click', buildBeam);
-  
-  const btnDrop = document.getElementById('btnDrop');
-  if(btnDrop) btnDrop.addEventListener('click', simulateDrop);
-  
-  const btnExport = document.getElementById('btnExport');
-  if(btnExport) btnExport.addEventListener('click', exportCSV);
-  
-  const btnExportJSON = document.getElementById('btnExportJSON');
-  if(btnExportJSON) btnExportJSON.addEventListener('click', exportJSON);
-  
-  const btnImportJSON = document.getElementById('btnImportJSON');
-  if(btnImportJSON) btnImportJSON.addEventListener('click', triggerImportJSON);
-  
-  const fileInput = document.getElementById('fileInput');
-  if(fileInput) fileInput.addEventListener('change', handleFileSelect);
-
-  const btnFreq = document.getElementById('btnFreq');
-  if(btnFreq) btnFreq.addEventListener('click', computeFirstMode);
-
-  const btnAnim = document.getElementById('btnAnimToggle');
-  const rng = document.getElementById('animSpeed');
-  if(btnAnim) btnAnim.addEventListener('click', ()=>{ if (anim.running) stopAnimation(); else startAnimation(); });
-  if(rng) {
-    rng.addEventListener('input', ()=>{ anim.speed = parseFloat(rng.value)||0.5; });
-    anim.speed = parseFloat(rng.value)||0.5;
-  }
-
-  const modeSel = document.getElementById('impactMode');
-  const eInput = document.getElementById('eInput');
-  const setEState = ()=>{ eInput.disabled = (modeSel.value !== 'bounce'); };
-  if(modeSel) modeSel.addEventListener('change', setEState); 
-  setEState();
-
-  // Initial Build
-  buildBeam();
-});
-</script>
+    </script>
 </body>
 </html>
 
