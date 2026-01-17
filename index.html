@@ -1,8 +1,9 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>Truss — Draw • Solve • Reactions • Stresses</title>
+<title>Frame — Draw • Solve • Reactions • Stresses</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/numeric/1.2.6/numeric.min.js"></script>
@@ -29,20 +30,18 @@
 
   .stack { display:flex; flex-direction:column; gap:8px; }
   
-/* --- new compact dual-column panel layout --- */
-.panel-row {
-  display: flex;
-  gap: 10px;
-  margin-top: 10px;
-}
+  /* --- compact dual-column panel layout --- */
+  .panel-row {
+    display: flex;
+    gap: 10px;
+    margin-top: 10px;
+  }
+  .panel-half {
+    flex: 1;
+    min-width: 0;
+  }
 
-.panel-half {
-  flex: 1;
-  min-width: 0; /* allows shrinking correctly */
-}
-
-
-#wrap { position:relative; width:var(--canvas-w); height:var(--canvas-h); background:#fff; border:1px solid #ccc; border-radius:8px; }
+  #wrap { position:relative; width:var(--canvas-w); height:var(--canvas-h); background:#fff; border:1px solid #ccc; border-radius:8px; }
   canvas { position:absolute; inset:0; }
   #base { z-index:1; } #overlay { z-index:2; pointer-events:auto; cursor:crosshair; }
 
@@ -64,7 +63,7 @@
 </head>
 
 <body>
-  <h2>TRUSS</h2>
+  <h2>FRAME (2D)</h2>
 
   <div class="controls split" id="rowTop">
     <button id="btnDraw"   class="primary">Draw Members</button>
@@ -74,11 +73,11 @@
 
     <button id="btnUndo"  class="ghost">Undo</button>
     <button id="btnClear" class="ghost">Clear</button>
-    
+
     <button id="btnExportJSON" class="ghost">Export JSON</button>
     <button id="btnImportJSON" class="ghost">Import JSON</button>
     <button id="btnExportCSV" class="ghost">Export CSV</button>
-    <input id="jsonFileInput" type="file" accept=".json,application/json" style="display:none;">
+    <input id="fileInput" type="file" accept=".json,application/json" style="display:none;">
 
     <span class="hint" style="margin-left:6px;">
       Draw: drag to add a member. Select: drag a node to move; double-click to edit; Delete key removes.
@@ -111,56 +110,68 @@
 
         <button id="btnAnimate" class="ghost">Animate</button>
         <label class="ghost labelbtn" style="margin-left:6px;" disabled>Freq (Hz)</label>
+        <input id="freqScale" type="range" min="0.1" max="2.5" step="0.1" value="1" style="width:90px;">
+        <input id="freqScaleNum" type="number" step="0.1" value="1" style="width:60px;">
 
         <button id="btnResetView" class="ghost">Reset Results</button>
       </div>
     </div>
 
-<div class="col panel stack">
-  <div>
-    <div><strong>Units (display only)</strong></div>
-    <div class="controls">
-      <button id="btnUS" class="ghost">US (in, lbs)</button>
-      <button id="btnSI" class="ghost">SI (m, N)</button>
-    </div>
-    <div class="hint">Solver is unit-agnostic; keep inputs consistent.</div>
-  </div>
-
-  <div class="panel-row">
-    <div class="panel-half">
-      <div style="display:flex;justify-content:space-between;align-items:center;">
-        <strong>Nodes (editable)</strong>
-        <span class="hint">Edit X/Y to move nodes</span>
-      </div>
-      <div id="nodeList" class="list"></div>
-    </div>
-
-    <div class="panel-half">
-      <div><strong>Members</strong></div>
-      <div id="memberList" class="list"></div>
-    </div>
-  </div>
-
-  <div class="panel-row">
-    <div class="panel-half">
-      <div><strong>Results (primary nodes)</strong></div>
-      <div id="resultList" class="list"></div>
-    </div>
-
-    <div class="panel-half">
-      <div id="stressPanelBlock">
-        <div class="controls" style="justify-content:space-between;">
-          <strong>Stress Panel</strong>
-          <button id="btnCloseStressPanel" class="ghost">Close</button>
+    <div class="col panel stack">
+      <div>
+        <div><strong>Units (display only)</strong></div>
+        <div class="controls">
+          <button id="btnUS" class="ghost">US (in, lbs)</button>
+          <button id="btnSI" class="ghost">SI (m, N)</button>
         </div>
-        <canvas id="stressPanel"></canvas>
-        <div id="stressPanelHint" class="hint" style="margin-top:6px;">
-          Click a member (while this view is active) to plot σ<sub>L</sub> (red) & σ<sub>R</sub> (blue) vs length.
+        <div class="hint">Solver is unit-agnostic; keep inputs consistent.</div>
+      </div>
+
+      <div class="panel-row">
+        <div class="panel-half">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <strong>Nodes (editable)</strong>
+            <span class="hint">Edit X/Y to move nodes</span>
+          </div>
+          <div id="nodeList" class="list"></div>
+        </div>
+
+        <div class="panel-half">
+          <div><strong>Members</strong></div>
+          <div id="memberList" class="list"></div>
         </div>
       </div>
+
+      <div class="panel-row">
+        <div class="panel-half">
+          <div><strong>Results (primary nodes)</strong></div>
+          <div id="resultList" class="list"></div>
+        </div>
+
+        <div class="panel-half">
+          <div id="stressPanelBlock">
+            <div class="controls" style="justify-content:space-between; align-items:center;">
+              <strong>Stress Panel</strong>
+              <div style="display:flex;align-items:center;gap:6px;">
+                <label class="ghost labelbtn" disabled>Plot</label>
+                <select id="stressPlotMode" style="height:26px;padding:0 6px;">
+                  <option value="sigma">σ (top / bottom)</option>
+                  <option value="N">N (axial)</option>
+                  <option value="V">V (shear)</option>
+                  <option value="M">M (moment)</option>
+                </select>
+                <button id="btnCloseStressPanel" class="ghost">Close</button>
+              </div>
+            </div>
+            <canvas id="stressPanel"></canvas>
+            <div id="stressPanelHint" class="hint" style="margin-top:6px;">
+              <div id="stressSummary" class="list" style="margin-top:6px;"></div>
+              Click a member (while this view is active) to plot σ<sub>L</sub> (red) & σ<sub>R</sub> (blue) vs length.
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
-  </div>
-</div>
 
   </div>
 
@@ -178,13 +189,23 @@
   const nodeList   = document.getElementById('nodeList');
   const memberList = document.getElementById('memberList');
   const resultList = document.getElementById('resultList');
+  const stressSummary = document.getElementById('stressSummary');
+  const stressPlotModeSelect = document.getElementById('stressPlotMode');
+
+  if (stressPlotModeSelect){
+    stressPlotModeSelect.addEventListener('change', () => {
+      if (viewMode === 'stresspanel') {
+        plotStressPanel();
+      }
+    });
+  }
 
   const MAX_MEMBERS = 50;
   let mode = 'draw';        // 'draw' | 'select'
   let viewMode = 'geom';    // 'geom' | 'def' | 'stresspanel'
   let units = 'US';         // display only
 
-  // Truss nodes: {id,x,y, bc, Fx,Fy, Kx,Ky}
+  // Frame nodes: {id,x,y, bc, Fx,Fy,Mz, Kx,Ky,Kt, Wn}
   let nodes = [];
   // Members: {id,n1,n2,E,A,I,S,c,wd,qix,qjx,qiy,qjy,label}
   let members = [];
@@ -198,21 +219,16 @@
   let movingNodeId = null;
   let moveOffset = {dx:0, dy:0};
 
-
   // Animation state
   let anim = { on:false, t0:0, raf:null, scaleOverride:null };
 
-  // Optional frequency slider (may not exist in DOM)
-  const animFreq = document.getElementById('animFreq');
-  const animFreqVal = document.getElementById('animFreqVal');
-
-
-
-  // Modal shapes (first 3)
+  // Modal shapes
   let modalData = { modes: [], dofMap: null };
   let currentMode = 0; // 0 = static, 1..3 = mode #
-  const modeSelect = document.getElementById('modeSelect');
-
+  
+  const modeSelect      = document.getElementById('modeSelect');
+  const freqScaleInput = document.getElementById('freqScale');
+  const freqScaleNum   = document.getElementById('freqScaleNum');
 
   // Hover tooltip
   let hoverInfo = null; // {x,y, lines:[...]} in screen coords
@@ -307,15 +323,24 @@
     return bestId;
   };
 
-function addNode(x,y){
-  const id=nextNodeId++;
-  nodes.push({id,x,y,bc:'free',Fx:0,Fy:0,Kx:0,Ky:0,Wn:0});
-  refreshLists();
-  return id;
-}
+  function addNode(x,y){
+    const id=nextNodeId++;
+    nodes.push({
+      id,x,y,
+      bc:'free',
+      Fx:0,Fy:0,Mz:0,
+      Kx:0,Ky:0,Kt:0,
+      Wn:0
+    });
+    refreshLists();
+    return id;
+  }
 
   function addMember(n1,n2){
-    if (members.length>=MAX_MEMBERS){ Swal.fire('Limit reached','Max members reached for now.','info'); return null; }
+    if (members.length>=MAX_MEMBERS){
+      Swal.fire('Limit reached','Max members reached for now.','info');
+      return null;
+    }
     const id=nextMemberId++;
     // carry forward last props
     let E=0,A=0,I=0,S=0,c=0,wd=0,qix=0,qjx=0,qiy=0,qjy=0,label=`M${id}`;
@@ -364,13 +389,47 @@ function addNode(x,y){
   }
 
   // ===== UI Buttons =====
-  document.getElementById('btnDraw').onclick    = () => { mode='draw';   overlay.style.cursor='crosshair'; setActiveGroup(modeBtns,'btnDraw'); draw(); };
-  document.getElementById('btnSelect').onclick = () => { mode='select'; overlay.style.cursor='pointer';   setActiveGroup(modeBtns,'btnSelect'); draw(); };
+  document.getElementById('btnDraw').onclick    = () => {
+    mode='draw';
+    overlay.style.cursor='crosshair';
+    setActiveGroup(modeBtns,'btnDraw');
+    draw();
+  };
+  document.getElementById('btnSelect').onclick = () => {
+    mode='select';
+    overlay.style.cursor='pointer';
+    setActiveGroup(modeBtns,'btnSelect');
+    draw();
+  };
 
-  document.getElementById('viewGeom').onclick = ()=>{ stopAnim(); viewMode='geom'; toggleStressPanel(false); setActiveGroup(viewBtns,'viewGeom'); draw(); };
-  document.getElementById('viewDef').onclick  = ()=>{ stopAnim(); viewMode='def';  toggleStressPanel(false); setActiveGroup(viewBtns,'viewDef');  draw(); };
-  document.getElementById('viewStressPanel').onclick = ()=>{ stopAnim(); viewMode='stresspanel'; toggleStressPanel(true); setActiveGroup(viewBtns,'viewStressPanel'); draw(); };
-  document.getElementById('btnCloseStressPanel').onclick = ()=>{ stopAnim(); viewMode='geom'; toggleStressPanel(false); setActiveGroup(viewBtns,'viewGeom'); draw(); };
+  document.getElementById('viewGeom').onclick = ()=>{
+    stopAnim();
+    viewMode='geom';
+    toggleStressPanel(false);
+    setActiveGroup(viewBtns,'viewGeom');
+    draw();
+  };
+  document.getElementById('viewDef').onclick  = ()=>{
+    stopAnim();
+    viewMode='def';
+    toggleStressPanel(false);
+    setActiveGroup(viewBtns,'viewDef');
+    draw();
+  };
+  document.getElementById('viewStressPanel').onclick = ()=>{
+    stopAnim();
+    viewMode='stresspanel';
+    toggleStressPanel(true);
+    setActiveGroup(viewBtns,'viewStressPanel');
+    draw();
+  };
+  document.getElementById('btnCloseStressPanel').onclick = ()=>{
+    stopAnim();
+    viewMode='geom';
+    toggleStressPanel(false);
+    setActiveGroup(viewBtns,'viewGeom');
+    draw();
+  };
 
   document.getElementById('btnUndo').onclick = () => {
     stopAnim(); lastSolution=null;
@@ -404,110 +463,176 @@ function addNode(x,y){
     draw();
   };
 
-  // I/O: Export JSON
-  document.getElementById('btnExportJSON').onclick = () => {
-    const data = {
-      timestamp: new Date().toISOString(),
-      units, nodes, members
-    };
-    const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+  // --- CSV Export (Nodal Results + Member Stresses) ---
+  document.getElementById('btnExportCSV').onclick = () => {
+    if (!lastSolution || !lastSolution.primaryRes){
+      Swal.fire('Note','Solve first to export results.','info'); return;
+    }
+    const now = new Date();
+    // Start CSV content
+    let csv = `Date,${now.toLocaleDateString()}\nTime,${now.toLocaleTimeString()}\n\n`;
+    
+    // Nodal Section
+    csv += "--- Nodal Results ---\n";
+    csv += "Node ID,Ux,Uy,Rotation (rad),Rx,Ry,Mz\n";
+    lastSolution.primaryRes.forEach(r => {
+      const reactions = lastSolution.reactionsByNode[r.id] || {Rx:0, Ry:0, Mz:0};
+      csv += `${r.id},${r.ux},${r.uy},${r.rz},${reactions.Rx.toFixed(4)},${reactions.Ry.toFixed(4)},${reactions.Mz.toFixed(4)}\n`;
+    });
+
+    // Member Stress Section
+    csv += "\n--- Member Results (Max Values) ---\n";
+    csv += "Member ID,Sigma Min,Sigma Max,|N| Max,|V| Max,|M| Max\n";
+    if (lastSolution.stressSummary) {
+      for (const mId of Object.keys(lastSolution.stressSummary)) {
+        const s = lastSolution.stressSummary[mId];
+        csv += `${mId},${s.sigmaMin.toFixed(4)},${s.sigmaMax.toFixed(4)},${s.NabsMax.toFixed(4)},${s.VabsMax.toFixed(4)},${s.MabsMax.toFixed(4)}\n`;
+      }
+    }
+
+    const blob = new Blob([csv], {type:'text/csv'});
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = `truss_model_${new Date().getTime()}.json`; a.click();
+    const a = document.createElement('a'); 
+    a.href = url; 
+    a.download = `frame_results_${now.getTime()}.csv`; 
+    a.click();
     URL.revokeObjectURL(url);
   };
 
-  // I/O: Import JSON
-  const fileInput = document.getElementById('jsonFileInput');
+  // --- JSON Export ---
+  document.getElementById('btnExportJSON').onclick = () => {
+    const data = {
+      timestamp: new Date().toISOString(),
+      units, nodes, members, view
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); 
+    a.href = url; 
+    a.download = `frame_model_${new Date().getTime()}.json`; 
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // --- JSON Import ---
+  const fileInput = document.getElementById('fileInput');
   document.getElementById('btnImportJSON').onclick = () => fileInput.click();
+  
   fileInput.addEventListener('change', (e) => {
-    const f = e.target.files[0]; if (!f) return;
+    const f = e.target.files[0]; 
+    if (!f) return;
     const rd = new FileReader();
     rd.onload = () => {
       try {
         const obj = JSON.parse(rd.result);
-        if (!obj.nodes || !obj.members) throw new Error('Invalid JSON structure');
-        
+        if (!obj.nodes || !obj.members) throw new Error('Missing nodes/members arrays');
+
+        // Restore Nodes
         nodes = obj.nodes.map(n => ({
-          id: n.id, x: n.x, y: n.y, bc: n.bc || 'free',
-          Fx: n.Fx || 0, Fy: n.Fy || 0, Kx: n.Kx || 0, Ky: n.Ky || 0, Wn: n.Wn || 0
+          id: n.id,
+          x: n.x, y: n.y,
+          bc: n.bc || 'free',
+          Fx: n.Fx || 0, Fy: n.Fy || 0, Mz: n.Mz || 0,
+          Kx: n.Kx || 0, Ky: n.Ky || 0, Kt: n.Kt || 0,
+          Wn: n.Wn || 0
         }));
-        
+
+        // Restore Members
         members = obj.members.map(m => ({
-          id: m.id, n1: m.n1, n2: m.n2, E: m.E || 0, A: m.A || 0,
-          I: m.I || 0, S: m.S || 0, c: m.c || 0, wd: m.wd || 0,
-          qix: m.qix || 0, qjx: m.qjx || 0, qiy: m.qiy || 0, qjy: m.qjy || 0,
+          id: m.id, n1: m.n1, n2: m.n2,
+          E: m.E || 0, A: m.A || 0,
+          I: m.I || 0, S: m.S || 0, c: m.c || 0,
+          wd: m.wd || 0,
+          qix: m.qix || 0, qjx: m.qjx || 0,
+          qiy: m.qiy || 0, qjy: m.qjy || 0,
           label: m.label || `M${m.id}`
         }));
 
-        nextNodeId = (nodes.reduce((a, n) => Math.max(a, n.id), 0) || 0) + 1;
-        nextMemberId = (members.reduce((a, m) => Math.max(a, m.id), 0) || 0) + 1;
-        lastSolution = null; selectedNodeId = null; selectedMemberId = null;
-        view.userAdjusted = false;
+        // Reset IDs
+        nextNodeId = (nodes.reduce((a,n) => Math.max(a,n.id), 0) || 0) + 1;
+        nextMemberId = (members.reduce((a,m) => Math.max(a,m.id), 0) || 0) + 1;
         
-        autoFitView();
-        refreshLists();
+        // Reset State
+        lastSolution = null; selectedNodeId = null; selectedMemberId = null; selectedMemberForDelete = null;
+        
+        // View Handling
+        if (obj.view) {
+           view.scale = obj.view.scale || 1;
+           view.offsetX = obj.view.offsetX || 0;
+           view.offsetY = obj.view.offsetY || 0;
+           view.userAdjusted = true;
+        } else {
+           view.userAdjusted = false;
+           autoFitView();
+        }
+
+        refreshLists(); 
         draw();
         Swal.fire('Loaded', 'Model imported successfully.', 'success');
-      } catch (err) {
-        Swal.fire('Error', 'Failed to parse JSON file.', 'error');
+      } catch(err) {
+        console.error(err);
+        Swal.fire('Load failed', 'Could not parse JSON file.', 'error');
       }
       fileInput.value = '';
     };
     rd.readAsText(f);
   });
 
-  // I/O: Export CSV
-  document.getElementById('btnExportCSV').onclick = () => {
-    if (!lastSolution || !lastSolution.primaryRes) {
-      Swal.fire('No Results', 'Run a solution first to export results.', 'info');
+  // Export Stresses CSV (Keeping the explicit button handler if needed separately, or merge logic)
+  document.getElementById('btnExportStressCSV').onclick = () => {
+    if (!lastSolution || !lastSolution.stress){
+      Swal.fire('Note','Solve first, then export stresses.','info'); 
       return;
     }
-    
-    const now = new Date();
-    let csv = `Date,${now.toLocaleDateString()}\nTime,${now.toLocaleTimeString()}\n\n`;
-    
-    // Nodal Results
-    csv += "Node ID,Ux (disp),Uy (disp),Reaction X,Reaction Y\n";
-    lastSolution.primaryRes.forEach(r => {
-      const rxn = lastSolution.reactionsByNode[r.id] || {Rx:0, Ry:0};
-      csv += `${r.id},${r.ux},${r.uy},${rxn.Rx.toFixed(4)},${rxn.Ry.toFixed(4)}\n`;
-    });
+    const stress = lastSolution.stress;
+    const rows = [['member','sample','x_along','sigma_top','sigma_bottom','N','V','M']];
 
-    // Member Stresses (Summary)
-    csv += "\nMember ID,Sigma Min,Sigma Max\n";
-    for (const memId of Object.keys(lastSolution.stress)) {
-      const st = lastSolution.stress[memId];
-      if (!st) continue;
-      const all = st.sL.concat(st.sR);
-      const sMin = Math.min(...all);
-      const sMax = Math.max(...all);
-      csv += `${memId},${sMin.toFixed(4)},${sMax.toFixed(4)}\n`;
+    for (const memId of Object.keys(stress)) {
+      const st = stress[memId];
+      if (!st || !st.x || st.x.length === 0) continue;
+
+      const xs   = st.x;
+      const sigT = st.sigmaTop || [];
+      const sigB = st.sigmaBot || [];
+      const Ns   = st.N || [];
+      const Vs   = st.V || [];
+      const Ms   = st.M || [];
+
+      for (let k = 0; k < xs.length; k++){
+        rows.push([
+          memId,
+          k,
+          xs[k],
+          sigT[k] ?? '',
+          sigB[k] ?? '',
+          Ns[k]   ?? '',
+          Vs[k]   ?? '',
+          Ms[k]   ?? ''
+        ]);
+      }
     }
 
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = `truss_results_${now.getTime()}.csv`; a.click();
-    URL.revokeObjectURL(url);
+    const csv = rows.map(r=>r.join(',')).join('\n');
+    const blob = new Blob([csv], {type:'text/csv'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'frame_member_stresses.csv';
+    a.click();
+    URL.revokeObjectURL(a.href);
   };
+
 
   document.getElementById('btnUS').onclick = () => { units='US'; Swal.fire('Units set','US (in, lbs)','success'); };
   document.getElementById('btnSI').onclick = () => { units='SI'; Swal.fire('Units set','SI (m, N)','success'); };
 
-  document.getElementById('btnSolve').onclick = () => { stopAnim(); solveTruss(); };
+  document.getElementById('btnSolve').onclick = () => { stopAnim(); solveFrame(); };
   document.getElementById('btnModes').onclick = () => { stopAnim(); computeModes(); };
   document.getElementById('btnResetView').onclick = () => { stopAnim(); lastSolution=null; selectedMemberId=null; draw(); };
 
   // Animate controls
-  document.getElementById('btnAnimate').onclick = () => { if (anim.on) stopAnim(); else startAnim(); };
-  
-
-  if (animFreq && animFreqVal) {
-    animFreq.addEventListener('input', () => {
-      animFreqVal.textContent = animFreq.value;
-    });
-  }
-
-
+  document.getElementById('btnAnimate').onclick = () => {
+    if (anim.on) stopAnim(); else startAnim();
+  };
 
   modeSelect.addEventListener('change', () => {
     currentMode = parseInt(modeSelect.value, 10) || 0;
@@ -515,6 +640,20 @@ function addNode(x,y){
     draw();
   });
 
+  // Frequency scale controls (slider <-> numeric)
+  if (freqScaleInput && freqScaleNum) {
+    freqScaleInput.addEventListener('input', () => {
+      const v = parseFloat(freqScaleInput.value) || 1;
+      freqScaleNum.value = v.toFixed(1);
+    });
+    freqScaleNum.addEventListener('input', () => {
+      let v = parseFloat(freqScaleNum.value);
+      if (!isFinite(v)) v = 1;
+      v = Math.max(0.1, Math.min(2.5, v));
+      freqScaleNum.value = v.toFixed(1);
+      freqScaleInput.value = v;
+    });
+  }
 
 
   function startAnim(){
@@ -527,13 +666,25 @@ function addNode(x,y){
       if (!anim.on){ anim.raf=null; return; }
       if (!anim.t0) anim.t0 = ts;
       const t = (ts - anim.t0) / 1000;
+      // Use selected mode frequency if available, else 1 Hz
       
-      const f = animFreq ? (parseFloat(animFreq.value) || 1) : 1;
-      
+      let f = 1;
+      if (currentMode > 0 && modalData.modes[currentMode-1]) {
+        f = modalData.modes[currentMode-1].freq || 1;
+      }
 
-const base = parseFloat(document.getElementById('defScale').value) || 1;
-      const amp = 0.5 * (1 - Math.cos(2*Math.PI*f*t));
-      anim.scaleOverride = base * amp;
+      // Apply user frequency scaling
+      let fScale = 1;
+      if (freqScaleInput) {
+        const val = parseFloat(freqScaleInput.value);
+        if (isFinite(val) && val > 0) fScale = val;
+      }
+      f *= fScale;
+
+      const base = parseFloat(document.getElementById('defScale').value) || 1;
+      const amp  = 0.5 * (1 - Math.cos(2 * Math.PI * f * t));
+
+anim.scaleOverride = base * amp;
       if (viewMode === 'def') draw();
       anim.raf = requestAnimationFrame(tick);
     };
@@ -568,7 +719,7 @@ const base = parseFloat(document.getElementById('defScale').value) || 1;
       return;
     }
 
-    const {x,y,sx,sy}=mousePos(e);
+    const {x,y}=mousePos(e);
 
     if (mode==='draw'){
       const nid=nearNodeId(x,y);
@@ -623,7 +774,8 @@ const base = parseFloat(document.getElementById('defScale').value) || 1;
       if (dragStart.existingStart) highlightNode(ovr, nodeById(dragStart.nodeId));
       if (hoverEndNodeId)        highlightNode(ovr, nodeById(hoverEndNodeId));
 
-      // live coordinate tag at current mouse (candidate end node) - displayed at screen coords
+
+      // live coordinate tag
       drawCoordTag(ovr, sx, sy, `(${x.toFixed(1)}, ${y.toFixed(1)})`);
       ovr.restore();
       return;
@@ -651,15 +803,6 @@ const base = parseFloat(document.getElementById('defScale').value) || 1;
         ovr.save(); ovr.lineWidth=4; ovr.strokeStyle='#ff006e';
         ovr.beginPath(); ovr.moveTo(A.x,A.y); ovr.lineTo(B.x,B.y); ovr.stroke(); ovr.restore();
         overlay.style.cursor='pointer';
-
-        // Hover tooltip for force & stress (if solved)
-        if (lastSolution){
-          const info = getMemberHoverInfo(mid, {x,y}); // world coords
-          if (info){
-            const p = worldToScreen(x,y);
-            hoverInfo = { x:p.x+12, y:p.y-12, lines:info };
-          }
-        }
       } else if (nid){
         const n=nodeById(nid);
         const p = worldToScreen(n.x,n.y);
@@ -673,8 +816,6 @@ const base = parseFloat(document.getElementById('defScale').value) || 1;
         overlay.style.cursor='pointer';
       }
     }
-
-    if (hoverInfo) drawHoverTooltip(ovr, hoverInfo);
   });
 
   overlay.addEventListener('mouseup', (e)=>{
@@ -685,7 +826,7 @@ const base = parseFloat(document.getElementById('defScale').value) || 1;
       return;
     }
 
-    const {x,y,sx,sy}=mousePos(e);
+    const {x,y}=mousePos(e);
     hoverInfo = null;
 
     if (mode==='draw' && dragStart){
@@ -797,10 +938,10 @@ const base = parseFloat(document.getElementById('defScale').value) || 1;
   function editNode(node){
     const bcOptions = [
       {value:'free',     text:'Free (no restraints)'},
-      {value:'simple',   text:'Pinned: u=0, v=0'},
-      {value:'rollerX',  text:'Roller-X: u=0, v free'},
-      {value:'rollerY',  text:'Roller-Y: v=0, u free'},
-      {value:'fixed',    text:'Fixed (truss): u=0, v=0'},
+      {value:'simple',   text:'Pinned: ux=0, uy=0, θ free'},
+      {value:'fixed',    text:'Fixed: ux=0, uy=0, θ=0'},
+      {value:'rollerX',  text:'Roller-X: ux=0, uy free, θ free'},
+      {value:'rollerY',  text:'Roller-Y: uy=0, ux free, θ free'},
     ];
     const html = `
       <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
@@ -810,17 +951,19 @@ const base = parseFloat(document.getElementById('defScale').value) || 1;
         </select>
 
         <div style="grid-column:1/3; display:flex; gap:10px; align-items:center;">
-          <canvas id="bcGlyph" width="180" height="60" style="border:1px dashed #ddd; border-radius:6px;"></canvas>
-          <span class="hint">Global axes</span>
+          <canvas id="bcGlyph" width="200" height="70" style="border:1px dashed #ddd; border-radius:6px;"></canvas>
+          <span class="hint">Global axes; θ is out-of-plane.</span>
         </div>
 
         <label style="grid-column:1/3; font-weight:600; margin-top:6px;">Nodal Loads</label>
         <label>Fx</label><input id="Fx" class="swal2-input" type="number" step="any" value="${node.Fx}">
         <label>Fy</label><input id="Fy" class="swal2-input" type="number" step="any" value="${node.Fy}">
+        <label>Mz</label><input id="Mz" class="swal2-input" type="number" step="any" value="${node.Mz || 0}">
 
-        <label style="grid-column:1/3; font-weight:600; margin-top:6px;">Translational Springs</label>
+        <label style="grid-column:1/3; font-weight:600; margin-top:6px;">Springs</label>
         <label>Kx</label><input id="Kx" class="swal2-input" type="number" step="any" value="${node.Kx}">
         <label>Ky</label><input id="Ky" class="swal2-input" type="number" step="any" value="${node.Ky}">
+        <label>Kθ</label><input id="Kt" class="swal2-input" type="number" step="any" value="${node.Kt || 0}">
 
         <label style="grid-column:1/3; font-weight:600; margin-top:6px;">Node Weight</label>
         <label>Wn</label>
@@ -837,142 +980,113 @@ const base = parseFloat(document.getElementById('defScale').value) || 1;
         drawBCGlyph(g, sel.value);
         sel.addEventListener('change', ev => drawBCGlyph(g, ev.target.value));
       },
-      
-preConfirm:()=>{
-  const v = id => parseFloat(document.getElementById(id).value)||0;
-  return {
-    bc: document.getElementById('bc').value,
-    Fx: v('Fx'),
-    Fy: v('Fy'),
-    Kx: v('Kx'),
-    Ky: v('Ky'),
-    Wn: v('Wn')   // <- add this line
-  };
-}
-}).then(res=>{ if (res.isConfirmed){ Object.assign(node,res.value); refreshLists(); draw(); }});
-}
-function editMember(m){
-  const html = `
-    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; align-items:center;">
-      <label>Label</label>
-      <input id="label" class="swal2-input" type="text" value="${m.label||''}">
-
-      <div style="grid-column:1/3; height:1px; background:#ececec; margin:6px 0;"></div>
-
-      <label>E</label>
-      <input id="E" class="swal2-input" type="number" step="any" value="${m.E}">
-
-      <label>wd (weight density)</label>
-      <input id="wd" class="swal2-input" type="number" step="any" value="${m.wd}">
-
-      <label>A</label>
-      <input id="A" class="swal2-input" type="number" step="any" value="${m.A}">
-
-      <label>I (for self-weight bending)</label>
-      <input id="I" class="swal2-input" type="number" step="any" value="${m.I||0}">
-
-      <label>S (section modulus)</label>
-      <input id="S" class="swal2-input" type="number" step="any" value="${m.S||0}">
-
-      <div class="hint" style="grid-column:1/3;">
-        If S is blank but I and c are known, σ<sub>b</sub> = M/S with S = I/c.
-        If neither present, bending from self-weight is skipped.
-      </div>
-
-      <div style="grid-column:1/3; height:1px; background:#ececec; margin:6px 0;"></div>
-
-      <label>qix (inactive)</label>
-      <input id="qix" class="swal2-input" type="number" step="any"
-             value="${m.qix}"
-             readonly
-             style="background:#ddd; color:#555; pointer-events:none;">
-
-      <label>qjx (inactive)</label>
-      <input id="qjx" class="swal2-input" type="number" step="any"
-             value="${m.qjx}"
-             readonly
-             style="background:#ddd; color:#555; pointer-events:none;">
-
-      <label>qiy (inactive)</label>
-      <input id="qiy" class="swal2-input" type="number" step="any"
-             value="${m.qiy}"
-             readonly
-             style="background:#ddd; color:#555; pointer-events:none;">
-
-      <label>qjy (inactive)</label>
-      <input id="qjy" class="swal2-input" type="number" step="any"
-             value="${m.qjy}"
-             readonly
-             style="background:#ddd; color:#555; pointer-events:none;">
-    </div>`;
-
-  Swal.fire({
-    title:`Member ${m.id}`,
-    html,
-    showCancelButton:true,
-    confirmButtonText:'Save',
-    preConfirm:()=>{
-      const v = id => parseFloat(document.getElementById(id)?.value) || 0;
-      const s = id => document.getElementById(id)?.value || '';
-
-      let I = v('I');
-      let S = v('S');
-      let c = (m.c || 0);   // existing fiber distance, if you ever set it
-
-      // If S not given but I and c are, back-calculate S = I/c
-      if ((S <= 0) && (I > 0 && c > 0)) {
-        S = I / c;
+      preConfirm:()=>{
+        const v = id => parseFloat(document.getElementById(id).value)||0;
+        return {
+          bc: document.getElementById('bc').value,
+          Fx: v('Fx'),
+          Fy: v('Fy'),
+          Mz: v('Mz'),
+          Kx: v('Kx'),
+          Ky: v('Ky'),
+          Kt: v('Kt'),
+          Wn: v('Wn')
+        };
       }
+    }).then(res=>{
+      if (res.isConfirmed){
+        Object.assign(node,res.value);
+        lastSolution = null;
+        refreshLists();
+        draw();
+      }
+    });
+  }
 
-      return {
-        label: s('label').trim(),
+  function editMember(m){
+    const html = `
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; align-items:center;">
+        <label>Label</label>
+        <input id="label" class="swal2-input" type="text" value="${m.label||''}">
 
-        // axial / stiffness properties
-        E:  v('E'),
-        wd: v('wd'),
-        A:  v('A') || 0,
-        I:  I || 0,
-        S:  S || 0,
-        c:  c || 0,
+        <div style="grid-column:1/3; height:1px; background:#ececec; margin:6px 0;"></div>
 
-        // q-loads explicitly zeroed out in the physics
-        qix: 0,
-        qjx: 0,
-        qiy: 0,
-        qjy: 0
-      };
-    }
-  }).then(res=>{
-    if (res.isConfirmed){
-      Object.assign(m, res.value);
-      refreshLists();
-      draw();
-    }
-  });
-}
+        <label>E</label>
+        <input id="E" class="swal2-input" type="number" step="any" value="${m.E}">
+
+        <label>A</label>
+        <input id="A" class="swal2-input" type="number" step="any" value="${m.A}">
+
+        <label>I</label>
+        <input id="I" class="swal2-input" type="number" step="any" value="${m.I}">
+
+        <label>S (section modulus)</label>
+        <input id="S" class="swal2-input" type="number" step="any" value="${m.S}">
+
+        <label>wd (weight density)</label>
+        <input id="wd" class="swal2-input" type="number" step="any" value="${m.wd}">
+
+        <div class="hint" style="grid-column:1/3;">
+          For now, distributed loads are not directly editable; self-weight uses wd × A.
+        </div>
+      </div>`;
+
+    Swal.fire({
+      title:`Member ${m.id}`,
+      html,
+      showCancelButton:true,
+      confirmButtonText:'Save',
+      preConfirm:()=>{
+        const v = id => parseFloat(document.getElementById(id)?.value) || 0;
+        const s = id => document.getElementById(id)?.value || '';
+        return {
+          label: s('label').trim(),
+          E:  v('E'),
+          A:  v('A'),
+          I:  v('I'),
+          S:  v('S'),
+          wd: v('wd'),
+          qix: 0, qjx: 0, qiy: 0, qjy: 0 // inactive
+        };
+      }
+    }).then(res=>{
+      if (res.isConfirmed){
+        Object.assign(m, res.value);
+        lastSolution = null;
+        refreshLists();
+        draw();
+      }
+    });
+  }
 
   // === Support glyphs (canvas + editor) ===
   function drawBCGlyph(g, bc){
     g.clearRect(0,0,g.canvas.width,g.canvas.height);
     g.save();
-    g.translate(20, g.canvas.height-20);
+    g.translate(30, g.canvas.height-20);
     g.strokeStyle='#aaa'; g.lineWidth=1;
-    g.beginPath(); g.moveTo(0,0); g.lineTo(140,0); g.stroke();
-    g.beginPath(); g.moveTo(0,0); g.lineTo(0,-40); g.stroke();
+    g.beginPath(); g.moveTo(-10,0); g.lineTo(140,0); g.stroke();
+
+    // Node
+    g.fillStyle='#000';
+    g.beginPath(); g.arc(0,0,4,0,Math.PI*2); g.fill();
 
     if (bc==='fixed'){
       g.lineWidth=6; g.strokeStyle='#222';
-      g.beginPath(); g.moveTo(0,0); g.lineTo(0,-30); g.stroke();
+      g.beginPath(); g.moveTo(-16, -20); g.lineTo(-16, 20); g.stroke();
       g.lineWidth=1; g.strokeStyle='#666';
-      for (let k=-14; k<=14; k+=7){ g.beginPath(); g.moveTo(0, k); g.lineTo(-8, k-6); g.stroke(); }
+      for (let k=-14; k<=14; k+=7){
+        g.beginPath(); g.moveTo(-16, k); g.lineTo(-24, k-6); g.stroke();
+      }
     } else if (bc==='simple'){
-      g.fillStyle='#222';
-      g.beginPath(); g.moveTo(0,0); g.lineTo(-12,12); g.lineTo(12,12); g.closePath(); g.fill();
-      g.fillRect(-16,12,32,3);
+      g.beginPath(); g.moveTo(0, 6); g.lineTo(-12, 20); g.lineTo(12, 20); g.closePath(); g.fill();
+      g.fillRect(-16,20,32,3);
     } else if (bc==='rollerX'){
-      g.fillStyle='#222'; g.fillRect(-2, -4, 4, 8); g.fillRect(10, 2, 26, 3);
+      g.beginPath(); g.moveTo(-6,0); g.lineTo(6,0); g.stroke();
+      g.fillRect(10, 2, 26, 3);
     } else if (bc==='rollerY'){
-      g.fillStyle='#222'; g.fillRect(-2, -4, 4, 8); g.fillRect(-18, 12, 3, 26);
+      g.beginPath(); g.moveTo(0,-6); g.lineTo(0,6); g.stroke();
+      g.fillRect(-18, 12, 3, 26);
     }
     g.restore();
   }
@@ -983,12 +1097,11 @@ function editMember(m){
     ovr.clearRect(0,0,overlay.width,overlay.height);
     drawGrid(ctx);
 
-    const qScale = computeQScale();
-
     ctx.save();
     ctx.lineWidth=2; ctx.strokeStyle='#222';
     ctx.font='12px system-ui'; ctx.fillStyle='#000';
 
+    // Members
     for (const m of members){
       const a=nodeById(m.n1), b=nodeById(m.n2);
       const A = worldToScreen(a.x,a.y);
@@ -998,111 +1111,69 @@ function editMember(m){
       const mx=(a.x+b.x)/2, my=(a.y+b.y)/2;
       const M = worldToScreen(mx,my);
       ctx.fillText(m.label||`M${m.id}`, M.x+4, M.y-6);
-
-      if (viewMode==='geom' || viewMode==='def'){
-        drawDistributedLoads(ctx, m, qScale);
-      }
     }
     ctx.restore();
 
-for (const n of nodes){
-  drawNodeBC(ctx, n);
-  drawNodeLoadsAndSprings(ctx, n);
+    // Nodes (supports, loads, springs, weights)
+    for (const n of nodes){
+      drawNodeBC(ctx, n);
+      drawNodeLoadsAndSprings(ctx, n);
 
-  const p = worldToScreen(n.x, n.y);
+      const p = worldToScreen(n.x, n.y);
 
-  // main node dot (blue)
-  ctx.save();
-  ctx.fillStyle = '#1d4ed8';
-  ctx.beginPath();
-  ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
+      // main node dot (blue)
+      ctx.save();
+      ctx.fillStyle = '#1d4ed8';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
 
-  // extra marker: black dot for explicit nodal weight (not from self-weight)
-  if (n.Wn && Math.abs(n.Wn) > 0){
-    ctx.save();
-    ctx.fillStyle = '#000';
-    // small black dot just above the node
-    ctx.beginPath();
-    ctx.arc(p.x, p.y - 8, 20, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-  }
+      // extra marker: black dot for explicit nodal weight (not from self-weight)
+      if (n.Wn && Math.abs(n.Wn) > 0){
+        ctx.save();
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 20, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
 
-  // coordinate tag next to node (screen coords)
-  drawCoordTag(ctx, p.x + 10, p.y - 12,
-               `(${n.x.toFixed(1)}, ${n.y.toFixed(1)})`);
-}
-
+      // coordinate tag next to node (screen coords)
+      drawCoordTag(ctx, p.x + 10, p.y - 12,
+                   `(${n.x.toFixed(1)}, ${n.y.toFixed(1)})`);
+    }
 
     // Support reactions (if available)
     if (lastSolution && lastSolution.reactionsByNode){
       drawReactions(ctx, lastSolution.reactionsByNode);
     }
 
+    // Deformed shape view (static or modal)
     if (viewMode === 'def') {
       let scale = parseFloat(document.getElementById('defScale').value) || 1;
       if (anim.scaleOverride != null) scale = anim.scaleOverride;
 
-      // --- Mode shapes (if a mode is selected and available) ---
+      // Choose which set of polylines to draw
+      let sublines = null;
       if (currentMode > 0 && modalData.modes[currentMode - 1]) {
-        const mode = modalData.modes[currentMode - 1];
-        const Umode = mode.Ufull;
+        sublines = modalData.modes[currentMode - 1].sublines;
+      } else if (lastSolution && lastSolution.sublines) {
+        sublines = lastSolution.sublines;
+      }
 
+      if (sublines) {
         ctx.save();
         ctx.lineWidth = 2;
         ctx.strokeStyle = '#e11d48';
 
-        for (const m of members) {
-          const a = nodeById(m.n1);
-          const b = nodeById(m.n2);
-          if (!a || !b) continue;
-
-          const bi = modalData.dofMap?.primary[m.n1];
-          const bj = modalData.dofMap?.primary[m.n2];
-          if (bi === undefined || bj === undefined) continue;
-
-          const ua = Umode[bi + 0] * scale;
-          const va = Umode[bi + 1] * scale;
-          const ub = Umode[bj + 0] * scale;
-          const vb = Umode[bj + 1] * scale;
-
-          const A = worldToScreen(a.x + ua, a.y + va);
-          const B = worldToScreen(b.x + ub, b.y + vb);
-
-          ctx.beginPath();
-          ctx.moveTo(A.x, A.y);
-          ctx.lineTo(B.x, B.y);
-          ctx.stroke();
-        }
-        ctx.restore();
-
-      // --- Static deflection (original behaviour) ---
-      } else if (lastSolution) {
-        const addQL = lastSolution.qAdd;
-
-        ctx.save();
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = '#e11d48';
-
-        for (const poly of lastSolution.sublines) {
+        for (const poly of sublines) {
           ctx.beginPath();
           for (let k = 0; k < poly.length; k++) {
             const p = poly[k];
-            let du = scale * p.u, dv = scale * p.v;
-
-            if (addQL && addQL.perMember[p.memId]) {
-              const qinfo = addQL.perMember[p.memId];
-              const yss = qinfo.yLocs[p.subIndex] || 0;
-              du -= scale * qinfo.s * yss;  // local y -> global
-              dv += scale * qinfo.c * yss;
-            }
-
-            const xWorld = p.x_up + du;
-            const yWorld = yCanvas(p.y_up + dv);
+            const xWorld = p.x_up + scale * p.u;
+            const yWorld = yCanvas(p.y_up + scale * p.v);
             const S = worldToScreen(xWorld, yWorld);
-
             if (k === 0) ctx.moveTo(S.x, S.y); else ctx.lineTo(S.x, S.y);
           }
           ctx.stroke();
@@ -1110,13 +1181,7 @@ for (const n of nodes){
         ctx.restore();
       }
     }
-
-
-    drawSelection();
-
-    // Hover tooltip (if set by mousemove)
-    if (hoverInfo) drawHoverTooltip(ovr, hoverInfo);
-  }
+}
 
   function drawReactions(g, reactionsByNode){
     g.save();
@@ -1125,19 +1190,26 @@ for (const n of nodes){
     for (const nidStr of Object.keys(reactionsByNode)){
       const nid = parseInt(nidStr,10);
       const n = nodeById(nid); if (!n) continue;
-      const {Rx, Ry} = reactionsByNode[nid];
+      const {Rx, Ry, Mz} = reactionsByNode[nid];
       const p = worldToScreen(n.x,n.y);
 
       if (Math.abs(Rx) > 1e-12){
         const dir = Math.sign(Rx) || 1;
-        const len = 20 + 16*Math.min(1, Math.abs(Rx)/ (Math.abs(Rx)+1e-9));
+        const len = 20;
         drawArrow(g, p.x, p.y, p.x + dir*len, p.y);
         g.fillText(`Rx=${round6(Rx)}`, p.x + dir*(len+6), p.y - 6);
       }
       if (Math.abs(Ry) > 1e-12){
-        const up = Ry>0; const len = 20 + 16*Math.min(1, Math.abs(Ry)/ (Math.abs(Ry)+1e-9));
+        const up = Ry>0; const len = 20;
         drawArrow(g, p.x, p.y, p.x, p.y + (up ? -len : +len));
         g.fillText(`Ry=${round6(Ry)}`, p.x + 6, p.y + (up ? -len-6 : len+14));
+      }
+      if (Math.abs(Mz) > 1e-12){
+        const r = 14;
+        g.beginPath();
+        g.arc(p.x - 18, p.y - 18, r, 0.8, 2.8*(Mz>0?1:-1));
+        g.stroke();
+        g.fillText(`Mz=${round6(Mz)}`, p.x - 40, p.y - 24);
       }
     }
     g.restore();
@@ -1163,6 +1235,69 @@ for (const n of nodes){
       g.beginPath(); g.moveTo(X,Y-6); g.lineTo(X,Y+6); g.stroke();
       g.fillRect(X-18, Y+12, 3, 26);
     }
+    g.restore();
+  }
+
+  function drawNodeLoadsAndSprings(g, node){
+    if (viewMode==='stresspanel') return;
+    const {x,y,Fx,Fy,Mz,Kx,Ky,Kt}=node;
+    const p = worldToScreen(x,y);
+    const X = p.x, Y = p.y;
+
+    g.save();
+
+    // Loads
+    g.strokeStyle='#db2777'; g.fillStyle='#db2777'; g.lineWidth=2;
+    if (Fx!==0){
+      const sign=Fx>0?1:-1, L=26*sign;
+      drawArrow(g,X,Y,X+L,Y);
+      g.fillText('Fx', X+L+(sign>0?6:-18), Y-6);
+    }
+    if (Fy!==0){
+      const sign=Fy>0?-1:1, L=26*sign;
+      drawArrow(g,X,Y,X,Y+L);
+      g.fillText('Fy', X+6, Y+L+(sign<0?-8:14));
+    }
+    if (Mz!==0){
+      const r = 16, cw = Mz<0;
+      g.beginPath();
+      g.arc(X-18, Y-18, r, cw?1.2:4.5, cw?5.3:2.0, cw);
+      g.stroke();
+      g.beginPath();
+      const ang = cw?5.3:2.0;
+      g.moveTo(X-18 + r*Math.cos(ang), Y-18 + r*Math.sin(ang));
+      g.lineTo(X-18 + (r+6)*Math.cos(ang+0.4), Y-18 + (r+6)*Math.sin(ang+0.4));
+      g.lineTo(X-18 + (r+6)*Math.cos(ang-0.4), Y-18 + (r+6)*Math.sin(ang-0.4));
+      g.closePath(); g.fill();
+      g.fillText('Mz', X-24, Y-26);
+    }
+
+    // Springs
+    g.strokeStyle='#0f766e'; g.fillStyle='#0f766e'; g.lineWidth=2;
+    if (Kx>0){ drawSpringX(g, X+16, Y, 18, 6); g.fillText('Kx', X+40, Y-6); }
+    if (Ky>0){ drawSpringY(g, X, Y+16, 18, 6); g.fillText('Ky', X+6, Y+42); }
+
+    // Rotational spring Kθ – larger, prominent arc
+    if (Kt > 0){
+      const r  = 20;
+      const cx = X - 25;
+      const cy = Y + 30;
+
+      g.lineWidth = 3;
+      g.beginPath();
+      g.arc(cx, cy, r, 0.8, 2.35);
+      g.stroke();
+
+      const coilSize = 6;
+      g.beginPath();
+      g.moveTo(cx + r * Math.cos(2.35), cy + r * Math.sin(2.35));
+      g.lineTo(cx + r * Math.cos(2.35) + coilSize, cy + r * Math.sin(2.35) - coilSize/2);
+      g.lineTo(cx + r * Math.cos(2.35) + coilSize, cy + r * Math.sin(2.35) + coilSize/2);
+      g.stroke();
+
+      g.fillText('Kθ', cx - 6, cy + r + 18);
+    }
+
     g.restore();
   }
 
@@ -1229,903 +1364,6 @@ for (const n of nodes){
     g.restore();
   }
 
-  function drawNodeLoadsAndSprings(g, node){
-    if (viewMode==='stresspanel') return;
-    const {x,y,Fx,Fy,Kx,Ky}=node;
-    const p = worldToScreen(x,y);
-    const X = p.x, Y = p.y;
-
-    g.save();
-    g.strokeStyle='#db2777'; g.fillStyle='#db2777'; g.lineWidth=2;
-    if (Fx!==0){ const sign=Fx>0?1:-1, L=26*sign; drawArrow(g,X,Y,X+L,Y); g.fillText('Fx', X+L+(sign>0?6:-18), Y-6); }
-    if (Fy!==0){ const sign=Fy>0?-1:1, L=26*sign; drawArrow(g,X,Y,X,Y+L); g.fillText('Fy', X+6, Y+L+(sign<0?-8:14)); }
-    g.strokeStyle='#0f766e'; g.fillStyle='#0f766e'; g.lineWidth=2;
-    if (Kx>0){ drawSpringX(g, X+16, Y, 18, 6); g.fillText('Kx', X+40, Y-6); }
-    if (Ky>0){ drawSpringY(g, X, Y+16, 18, 6); g.fillText('Ky', X+6, Y+42); }
-    g.restore();
-  }
-
-  // q-load graphics
-  function computeQScale(){
-    let maxQx=0, maxQy=0;
-    for (const m of members){
-      maxQx = Math.max(maxQx, Math.abs(m.qix||0), Math.abs(m.qjx||0));
-      maxQy = Math.max(maxQy, Math.abs(m.qiy||0), Math.abs(m.qjy||0));
-    }
-    return { maxQx: maxQx || 1, maxQy: maxQy || 1, lenX:28, lenY:28 };
-  }
-  function drawDistributedLoads(g, m, qScale){
-    const a=nodeById(m.n1), b=nodeById(m.n2);
-    const dx=b.x-a.x, dy=b.y-a.y;
-    const markers = 12;
-    // qx
-    for (let k=0;k<=markers;k++){
-      const t=k/markers, x=a.x+dx*t, y=a.y+dy*t;
-      const qx = (m.qix||0) + ((m.qjx||0) - (m.qix||0))*t;
-      if (Math.abs(qx)>1e-12){
-        const dir = Math.sign(qx)||1, len=Math.max(8, Math.abs(qx)/qScale.maxQx*qScale.lenX);
-        const P = worldToScreen(x,y);
-        drawArrow(g, P.x, P.y, P.x + dir*len, P.y);
-        if (k===Math.floor(markers/2)) g.fillText('qx', P.x + dir*len + (dir>0?6:-18), P.y-6);
-      }
-    }
-    // qy
-    for (let k=0;k<=markers;k++){
-      const t=k/markers, x=a.x+dx*t, y=a.y+dy*t;
-      const qy = (m.qiy||0) + ((m.qjy||0) - (m.qiy||0))*t;
-      if (Math.abs(qy)>1e-12){
-        const up=qy>0, len=Math.max(8, Math.abs(qy)/qScale.maxQy*qScale.lenY);
-        const P = worldToScreen(x,y);
-        drawArrow(g, P.x, P.y, P.x, P.y + (up ? -len : +len));
-        if (k===Math.floor(markers/2)) g.fillText('qy', P.x+6, P.y + (up ? -len-6 : len+14));
-      }
-    }
-  }
-
-  // ===== SOLVER (TRUSS) + q-load superposition =====
-
-function solveTruss(){
-  const DIV = Math.max(1, Math.min(50, (parseInt(document.getElementById('divCount').value)||10)));
-  try {
-    const build = buildAnalysisModelTruss(DIV);
-    const {N, dofMap, anodes, F, K, geom} = build; // note: geom pulled out
-
-    // sanity: at least one support
-    const supportCount = nodes.reduce((n,nd)=> n + ((nd.bc!=='free')?1:0), 0);
-    if (supportCount === 0) {
-      Swal.fire('No supports','Add at least one support (simple/roller).','error');
-      return;
-    }
-
-    // add node springs
-    for (const n of nodes){
-      const base = dofMap.primary[n.id]; if (base===undefined) continue;
-      if (n.Kx>0) K[base+0][base+0] += n.Kx;
-      if (n.Ky>0) K[base+1][base+1] += n.Ky;
-    }
-
-    // add external nodal loads
-    for (const n of nodes){
-      const b = dofMap.primary[n.id]; if (b===undefined) continue;
-      F[b+0] += n.Fx;
-      F[b+1] += n.Fy;
-    }
-
-    // add equivalent nodal loads from member self-weight (uniform w = wd*A, vertical down)
-    for (const m of members){
-      const g = geom[m.id]; if (!g) continue;
-      const sw = (m.wd||0)*(m.A||0);  // weight per unit length, positive magnitude
-      if (!sw) continue;
-      const Lm = g.L;
-      const Fy_each = -sw * Lm / 2;   // up is +, so down is negative
-      const bi = dofMap.primary[m.n1];
-      const bj = dofMap.primary[m.n2];
-      if (bi !== undefined) F[bi+1] += Fy_each;
-      if (bj !== undefined) F[bj+1] += Fy_each;
-    }
-
-    // boundary conditions
-    const constrained = new Set();
-    for (const n of nodes){
-      const b = dofMap.primary[n.id]; if (b===undefined) continue;
-      if (n.bc==='fixed' || n.bc==='simple'){
-        constrained.add(b+0); constrained.add(b+1);
-      } else if (n.bc==='rollerX'){
-        constrained.add(b+0);
-      } else if (n.bc==='rollerY'){
-        constrained.add(b+1);
-      }
-    }
-    const allIdx = [...Array(N).keys()];
-    const freeIdx = allIdx.filter(i => !constrained.has(i));
-    if (freeIdx.length===0){
-      console.warn('All DOFs constrained', {dofMap,nodes});
-      Swal.fire('No free DOFs','All translational DOFs are restrained.','error');
-      return;
-    }
-
-    const Kff = matPick(K, freeIdx, freeIdx);
-    const Ff  = vecPick(F, freeIdx);
-    let Uf;
-    try { Uf = numeric.solve(Kff, Ff); } catch { throw new Error('singular'); }
-    if (Uf.some(v => !isFinite(v))) throw new Error('singular');
-
-    const U = Array(N).fill(0);
-    freeIdx.forEach((gi, k) => { U[gi] = Uf[k]; });
-
-    const KU = numeric.dot(K, U);
-    const R = KU.map((v,i)=>v - F[i]);
-
-    // Map reactions to nodes (only restrained DOFs matter)
-    const reactionsByNode = {};
-    for (const n of nodes){
-      const b = dofMap.primary[n.id];
-      let Rx = 0, Ry = 0;
-      if (constrained.has(b+0)) Rx = R[b+0];
-      if (constrained.has(b+1)) Ry = R[b+1];
-      reactionsByNode[n.id] = {Rx, Ry};
-    }
-
-    // ----- build sampled polylines & axial forces (no interior DOFs) -----
-    const sublines = [];
-    const axial    = {};
-    const samplesByMember = {};
-
-    for (const m of members){
-      const g = build.geom[m.id]; if (!g) continue;
-
-      const bi = build.dofMap.analysis[g.i];
-      const bj = build.dofMap.analysis[g.j];
-
-      const ui = {u:U[bi+0], v:U[bi+1]};
-      const uj = {u:U[bj+0], v:U[bj+1]};
-
-      // constant axial force in a 2D bar
-      const dux = (U[bj+0]-U[bi+0]), duy = (U[bj+1]-U[bi+1]);
-      const Nbar = (m.E||0)*(m.A||0)/g.L * ( g.c*dux + g.s*duy ); // + tension
-      axial[m.id] = { N:[Nbar,Nbar], cnt:[1,1] };
-
-      // sampled polyline (DIV+2 points including ends)
-      const poly = [];
-      const S = build.DIV;
-      const pi = build.anodes[g.i], pj = build.anodes[g.j];
-
-      samplesByMember[m.id] = [];
-      for (let k=0; k<=S+1; k++){
-        const t = k/(S+1);
-        const x_up = pi.x_up + t*(pj.x_up - pi.x_up);
-        const y_up = pi.y_up + t*(pj.y_up - pi.y_up);
-        const u = ui.u*(1-t) + uj.u*t;
-        const v = ui.v*(1-t) + uj.v*t;
-
-        poly.push({ memId:m.id, subIndex:k, x_up, y_up, u, v });
-        samplesByMember[m.id].push({t, x: t*g.L, c:g.c, s:g.s});
-      }
-      sublines.push(poly);
-    }
-
-    // ----- self-weight simply-supported superposition & stresses (q loads deactivated) -----
-    const qAdd = { perMember:{}, yLocsByMember:{} };
-    const stress = {};
-
-    for (const m of members){
-      const g = build.geom[m.id]; if (!g) continue;
-      const S = build.DIV + 2;
-      const smp = samplesByMember[m.id];
-
-      const sw = (m.wd||0)*(m.A||0);   // self-weight per unit length
-      // q loads are intentionally ignored here
-      const Qx = 0;
-      const Qy = -sw;                  // up positive, so self-weight is downward
-      const w  = -g.s*Qx + g.c*Qy;     // local transverse load (uniform)
-
-      const E=m.E||0, I=m.I||0, useBend=(E>0&&I>0);
-      const yLocs=[], xs=[];
-      for (let k=0; k<S; k++){
-        const x = smp[k].x; xs.push(x);
-        // simply supported beam deflection under uniform w
-        yLocs.push(
-          useBend ? (w * x * (g.L*g.L*g.L - 2*g.L*x*x + x*x*x)) / (24*E*I) : 0
-        );
-      }
-      qAdd.perMember[m.id] = { yLocs, xs, c:g.c, s:g.s };
-      qAdd.yLocsByMember[m.id] = yLocs;
-
-      // stresses (axial from truss + bending from self-weight)
-      const A=m.A||0;
-      const Smod = (m.S>0)? m.S : ((m.I>0 && m.c>0)? (m.I/m.c) : 0);
-      const sL=[], sR=[], pts=[];
-      const pi = build.anodes[g.i], pj = build.anodes[g.j];
-
-      for (let k=0; k<S; k++){
-        const t = smp[k].t;
-        const x_up = pi.x_up + t*(pj.x_up - pi.x_up);
-        const y_up = pi.y_up + t*(pj.y_up - pi.y_up);
-        const Na = axial[m.id].N[0];        // constant along a bar
-        const sigAx = (A>0)? (Na/A) : 0;
-
-        let sigB = 0;
-        if (useBend && Smod>0){
-          const x = xs[k];
-          const Ra = w * g.L / 2;
-          const Mx = Ra * x - w * x*x / 2;  // simply supported under uniform w
-          sigB = Mx / Smod;
-        }
-        sL.push(sigAx - sigB);  // one fiber
-        sR.push(sigAx + sigB);  // opposite fiber
-        pts.push({x_up, y_up});
-      }
-      stress[m.id] = { pts, sL, sR };
-    }
-
-    lastSolution = {
-      Ufull:U,
-      dofMap:build.dofMap,
-      anodes:build.anodes,
-      sublines,
-      reactions:R,
-      reactionsByNode,
-      axial,
-      stress,
-      qAdd,
-      geom: build.geom
-    };
-
-    lastSolution.primaryRes = nodes.map(n=>{
-      const b = build.dofMap.primary[n.id];
-      return { id:n.id, ux:round6(U[b+0]), uy:round6(U[b+1]) };
-    });
-    showResults(lastSolution.primaryRes);
-    summarizeMemberStresses();
-
-    // auto deflection scale (includes self-weight bending via qAdd)
-    const bbox = modelBounds();
-    const Lref = Math.max(bbox.w, bbox.h) || 1;
-    let maxDisp=0;
-    for (const aidStr of Object.keys(lastSolution.anodes)){
-      const aid = parseInt(aidStr,10);
-      const b = lastSolution.dofMap.analysis[aid];
-      const u = lastSolution.Ufull[b+0], v = lastSolution.Ufull[b+1];
-      maxDisp = Math.max(maxDisp, Math.hypot(u,v));
-    }
-    for (const mem of members){
-      const yLocs = qAdd.yLocsByMember[mem.id]||[];
-      for (const y of yLocs) maxDisp = Math.max(maxDisp, Math.abs(y));
-    }
-    const defScaleAuto = (maxDisp>0) ? (0.20*Lref/maxDisp) : 1;
-    document.getElementById('defScale').value = +defScaleAuto.toFixed(4);
-
-    if (viewMode==='stresspanel') plotStressPanel();
-    draw();
-  } catch (err){
-    console.error(err);
-    Swal.fire({
-      icon:'error',
-      title:'Solve failed',
-      html:`<div style="text-align:left">
-        <div><b>Likely causes</b></div>
-        <ul style="margin:6px 0 0 18px;">
-          <li>Under-constrained truss (need enough supports).</li>
-          <li>Member has zero length or missing E/A.</li>
-        </ul>
-      </div>`
-    });
-  }
-}
-
-  // ===== MODAL ANALYSIS (FIRST 3 MODES) =====
-  function computeModes(){
-    const DIV = Math.max(1, Math.min(50, (parseInt(document.getElementById('divCount').value)||10)));
-
-    try{
-      // Build the bare truss model (same as static solve)
-      const build = buildAnalysisModelTruss(DIV);
-      const { N, dofMap, anodes, F, K, geom } = build;
-
-      // Must have at least one support
-      const supportCount = nodes.reduce((n, nd) => n + ((nd.bc !== 'free') ? 1 : 0), 0);
-      if (supportCount === 0){
-        Swal.fire('No supports','Add at least one support (simple/roller/fixed) before modal analysis.','error');
-        return;
-      }
-
-      // Boundary conditions (same pattern as in solveTruss)
-      const constrained = new Set();
-      for (const n of nodes){
-        const b = dofMap.primary[n.id];
-        if (b === undefined) continue;
-        if (n.bc === 'fixed' || n.bc === 'simple'){
-          constrained.add(b+0); constrained.add(b+1);
-        } else if (n.bc === 'rollerX'){
-          constrained.add(b+0);
-        } else if (n.bc === 'rollerY'){
-          constrained.add(b+1);
-        }
-      }
-
-      const allIdx = [...Array(N).keys()];
-      const freeIdx = allIdx.filter(i => !constrained.has(i));
-      if (freeIdx.length === 0){
-        Swal.fire('No free DOFs','All DOFs are restrained; modal analysis not meaningful.','error');
-        return;
-      }
-
-      // ----- Lumped mass from member self-weight (A, wd required) -----
-      const Mdiag = new Array(N).fill(0);
-      const G = 386.09;  // in/s^2, adjust if you work strictly in SI
-
-      // First pass: validate that all members have A and wd
-      for (const m of members){
-        const gEl = geom[m.id];
-        if (!gEl) continue;   // member may have been skipped if zero length
-        const A  = m.A  || 0;
-        const wd = m.wd || 0;
-        if (A <= 0 || wd <= 0){
-          Swal.fire(
-            'Modal analysis requires A and wd',
-            `Member ${m.id} is missing cross-sectional area A or weight density wd.\n\nSet both > 0 for all members before running modes.`,
-            'error'
-          );
-          return;
-        }
-      }
-
-      // Second pass: assemble lumped nodal masses
-      for (const m of members){
-        const gEl = geom[m.id];
-        if (!gEl) continue;
-        const A  = m.A  || 0;
-        const wd = m.wd || 0;
-        const L  = gEl.L;
-
-        const wLine = wd * A;        // weight per unit length
-        const mTot  = wLine * L / G; // total mass from self-weight
-        const mNode = mTot / 2;      // each end gets half
-
-        const pidI = anodes[gEl.i].primary;
-        const pidJ = anodes[gEl.j].primary;
-        const bi   = dofMap.primary[pidI];
-        const bj   = dofMap.primary[pidJ];
-
-        // Lump into translational DOFs
-        Mdiag[bi+0] += mNode;
-        Mdiag[bi+1] += mNode;
-        Mdiag[bj+0] += mNode;
-        Mdiag[bj+1] += mNode;
-      }
-
-      // Add explicit node weights (Wn) to the diagonal mass matrix
-      for (const n of nodes){
-        const b = dofMap.primary[n.id];
-        if (b === undefined) continue;
-        const Wn = n.Wn || 0;   // node weight in same units as other weights
-        if (Wn > 0){
-          const mNode = Wn / G;
-          Mdiag[b+0] += mNode;
-          Mdiag[b+1] += mNode;
-        }
-      }
-
-      // Check that every free DOF has positive mass
-      for (const gi of freeIdx){
-        if (Mdiag[gi] <= 0){
-          Swal.fire(
-            'Zero-mass DOF detected',
-            'Some free DOFs have zero lumped mass.\n\nCheck A and wd on all members so every free node carries mass.',
-            'error'
-          );
-          return;
-        }
-      }
-
-      // ----- Extract Kff and Mff (diagonal) and form scaled eigenproblem -----
-      const Kff = matPick(K, freeIdx, freeIdx);
-      const nf  = freeIdx.length;
-      const MdiagF = freeIdx.map(gi => Mdiag[gi]);
-
-      // Build K̃ = D Kff D with D = diag(1/sqrt(M))
-      const Kt = zeros(nf, nf);
-      for (let i=0;i<nf;i++){
-        const di = Math.sqrt(MdiagF[i]);
-        for (let j=0;j<nf;j++){
-          const dj = Math.sqrt(MdiagF[j]);
-          Kt[i][j] = Kff[i][j] / (di * dj);
-        }
-      }
-
-      // ----- Eigen solve -----
-      let eig;
-      try{
-        eig = numeric.eig(Kt);
-      } catch(err){
-        console.error(err);
-        Swal.fire('Modal solve failed','Eigenvalue solver did not converge.','error');
-        return;
-      }
-
-      const lambdas = (eig && eig.lambda && eig.lambda.x) ? eig.lambda.x : [];
-      if (!lambdas.length){
-        Swal.fire('Modal solve failed','No eigenvalues were returned by the solver.','error');
-        return;
-      }
-
-      // Collect positive, non-tiny eigenvalues
-      const modesMeta = [];
-      for (let k=0;k<lambdas.length;k++){
-        const lam = lambdas[k];
-        if (!isFinite(lam) || lam <= 1e-8) continue; // treat tiny/negative as rigid body
-        modesMeta.push({ lam, index:k });
-      }
-      if (!modesMeta.length){
-        Swal.fire(
-          'Mechanism / rigid body motion',
-          'No positive eigenvalues were found.\nThe structure is not fully restrained for modal analysis.',
-          'error'
-        );
-        return;
-      }
-
-      // Sort by ascending λ and take first 3
-      modesMeta.sort((a,b) => a.lam - b.lam);
-      const maxModes = Math.min(3, modesMeta.length);
-
-      // ----- Build physical mode shapes (global DOF vectors) -----
-      const Evecs = eig.E.x;       // eigenvectors in columns
-      modalData = { modes: [], dofMap };  // reset & store mapping
-
-      for (let i=0;i<maxModes;i++){
-        const meta = modesMeta[i];
-        const eigIndex = meta.index;
-
-        // φ (eigenvector of K̃)
-        const phi = [];
-        for (let r=0;r<nf;r++){
-          phi.push(Evecs[r][eigIndex]);
-        }
-
-        // xFree = D φ, with Dii = 1/sqrt(Mi)
-        const xFree = new Array(nf);
-        for (let j=0;j<nf;j++){
-          xFree[j] = phi[j] / Math.sqrt(MdiagF[j]);  // physical coords
-        }
-
-        // Expand to full DOF vector (constrained DOFs = 0)
-        const Ufull = new Array(N).fill(0);
-        freeIdx.forEach((gi,k) => { Ufull[gi] = xFree[k]; });
-
-        const omega = Math.sqrt(meta.lam);       // rad/s
-        const freq  = omega / (2*Math.PI);       // Hz
-
-        modalData.modes.push({ omega, freq, Ufull });
-      }
-
-      // Update Mode selector options
-      modeSelect.innerHTML = '<option value="0">Static</option>';
-      for (let i=0;i<modalData.modes.length;i++){
-        modeSelect.innerHTML += `<option value="${i+1}">${i+1}</option>`;
-      }
-      currentMode = 1;   // default to first mode after solve
-
-      // Auto-scale deflection for visibility using first mode
-      if (modalData.modes.length){
-        const bbox = modelBounds();
-        const Lref = Math.max(bbox.w, bbox.h) || 1;
-        const U1   = modalData.modes[0].Ufull;
-        let maxDisp = 0;
-        for (let gi of freeIdx){
-          const ux = U1[gi];
-          maxDisp = Math.max(maxDisp, Math.abs(ux));
-        }
-        const defScaleAuto = (maxDisp>0) ? (0.20 * Lref / maxDisp) : 1;
-        document.getElementById('defScale').value = +defScaleAuto.toFixed(4);
-      }
-
-      // ----- Build popup summary table (unchanged behaviour) -----
-      let html = `
-        <table style="width:100%;border-collapse:collapse;font-size:13px;">
-          <tr>
-            <th style="text-align:left;padding:4px;border-bottom:1px solid #ddd;">Mode</th>
-            <th style="text-align:right;padding:4px;border-bottom:1px solid #ddd;">ω</th>
-            <th style="text-align:right;padding:4px;border-bottom:1px solid #ddd;">f</th>
-          </tr>
-      `;
-
-      for (let i=0;i<modalData.modes.length;i++){
-        const m = modalData.modes[i];
-        html += `
-          <tr>
-            <td style="padding:4px;">${i+1}</td>
-            <td style="padding:4px;text-align:right;">${m.omega.toFixed(4)}</td>
-            <td style="padding:4px;text-align:right;">${m.freq.toFixed(4)}</td>
-          </tr>
-        `;
-      }
-
-      html += `
-        </table>
-        <div style="margin-top:6px;font-size:11px;color:#666;">
-          ω and f are in units consistent with your length/force inputs and the assumed g = ${G.toFixed(2)}.
-        </div>
-      `;
-
-      Swal.fire({
-        icon:'info',
-        title:'First natural modes',
-        html
-      });
-
-      // Refresh view if we're in deflection view
-      if (viewMode === 'def') draw();
-
-    } catch(err){
-      console.error(err);
-      modalData = { modes: [], dofMap: null };
-      currentMode = 0;
-      modeSelect.innerHTML = '<option value="0">Static</option>';
-      Swal.fire('Modal solve failed','Unexpected error during modal analysis.','error');
-    }
-  }
-
-
-
-  // ===== Build model (TRUSS) – primary-node DOFs only =====
-  function buildAnalysisModelTruss(DIV){
-    const anodes = {};
-    const dofMap = { primary:{}, analysis:{} };
-    let aNextId = 1;
-
-    // analysis nodes == primary nodes only (2 DOF/node)
-    for (const n of nodes){
-      const id=aNextId++;
-      anodes[id] = { x_up:n.x, y_up:yUp(n.y), primary:n.id };
-      dofMap.primary[n.id] = (id-1)*2;
-      dofMap.analysis[id] = (id-1)*2;
-    }
-
-    // one bar per member
-    const elems = [];
-    const geom  = {};
-    for (const m of members){
-      const ni = getAnalysisIdForPrimary(m.n1, anodes);
-      const nj = getAnalysisIdForPrimary(m.n2, anodes);
-      const pi = anodes[ni], pj = anodes[nj];
-      const dx = pj.x_up - pi.x_up, dy = pj.y_up - pi.y_up;
-      const L = Math.hypot(dx,dy); if (L<1e-9) continue;
-      const c = dx/L, s = dy/L;
-
-      elems.push({ i:ni, j:nj, L, c, s, E:m.E||0, A:m.A||0, memId:m.id });
-      geom[m.id] = { i:ni, j:nj, L, c, s };
-    }
-
-    const N = Object.keys(anodes).length * 2;
-    const K = zeros(N,N);
-    const F = zeros(N);
-
-    // assemble (axial only)
-    for (const el of elems){
-      const k = (el.E*el.A)/el.L;
-      const {c,s} = el;
-      const kG = [
-        [ k*c*c,   k*c*s,  -k*c*c,  -k*c*s ],
-        [ k*c*s,   k*s*s,  -k*c*s,  -k*s*s ],
-        [-k*c*c,  -k*c*s,   k*c*c,   k*c*s ],
-        [-k*c*s,  -k*s*s,   k*c*s,   k*s*s ]
-      ];
-      const ib = dofMap.analysis[el.i], jb = dofMap.analysis[el.j];
-      addToGlobalVar(K, kG, [ib+0, ib+1, jb+0, jb+1]);
-    }
-
-    return { N, dofMap, anodes, F, K, elems, geom, DIV: Math.max(1, Math.min(50, DIV|0)) };
-  }
-
-  // ===== Stress Panel =====
-
-function plotStressPanel(){
-  if (stressBlock.style.display === 'none') return;
-  resizeStressCanvas();
-  const w = stressCanvas.width, h = stressCanvas.height;
-  spx.clearRect(0, 0, w, h);
-
-  if (!lastSolution || !selectedMemberId){
-    spx.save();
-    spx.fillStyle = '#999';
-    spx.fillText('Solve and click a member to plot stresses.', 10, 20);
-    spx.restore();
-    return;
-  }
-
-  const st = lastSolution.stress[selectedMemberId];
-  if (!st){
-    spx.fillText('Selected member has no stress data.', 10, 20);
-    return;
-  }
-
-  const xs = [0];
-  let Lsum = 0;
-  for (let i = 1; i < st.pts.length; i++){
-    const x0 = st.pts[i-1].x_up, y0 = st.pts[i-1].y_up;
-    const x1 = st.pts[i].x_up,   y1 = st.pts[i].y_up;
-    Lsum += Math.hypot(x1 - x0, y1 - y0);
-    xs.push(Lsum);
-  }
-
-  // Use actual stresses (same sign convention as summary)
-  const minS = Math.min(...st.sL, ...st.sR);
-  const maxS = Math.max(...st.sL, ...st.sR);
-
-  const left = 45, right = 15, top = 15, bot = 30;
-
-  spx.save();
-  spx.strokeStyle = '#444';
-  spx.lineWidth = 1;
-  spx.beginPath();
-  spx.moveTo(left, top);
-  spx.lineTo(left, h - bot);
-  spx.lineTo(w - right, h - bot);
-  spx.stroke();
-
-  spx.fillStyle = '#333';
-  spx.fillText('σ', 8, top + 10);
-  spx.fillText('x', w - right - 10, h - bot + 18);
-
-  const xMap = x => left + (w - left - right) * (x / Lsum || 0);
-  const yMap = s => (h - bot) - (h - top - bot) * ((s - minS) / (maxS - minS || 1));
-
-  // zero-stress line
-  const y0 = yMap(0);
-  spx.strokeStyle = '#ddd';
-  spx.setLineDash([4, 4]);
-  spx.beginPath();
-  spx.moveTo(left, y0);
-  spx.lineTo(w - right, y0);
-  spx.stroke();
-  spx.setLineDash([]);
-
-  // σL (red)
-  spx.strokeStyle = '#ef4444';
-  spx.beginPath();
-  for (let i = 0; i < xs.length; i++){
-    const x = xMap(xs[i]);
-    const y = yMap(st.sL[i]);
-    if (i === 0) spx.moveTo(x, y); else spx.lineTo(x, y);
-  }
-  spx.stroke();
-
-  // σR (blue)
-  spx.strokeStyle = '#3b82f6';
-  spx.beginPath();
-  for (let i = 0; i < xs.length; i++){
-    const x = xMap(xs[i]);
-    const y = yMap(st.sR[i]);
-    if (i === 0) spx.moveTo(x, y); else spx.lineTo(x, y);
-  }
-  spx.stroke();
-
-  spx.fillStyle = '#666';
-  spx.fillText(`${minS.toFixed(3)}`, 6, yMap(minS) + 4);
-  spx.fillText(`${maxS.toFixed(3)}`, 6, yMap(maxS) + 4);
-  spx.fillText(`Member ${selectedMemberId}`, left + 6, top + 12);
-  spx.restore();
-}
-
-
-  // ===== Member stress summary (sidebar) =====
-  function summarizeMemberStresses(){
-    if (!lastSolution || !lastSolution.stress) return;
-    const items = [];
-    for (const memId of Object.keys(lastSolution.stress)){
-      const st = lastSolution.stress[memId];
-      if (!st) continue;
-      const all = st.sL.concat(st.sR);
-      const sMin = Math.min(...all);
-      const sMax = Math.max(...all);
-      items.push(`<div>Member ${memId}: σmin=${sMin.toFixed(3)}, σmax=${sMax.toFixed(3)}</div>`);
-    }
-    const box = document.getElementById('resultList');
-    box.insertAdjacentHTML('beforeend',
-      `<div style="margin-top:6px;border-top:1px dashed #ddd;padding-top:6px;">
-         <strong>Member Stress Summary</strong>${items.join('')||'<div class="hint">No members.</div>'}
-       </div>`);
-  }
-
-  // ===== Hover info helpers =====
-  function getMemberHoverInfo(memId, Pworld){
-    if (!lastSolution) return null;
-    const m = memberById(memId); if (!m) return null;
-    const a=nodeById(m.n1), b=nodeById(m.n2);
-    const tWorld = pointToSegmentProjectionT(Pworld, a, b);
-    const st = lastSolution.stress[memId]; if (!st) return null;
-    const xs=[0]; let Lsum=0;
-    for (let i=1;i<st.pts.length;i++){
-      const x0=st.pts[i-1].x_up, y0=st.pts[i-1].y_up, x1=st.pts[i].x_up, y1=st.pts[i].y_up;
-      Lsum += Math.hypot(x1-x0, y1-y0);
-      xs.push(Lsum);
-    }
-    const pi = lastSolution.anodes[lastSolution.geom[memId].i];
-    const pj = lastSolution.anodes[lastSolution.geom[memId].j];
-    const Px_up = pi.x_up + tWorld*(pj.x_up - pi.x_up);
-    const Py_up = pi.y_up + tWorld*(pj.y_up - pi.y_up);
-    let bestK=0, bestD=Infinity, run=0;
-    for (let k=0;k<st.pts.length;k++){
-      const dx = st.pts[k].x_up - Px_up, dy = st.pts[k].y_up - Py_up;
-      const d = dx*dx + dy*dy;
-      if (d<bestD){ bestD=d; bestK=k; run=xs[k]; }
-    }
-    const Nbar = (lastSolution.axial[memId]?.N?.[0]) || 0;
-    const sL = st.sL[bestK] ?? 0;
-    const sR = st.sR[bestK] ?? 0;
-    const sense = (Nbar>=0) ? 'tension' : 'compression';
-    return [
-      `${m.label||`M${memId}`}`,
-      `N = ${round6(Nbar)} (${sense})`,
-      `x ≈ ${round6(run)} along`,
-      `σL = ${round6(sL)}, σR = ${round6(sR)}`
-    ];
-  }
-
-  // ======= NODE PANEL (editable X/Y) =======
-  function refreshLists(){
-    // Nodes: editable X/Y inputs that live-update geometry
-    nodeList.innerHTML = nodes.map(n =>
-      `<div class="node-row">
-         <span class="badge">Node ${n.id}</span>
-         <input type="number" class="nedit" data-id="${n.id}" data-field="x" step="any" value="${n.x}">
-         <input type="number" class="nedit" data-id="${n.id}" data-field="y" step="any" value="${n.y}">
-         <button class="ghost" data-del-node="${n.id}" title="Delete node">✖</button>
-       </div>`
-    ).join('') || '<div class="hint">No nodes yet.</div>';
-
-    memberList.innerHTML = members.map(m =>
-      `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-         <span>Member ${m.id} [${m.label||''}]: n${m.n1}–n${m.n2} | E=${fmt(m.E)} A=${fmt(m.A)} I=${fmt(m.I)} S=${fmt(m.S)} wd=${fmt(m.wd)} qx=${fmt(m.qix)}→${fmt(m.qjx)} qy=${fmt(m.qiy)}→${fmt(m.qjy)}</span>
-         <button class="ghost" data-del-member="${m.id}" title="Delete member">✖</button>
-       </div>`
-    ).join('') || '<div class="hint">No members yet.</div>';
-  }
-  const fmt = v => (v===0 || isNaN(v)) ? '0' : String(v);
-
-  // Node panel: delete
-  nodeList.addEventListener('click', (e)=>{
-    const btn = e.target.closest('[data-del-node]');
-    if (!btn) return;
-    const id = parseInt(btn.getAttribute('data-del-node'),10);
-    deleteNodeWithMembers(id);
-  });
-
-  // Node panel: live-edit X/Y (input = live update + draw; change = refresh row formatting)
-  nodeList.addEventListener('input', (e)=>{
-    const inp = e.target.closest('.nedit');
-    if (!inp) return;
-    const id = parseInt(inp.dataset.id,10);
-    const field = inp.dataset.field;
-    const n = nodeById(id); if (!n) return;
-    const val = parseFloat(inp.value);
-    if (!isFinite(val)) return;
-    n[field] = val;
-    lastSolution = null; // geometry changed
-    draw();
-  });
-  nodeList.addEventListener('change', (e)=>{
-    const inp = e.target.closest('.nedit');
-    if (!inp) return;
-    // On commit, re-render list so numbers are normalized
-    refreshLists();
-    autoFitIfNeeded();
-    draw();
-  });
-
-  // ===== Canvas helpers =====
-  function drawCoordTag(g, x, y, text){
-    const padX = 6, padY = 4;
-    g.save();
-    g.font='11px system-ui';
-    const w = g.measureText(text).width + 2*padX;
-    const h = 18;
-    const xx = Math.min(Math.max(4, x), g.canvas.width - w - 4);
-    const yy = Math.min(Math.max(4, y - h), g.canvas.height - h - 4);
-    g.fillStyle='rgba(17,24,39,0.82)';
-    g.strokeStyle='rgba(255,255,255,0.15)';
-    g.lineWidth=1;
-    g.beginPath(); g.rect(xx, yy, w, h); g.fill(); g.stroke();
-    g.fillStyle='#fff';
-    g.fillText(text, xx + padX, yy + 12);
-    g.restore();
-  }
-
-  function drawHoverTooltip(g, tip){
-    const pad=8, lh=16;
-    const w = Math.max(...tip.lines.map(s=>g.measureText(s).width)) + 2*pad;
-    const h = tip.lines.length*lh + 2*pad;
-    const x = Math.min(Math.max(6, tip.x), g.canvas.width - w - 6);
-    const y = Math.min(Math.max(6, tip.y - h), g.canvas.height - h - 6);
-
-    g.save();
-    g.fillStyle='rgba(0,0,0,0.75)';
-    g.strokeStyle='rgba(255,255,255,0.15)';
-    g.lineWidth=1;
-    g.beginPath(); g.rect(x,y,w,h); g.fill(); g.stroke();
-
-    g.fillStyle='#fff'; g.font='12px system-ui';
-    for (let i=0;i<tip.lines.length;i++){
-      g.fillText(tip.lines[i], x+pad, y+pad + (i+0.85)*lh);
-    }
-    g.restore();
-  }
-
-  // ===== Math helpers =====
-  function addToGlobalVar(K, ke, map){
-    for (let r=0;r<map.length;r++){
-      const R=map[r];
-      for (let c=0;c<map.length;c++){
-        const C=map[c];
-        K[R][C] += ke[r][c];
-      }
-    }
-  }
-  function matPick(A, rows, cols){ const M=rows.length,N=cols.length,out=new Array(M); for(let i=0;i<M;i++){ out[i]=new Array(N); for (let j=0;j<N;j++) out[i][j]=A[rows[i]][cols[j]]; } return out; }
-  function vecPick(v, rows){ return rows.map(i=>v[i]); }
-  function getAnalysisIdForPrimary(pid, anodes){ for (const [aid,obj] of Object.entries(anodes)){ if (obj.primary===pid) return parseInt(aid,10); } return null; }
-  function zeros(n,m){ if (m===undefined){ const v=new Array(n); for (let i=0;i<n;i++) v[i]=0; return v; } const A=new Array(n); for (let i=0;i<n;i++){ A[i]=new Array(m); for (let j=0;j<m;j++) A[i][j]=0; } return A; }
-  const round6 = x => Math.abs(x)<1e-12 ? 0 : Math.round(x*1e6)/1e6;
-
-  function modelBounds(){
-    if (nodes.length===0) return {x0:0,y0:0,w:1,h:1};
-    let minx=+Infinity, miny=+Infinity, maxx=-Infinity, maxy=-Infinity;
-    for (const n of nodes){ minx=Math.min(minx,n.x); maxx=Math.max(maxx,n.x); miny=Math.min(miny,n.y); maxy=Math.max(maxy,n.y); }
-    return {x0:minx, y0:miny, w:(maxx-minx)||1, h:(maxy-miny)||1};
-  }
-
-  // drawing helpers
-  function drawArrow(g, x1,y1, x2,y2){
-    g.beginPath(); g.moveTo(x1,y1); g.lineTo(x2,y2); g.stroke();
-    const ang=Math.atan2(y2-y1, x2-x1), ah=7;
-    g.beginPath();
-    g.moveTo(x2,y2);
-    g.lineTo(x2 - ah*Math.cos(ang - Math.PI/6), y2 - ah*Math.sin(ang - Math.PI/6));
-    g.lineTo(x2 - ah*Math.cos(ang + Math.PI/6), y2 - ah*Math.sin(ang + Math.PI/6));
-    g.closePath(); g.fill();
-  }
-  function drawSpringX(g, x,y, len=20, amp=5){
-    const n=5, dx=len/(n*2);
-    g.beginPath(); g.moveTo(x,y);
-    for (let i=0;i<n;i++){ g.lineTo(x+dx*(2*i+1), y-amp); g.lineTo(x+dx*(2*i+2), y+amp); }
-    g.stroke();
-  }
-  function drawSpringY(g, x,y, len=20, amp=5){
-    const n=5, dy=len/(n*2);
-    g.beginPath(); g.moveTo(x,y);
-    for (let i=0;i<n;i++){ g.lineTo(x-amp, y+dy*(2*i+1)); g.lineTo(x+amp, y+dy*(2*i+2)); }
-    g.stroke();
-  }
-  function highlightNode(g, n){
-    if (!n) return;
-    const p = worldToScreen(n.x,n.y);
-    g.save();
-    g.lineWidth=3; g.strokeStyle='#10b981';
-    g.beginPath(); g.arc(p.x,p.y,10,0,Math.PI*2); g.stroke();
-    g.restore();
-  }
-
-  // ===== Lists & Results =====
-  function showResults(primaryRes){
-    resultList.innerHTML = primaryRes.map(r =>
-      `<div>Node ${r.id}: ux=${r.ux}, uy=${r.uy}</div>`
-    ).join('') || '<div class="hint">Solve to see displacements.</div>';
-  }
-
-  function resizeStressCanvas(){
-    stressCanvas.style.width = '100%';
-    const w = Math.max(200, stressCanvas.parentElement.clientWidth);
-    const h = 260;
-    stressCanvas.width = w;
-    stressCanvas.height = h;
-  }
-  function toggleStressPanel(show){
-    stressBlock.style.display = show ? 'block' : 'none';
-    document.getElementById('stressPanelHint').style.display = show ? 'block' : 'none';
-    if (show) resizeStressCanvas();
-  }
-
   // ===== Kickoff =====
   setActiveGroup(modeBtns,'btnDraw');
   setActiveGroup(viewBtns,'viewGeom');
@@ -2135,4 +1373,3 @@ function plotStressPanel(){
 </script>
 </body>
 </html>
-
