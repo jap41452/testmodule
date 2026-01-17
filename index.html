@@ -1,1115 +1,2138 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Multi-Story House Builder</title>
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
+<meta charset="UTF-8" />
+<title>Truss — Draw • Solve • Reactions • Stresses</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/numeric/1.2.6/numeric.min.js"></script>
+
+<style>
+  :root { --pad:18px; --canvas-w:700px; --canvas-h:560px; --panel-w:680px; }
+  body { background:#f6f7fb; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; margin:20px; }
+  h2 { margin:0 0 10px; }
+  .row { display:flex; gap:16px; align-items:flex-start; flex-wrap:wrap; }
+  .col { background:#fff; border:1px solid #ddd; border-radius:12px; padding:var(--pad); }
+  .controls { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:10px; }
+  .controls.split { justify-content:flex-start; }
+  button, select, input[type="number"], input[type="text"]{
+    height:32px; padding:0 10px; border:1px solid #bbb; border-radius:8px; background:#eee; font-size:14px; color:#333;
+  }
+  input[type="range"]{ width:120px; }
+  button { cursor:pointer; transition:background 0.15s ease, color 0.15s ease, border-color 0.15s ease; }
+  button.primary { background:#eee; color:#333; border-color:#bbb; }
+  button.ghost   { background:#eee; color:#333; border-color:#bbb; }
+  /* Grayed-out look for active/selected buttons */
+  button.active  { background:#cfd8e3; color:#555; border-color:#9aa6b2; box-shadow: inset 0 0 0 1px #9aa6b2; cursor:default; }
+
+  .labelbtn { pointer-events:none; opacity:1; font-weight:600; }
+
+  .stack { display:flex; flex-direction:column; gap:8px; }
+  
+/* --- new compact dual-column panel layout --- */
+.panel-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.panel-half {
+  flex: 1;
+  min-width: 0; /* allows shrinking correctly */
+}
+
+
+#wrap { position:relative; width:var(--canvas-w); height:var(--canvas-h); background:#fff; border:1px solid #ccc; border-radius:8px; }
+  canvas { position:absolute; inset:0; }
+  #base { z-index:1; } #overlay { z-index:2; pointer-events:auto; cursor:crosshair; }
+
+  .panel { width:var(--panel-w); }
+  .list { font-size:13px; max-height:240px; overflow:auto; border:1px dashed #ddd; padding:8px; border-radius:8px; }
+  .hint { color:#666; font-size:12px; }
+  .swal2-popup { font-size:12px !important; width:auto !important; min-width:360px !important; }
+  .swal2-input, .swal2-select { font-size:12px !important; height:28px !important; }
+
+  /* Node panel inputs */
+  .node-row { display:grid; grid-template-columns: 54px 1fr 1fr 28px; gap:6px; align-items:center; }
+  .node-row > .badge { justify-self:start; font-weight:600; color:#334155; }
+  .node-row input[type="number"]{ width:100%; height:28px; padding:0 6px; border-radius:6px; }
+  .node-row button { height:28px; padding:0 8px; }
+
+  #stressPanelBlock { display:none; }
+  #stressPanel { width:100%; height:260px; position:static; border:1px solid #ccc; border-radius:8px; }
+</style>
 </head>
+
 <body>
-    <div id="root"></div>
+  <h2>TRUSS</h2>
 
-    <script type="text/babel">
+  <div class="controls split" id="rowTop">
+    <button id="btnDraw"   class="primary">Draw Members</button>
+    <button id="btnSelect" class="ghost">Select/Edit</button>
 
-const { useState, useEffect, useRef } = React;
+    <button id="viewGeom" class="ghost">Geometry</button>
 
-// --- CONSTANTS ---
-const INSULATION_OPTIONS = [
-    { id: 'none', name: 'No Insulation', rValue: 2, color: 0xe5e7eb },
-    { id: 'fiberglass-r13', name: 'Fiberglass Batt R-13', rValue: 13, color: 0xfbbf24 },
-    { id: 'fiberglass-r19', name: 'Fiberglass Batt R-19', rValue: 19, color: 0xf59e0b },
-    { id: 'fiberglass-r21', name: 'Fiberglass Batt R-21', rValue: 21, color: 0xd97706 },
-    { id: 'spray-foam-r25', name: 'Spray Foam R-25', rValue: 25, color: 0x10b981 },
-    { id: 'spray-foam-r30', name: 'Spray Foam R-30', rValue: 30, color: 0x059669 },
-    { id: 'rigid-foam-r20', name: 'Rigid Foam R-20', rValue: 20, color: 0x3b82f6 },
-];
-
-const EXTERIOR_MATERIALS = [
-    { id: 'brick-red', name: 'Red Brick', color: 0x8B4513 },
-    { id: 'brick-tan', name: 'Tan Brick', color: 0xD2B48C },
-    { id: 'vinyl-white', name: 'White Vinyl Siding', color: 0xF5F5F5 },
-    { id: 'vinyl-gray', name: 'Gray Vinyl Siding', color: 0x808080 },
-    { id: 'vinyl-beige', name: 'Beige Vinyl Siding', color: 0xF5F5DC },
-    { id: 'clapboard-white', name: 'White Clapboard', color: 0xFAFAFA },
-    { id: 'clapboard-blue', name: 'Blue Clapboard', color: 0x4682B4 },
-    { id: 'stucco-white', name: 'White Stucco', color: 0xFFFFF0 },
-    { id: 'stucco-tan', name: 'Tan Stucco', color: 0xD2B48C },
-    { id: 'stone-gray', name: 'Gray Stone', color: 0x708090 },
-];
-
-const ROOF_MATERIALS = [
-    { id: 'asphalt-black', name: 'Black Asphalt Shingles', color: 0x2F2F2F, reflectivity: 0.05 },
-    { id: 'asphalt-gray', name: 'Gray Asphalt Shingles', color: 0x808080, reflectivity: 0.15 },
-    { id: 'asphalt-brown', name: 'Brown Asphalt Shingles', color: 0x654321, reflectivity: 0.10 },
-    { id: 'metal-white', name: 'White Metal Roof', color: 0xF5F5F5, reflectivity: 0.65 },
-    { id: 'metal-black', name: 'Black Metal Roof', color: 0x1C1C1C, reflectivity: 0.05 },
-    { id: 'metal-silver', name: 'Silver Metal Roof', color: 0xC0C0C0, reflectivity: 0.55 },
-    { id: 'tile-terracotta', name: 'Terracotta Tiles', color: 0xE2725B, reflectivity: 0.25 },
-    { id: 'tile-concrete', name: 'Concrete Tiles', color: 0x999999, reflectivity: 0.30 },
-];
-
-const FEATURE_STATS = {
-    'window-std': { name: 'Std Window', rValue: 3, width: 3, height: 4, color: 0x87ceeb },
-    'window-pic': { name: 'Picture Window', rValue: 3, width: 6, height: 5, color: 0x87ceeb },
-    'door': { name: 'Door', rValue: 5, width: 3, height: 7, color: 0x8b4513 }
-};
-
-// Icons
-const HomeIcon = () => (<svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>);
-const FireIcon = () => (<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.879 16.121A3 3 0 1012.015 11L11 14H9c0 .768.293 1.536.879 2.121z" /></svg>);
-const SnowIcon = () => (<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>); 
-const TrashIcon = () => (<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>);
-const SunIcon = () => (<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>);
-const MoonIcon = () => (<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>);
-const DownloadIcon = () => (<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>);
-const UploadIcon = () => (<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>);
-const FileTextIcon = () => (<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>);
-
-// OrbitControls (Standard)
-class OrbitControls {
-    constructor(camera, domElement) {
-        this.camera = camera;
-        this.domElement = domElement;
-        this.target = new THREE.Vector3(0, 15, 0);
-        this.minDistance = 20;
-        this.maxDistance = 200;
-        this.rotateSpeed = 0.5;
-        this.scale = 1;
-        this.spherical = new THREE.Spherical();
-        this.sphericalDelta = new THREE.Spherical();
-        this.panOffset = new THREE.Vector3();
-        this.state = 'none';
-        this.rotateStart = new THREE.Vector2();
-        this.rotateEnd = new THREE.Vector2();
-        this.rotateDelta = new THREE.Vector2();
-        this.panStart = new THREE.Vector2();
-        this.panEnd = new THREE.Vector2();
-        this.panDelta = new THREE.Vector2();
-        this.domElement.addEventListener('mousedown', this.onMouseDown.bind(this));
-        this.domElement.addEventListener('wheel', this.onMouseWheel.bind(this));
-        this.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
-    }
+    <button id="btnUndo"  class="ghost">Undo</button>
+    <button id="btnClear" class="ghost">Clear</button>
     
-    onMouseDown(event) {
-        event.preventDefault();
-        if (event.button === 0) {
-            this.state = 'rotate';
-            this.rotateStart.set(event.clientX, event.clientY);
-        } else if (event.button === 2) {
-            this.state = 'pan';
-            this.panStart.set(event.clientX, event.clientY);
-        }
-        this.domElement.addEventListener('mousemove', this.onMouseMove.bind(this));
-        this.domElement.addEventListener('mouseup', this.onMouseUp.bind(this));
-    }
-    
-    onMouseMove(event) {
-        event.preventDefault();
-        if (this.state === 'rotate') {
-            this.rotateEnd.set(event.clientX, event.clientY);
-            this.rotateDelta.subVectors(this.rotateEnd, this.rotateStart).multiplyScalar(this.rotateSpeed);
-            this.rotateLeft(2 * Math.PI * this.rotateDelta.x / this.domElement.clientHeight);
-            this.rotateUp(2 * Math.PI * this.rotateDelta.y / this.domElement.clientHeight);
-            this.rotateStart.copy(this.rotateEnd);
-        } else if (this.state === 'pan') {
-            this.panEnd.set(event.clientX, event.clientY);
-            this.panDelta.subVectors(this.panEnd, this.panStart).multiplyScalar(0.5);
-            this.pan(this.panDelta.x, this.panDelta.y);
-            this.panStart.copy(this.panEnd);
-        }
-        this.update();
-    }
-    
-    onMouseUp() {
-        this.domElement.removeEventListener('mousemove', this.onMouseMove.bind(this));
-        this.domElement.removeEventListener('mouseup', this.onMouseUp.bind(this));
-        this.state = 'none';
-    }
-    
-    onMouseWheel(event) {
-        event.preventDefault();
-        if (event.deltaY < 0) this.scale /= 0.95; else this.scale *= 0.95;
-        this.update();
-    }
-    rotateLeft(angle) { this.sphericalDelta.theta -= angle; }
-    rotateUp(angle) { this.sphericalDelta.phi -= angle; }
-    pan(deltaX, deltaY) {
-        const offset = new THREE.Vector3().copy(this.camera.position).sub(this.target);
-        let targetDistance = offset.length() * Math.tan((this.camera.fov / 2) * Math.PI / 180.0);
-        const panLeft = new THREE.Vector3().setFromMatrixColumn(this.camera.matrix, 0).multiplyScalar(-2 * deltaX * targetDistance / this.domElement.clientHeight);
-        const panUp = new THREE.Vector3().setFromMatrixColumn(this.camera.matrix, 1).multiplyScalar(2 * deltaY * targetDistance / this.domElement.clientHeight);
-        this.panOffset.add(panLeft).add(panUp);
-    }
-    update() {
-        const offset = new THREE.Vector3().copy(this.camera.position).sub(this.target);
-        this.spherical.setFromVector3(offset);
-        this.spherical.theta += this.sphericalDelta.theta;
-        this.spherical.phi += this.sphericalDelta.phi;
-        this.spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, this.spherical.phi));
-        this.spherical.radius *= this.scale;
-        this.spherical.radius = Math.max(this.minDistance, Math.min(this.maxDistance, this.spherical.radius));
-        this.target.add(this.panOffset);
-        offset.setFromSpherical(this.spherical);
-        this.camera.position.copy(this.target).add(offset);
-        this.camera.lookAt(this.target);
-        this.sphericalDelta.set(0, 0, 0);
-        this.panOffset.set(0, 0, 0);
-        this.scale = 1;
-    }
-}
-
-// Helper for Textures (Compass Text)
-function createTextTexture(text, color = 'black') {
-    const canvas = document.createElement('canvas');
-    canvas.width = 64;
-    canvas.height = 64;
-    const ctx = canvas.getContext('2d');
-    ctx.fillStyle = color;
-    ctx.font = 'bold 48px Arial';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(text, 32, 32);
-    const texture = new THREE.CanvasTexture(canvas);
-    return texture;
-}
-
-function HouseBuilder() {
-    const [dimensions, setDimensions] = useState({ length: 40, width: 30 });
-    const [numStories, setNumStories] = useState(2);
-    const [selectedWall, setSelectedWall] = useState(null);
-    const [wallInsulation, setWallInsulation] = useState({});
-    const [wallExterior, setWallExterior] = useState({});
-    const [roofMaterial, setRoofMaterial] = useState('asphalt-gray');
-    const [viewMode, setViewMode] = useState('3d');
-    const [selectionMode, setSelectionMode] = useState('exterior');
-    const [wallFeatures, setWallFeatures] = useState({});
-    const [hvacMode, setHvacMode] = useState('heating'); 
-
-    // Environmental State
-    const [outsideTemp, setOutsideTemp] = useState(32);
-    const [groundTemp, setGroundTemp] = useState(50);
-    const [insideTemp, setInsideTemp] = useState(70);
-    const [windSpeed, setWindSpeed] = useState(10);
-    const [windDirection, setWindDirection] = useState('north');
-    
-    // Scenario State
-    const [timeOfDay, setTimeOfDay] = useState('day'); 
-    const [sunVisible, setSunVisible] = useState(true); 
-    const [latitude, setLatitude] = useState(45); 
-    const [nightCondition, setNightCondition] = useState('clear'); 
-    const [atticRValue, setAtticRValue] = useState(40);
-    const [furnaceEfficiency, setFurnaceEfficiency] = useState(80); 
-
-    const [humidity, setHumidity] = useState(50); 
-    const [occupants, setOccupants] = useState(4); 
-    const [appliances, setAppliances] = useState('medium'); 
-
-    const mountRef = useRef(null);
-    const sceneRef = useRef(null);
-    const cameraRef = useRef(null);
-    const rendererRef = useRef(null);
-    const controlsRef = useRef(null);
-    const wallMeshesRef = useRef({});
-    const roofMeshesRef = useRef([]);
-    const sunLightRef = useRef(null);
-    const ambientLightRef = useRef(null);
-    const fileInputRef = useRef(null);
-
-    const WALL_HEIGHT = 9;
-    const ROOF_PITCH = 3/8;
-    
-    const getFloors = () => {
-        const base = ['basement'];
-        if(numStories >= 1) base.push('first');
-        if(numStories >= 2) base.push('second');
-        if(numStories >= 3) base.push('third');
-        return base;
-    };
-    
-    const floors = getFloors();
-
-    useEffect(() => {
-        if (hvacMode === 'cooling') {
-            setOutsideTemp(90); setInsideTemp(72); setTimeOfDay('day'); setSunVisible(true);
-        } else {
-            setOutsideTemp(32); setInsideTemp(70);
-        }
-    }, [hvacMode]);
-
-    useEffect(() => {
-        if (viewMode !== '3d' || !mountRef.current) return;
-
-        const scene = new THREE.Scene();
-        sceneRef.current = scene;
-
-        const width = mountRef.current.clientWidth;
-        const height = 600;
-
-        const camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 1000);
-        camera.position.set(60, 40, 60);
-        cameraRef.current = camera;
-
-        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-        renderer.setSize(width, height);
-        renderer.shadowMap.enabled = true;
-        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-        mountRef.current.appendChild(renderer.domElement);
-        rendererRef.current = renderer;
-
-        const controls = new OrbitControls(camera, renderer.domElement);
-        controls.update();
-        controlsRef.current = controls;
-
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-        scene.add(ambientLight);
-        ambientLightRef.current = ambientLight;
-
-        const sunLight = new THREE.DirectionalLight(0xffffff, 0.8);
-        sunLight.castShadow = true;
-        sunLight.shadow.mapSize.width = 2048;
-        sunLight.shadow.mapSize.height = 2048;
-        scene.add(sunLight);
-        sunLightRef.current = sunLight;
-
-        const groundGeometry = new THREE.PlaneGeometry(200, 200);
-        const groundMaterial = new THREE.MeshStandardMaterial({ 
-            color: 0x3a7d3a, roughness: 0.8, side: THREE.DoubleSide, transparent: true, opacity: 0.4 
-        });
-        const ground = new THREE.Mesh(groundGeometry, groundMaterial);
-        ground.rotation.x = -Math.PI / 2;
-        ground.receiveShadow = true;
-        scene.add(ground);
-
-        const gridHelper = new THREE.GridHelper(100, 50, 0x444444, 0x888888);
-        gridHelper.material.transparent = true;
-        gridHelper.material.opacity = 0.3;
-        scene.add(gridHelper);
-
-        // CREATE COMPASS ON GROUND
-        const compassGroup = new THREE.Group();
-        
-        const nMat = new THREE.LineBasicMaterial({ color: 0xff0000, linewidth: 3 });
-        const nGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0.5,0), new THREE.Vector3(0,0.5,-15)]);
-        const nLine = new THREE.Line(nGeo, nMat);
-        
-        const arrowGeo = new THREE.ConeGeometry(1, 2, 8);
-        const arrowMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-        const arrowHead = new THREE.Mesh(arrowGeo, arrowMat);
-        arrowHead.position.set(0, 0.5, -15);
-        arrowHead.rotation.x = -Math.PI/2;
-        
-        const crossMat = new THREE.LineBasicMaterial({ color: 0x444444 });
-        const ewGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-10,0.5,0), new THREE.Vector3(10,0.5,0)]);
-        const sGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0.5,0), new THREE.Vector3(0,0.5,10)]);
-        const ewLine = new THREE.Line(ewGeo, crossMat);
-        const sLine = new THREE.Line(sGeo, crossMat);
-
-        const labelSize = 5;
-        const labels = [
-            { text: 'N', pos: [0, 0.6, -18], color: '#AA0000' },
-            { text: 'S', pos: [0, 0.6, 12], color: '#444444' },
-            { text: 'E', pos: [12, 0.6, 0], color: '#444444' },
-            { text: 'W', pos: [-12, 0.6, 0], color: '#444444' }
-        ];
-
-        labels.forEach(l => {
-            const tex = createTextTexture(l.text, l.color);
-            const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide });
-            const mesh = new THREE.Mesh(new THREE.PlaneGeometry(labelSize, labelSize), mat);
-            mesh.position.set(...l.pos);
-            mesh.rotation.x = -Math.PI/2;
-            compassGroup.add(mesh);
-        });
-
-        compassGroup.add(nLine);
-        compassGroup.add(arrowHead);
-        compassGroup.add(ewLine);
-        compassGroup.add(sLine);
-        
-        compassGroup.position.set(-35, 0, 35); 
-        scene.add(compassGroup);
-
-        buildHouse();
-
-        function animate() {
-            requestAnimationFrame(animate);
-            renderer.render(scene, camera);
-        }
-        animate();
-
-        const handleResize = () => {
-            if (!mountRef.current) return;
-            const newWidth = mountRef.current.clientWidth;
-            camera.aspect = newWidth / height;
-            camera.updateProjectionMatrix();
-            renderer.setSize(newWidth, height);
-        };
-        window.addEventListener('resize', handleResize);
-
-        const raycaster = new THREE.Raycaster();
-        const mouse = new THREE.Vector2();
-
-        function onMouseClick(event) {
-            const rect = renderer.domElement.getBoundingClientRect();
-            mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-            mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
-            raycaster.setFromCamera(mouse, camera);
-            const intersects = raycaster.intersectObjects(Object.values(wallMeshesRef.current));
-
-            if (intersects.length > 0) {
-                let target = intersects[0].object;
-                while (target.parent && !target.userData.wallId) { target = target.parent; }
-                if (target.userData.wallId) setSelectedWall(target.userData.wallId);
-            }
-        }
-
-        renderer.domElement.addEventListener('click', onMouseClick);
-
-        return () => {
-            window.removeEventListener('resize', handleResize);
-            renderer.domElement.removeEventListener('click', onMouseClick);
-            mountRef.current?.removeChild(renderer.domElement);
-            renderer.dispose();
-        };
-    }, [viewMode]);
-
-    useEffect(() => {
-        if (!sceneRef.current || !sunLightRef.current || !ambientLightRef.current) return;
-
-        if (timeOfDay === 'day') {
-            sceneRef.current.background = new THREE.Color(0x87ceeb);
-            ambientLightRef.current.intensity = sunVisible ? 0.6 : 0.4;
-            sunLightRef.current.intensity = sunVisible ? 0.9 : 0.2;
-            sunLightRef.current.color.setHex(0xffffff);
-            const latRad = latitude * (Math.PI / 180);
-            const sunDist = 100;
-            const sunY = Math.cos(latRad) * sunDist;
-            const sunZ = Math.sin(latRad) * sunDist;
-            sunLightRef.current.position.set(20, sunY, sunZ);
-        } else {
-            sceneRef.current.background = new THREE.Color(0x050520);
-            ambientLightRef.current.intensity = 0.2;
-            sunLightRef.current.intensity = nightCondition === 'clear' ? 0.3 : 0.1;
-            sunLightRef.current.color.setHex(0xaaccff);
-            sunLightRef.current.position.set(20, 60, 20);
-        }
-    }, [timeOfDay, sunVisible, latitude, nightCondition, viewMode]);
-
-    useEffect(() => {
-        if (viewMode === '3d') buildHouse();
-    }, [dimensions, numStories, wallInsulation, wallExterior, roofMaterial, wallFeatures]);
-
-    const buildHouse = () => {
-        if (!sceneRef.current) return;
-        Object.values(wallMeshesRef.current).forEach(mesh => sceneRef.current.remove(mesh));
-        roofMeshesRef.current.forEach(mesh => sceneRef.current.remove(mesh));
-        sceneRef.current.children = sceneRef.current.children.filter(c => 
-            c.type !== 'Mesh' || (c.geometry.type === 'PlaneGeometry' && c.rotation.x === -Math.PI/2) || (c.geometry.type === 'BoxGeometry' && c.scale.y === 0.5) || c.type === 'Group' || c.type === 'Line'
-        );
-
-        wallMeshesRef.current = {};
-        roofMeshesRef.current = [];
-        const wallThickness = 0.5;
-        
-        floors.forEach((floor, floorIndex) => {
-            const floorY = (floorIndex - 1) * WALL_HEIGHT;
-            const isBasement = floor === 'basement';
-
-            const floorMesh = new THREE.Mesh(new THREE.BoxGeometry(dimensions.length, 0.5, dimensions.width), new THREE.MeshStandardMaterial({ color: 0x8b7355 }));
-            floorMesh.position.set(0, floorY, 0);
-            floorMesh.castShadow = true;
-            floorMesh.receiveShadow = true;
-            sceneRef.current.add(floorMesh);
-            roofMeshesRef.current.push(floorMesh);
-
-            const directions = [
-                { id: 'north', pos: [0, floorY + WALL_HEIGHT / 2, -dimensions.width / 2], dim: [dimensions.length, WALL_HEIGHT, wallThickness] },
-                { id: 'south', pos: [0, floorY + WALL_HEIGHT / 2, dimensions.width / 2], dim: [dimensions.length, WALL_HEIGHT, wallThickness] },
-                { id: 'east', pos: [dimensions.length / 2, floorY + WALL_HEIGHT / 2, 0], dim: [wallThickness, WALL_HEIGHT, dimensions.width] },
-                { id: 'west', pos: [-dimensions.length / 2, floorY + WALL_HEIGHT / 2, 0], dim: [wallThickness, WALL_HEIGHT, dimensions.width] },
-            ];
-
-            directions.forEach(dir => {
-                const wallId = `${floor}-${dir.id}`;
-                const exterior = getWallExterior(wallId);
-                let material = isBasement ? 
-                    new THREE.MeshPhysicalMaterial({ color: 0x708090, transparent: true, opacity: 0.7, roughness: 0.5, metalness: 0.1 }) : 
-                    new THREE.MeshStandardMaterial({ color: exterior.color });
-
-                const mesh = new THREE.Mesh(new THREE.BoxGeometry(...dir.dim), material);
-                mesh.position.set(...dir.pos);
-                mesh.castShadow = !isBasement;
-                mesh.receiveShadow = true;
-                mesh.userData.wallId = wallId;
-                sceneRef.current.add(mesh);
-                wallMeshesRef.current[wallId] = mesh;
-
-                const features = wallFeatures[wallId] || [];
-                const wallWidth = dir.id === 'north' || dir.id === 'south' ? dimensions.length : dimensions.width;
-                const spacing = wallWidth / (features.length + 1);
-
-                features.forEach((feature, idx) => {
-                    const stats = FEATURE_STATS[feature.type];
-                    const featureGeom = new THREE.BoxGeometry(
-                        dir.id === 'north' || dir.id === 'south' ? stats.width : wallThickness + 0.2, 
-                        stats.height, 
-                        dir.id === 'north' || dir.id === 'south' ? wallThickness + 0.2 : stats.width
-                    );
-                    const featureMat = new THREE.MeshStandardMaterial({ color: stats.color, roughness: 0.2, metalness: 0.8 });
-                    const featureMesh = new THREE.Mesh(featureGeom, featureMat);
-                    const offset = -wallWidth/2 + (spacing * (idx + 1));
-                    let fx = 0, fz = 0;
-                    const yOffset = feature.type.includes('door') ? (-WALL_HEIGHT/2 + stats.height/2) : 0; 
-                    if (dir.id === 'north') { fx = offset; fz = 0; }
-                    if (dir.id === 'south') { fx = -offset; fz = 0; } 
-                    if (dir.id === 'east')  { fx = 0; fz = -offset; }
-                    if (dir.id === 'west')  { fx = 0; fz = offset; }
-                    featureMesh.position.set(mesh.position.x + fx, mesh.position.y + yOffset, mesh.position.z + fz);
-                    sceneRef.current.add(featureMesh);
-                    roofMeshesRef.current.push(featureMesh);
-                });
-            });
-
-            const trim = new THREE.Mesh(new THREE.BoxGeometry(dimensions.length + 0.8, 0.4, dimensions.width + 0.8), new THREE.MeshStandardMaterial({ color: 0xFFFFFF }));
-            trim.position.set(0, floorY + WALL_HEIGHT, 0);
-            sceneRef.current.add(trim);
-            roofMeshesRef.current.push(trim);
-        });
-
-        const roofY = (floors.length - 1) * WALL_HEIGHT; 
-        const roofRise = (dimensions.width / 2) * ROOF_PITCH;
-        const roofMat = ROOF_MATERIALS.find(m => m.id === roofMaterial);
-        const roofColor = roofMat ? roofMat.color : 0x808080;
-        
-        const gableShape = new THREE.Shape();
-        gableShape.moveTo(-dimensions.width / 2, 0).lineTo(dimensions.width / 2, 0).lineTo(0, roofRise).lineTo(-dimensions.width / 2, 0);
-        const gableGeometry = new THREE.ShapeGeometry(gableShape);
-        const gableMaterial = new THREE.MeshStandardMaterial({ color: 0xE8E8E8, side: THREE.DoubleSide });
-        
-        const westGable = new THREE.Mesh(gableGeometry, gableMaterial);
-        westGable.position.set(-dimensions.length / 2, roofY, 0);
-        westGable.rotation.y = Math.PI / 2;
-        sceneRef.current.add(westGable);
-        roofMeshesRef.current.push(westGable);
-        
-        const eastGable = new THREE.Mesh(gableGeometry, gableMaterial);
-        eastGable.position.set(dimensions.length / 2, roofY, 0);
-        eastGable.rotation.y = -Math.PI / 2;
-        sceneRef.current.add(eastGable);
-        roofMeshesRef.current.push(eastGable);
-
-        const roofSlantLength = Math.sqrt(Math.pow(dimensions.width / 2, 2) + Math.pow(roofRise, 2));
-        const roofAngle = Math.atan2(roofRise, dimensions.width / 2);
-        const roofMaterialMesh = new THREE.MeshStandardMaterial({ color: roofColor, side: THREE.DoubleSide, roughness: 0.9 });
-        
-        const northRoof = new THREE.Mesh(new THREE.PlaneGeometry(dimensions.length + 1, roofSlantLength), roofMaterialMesh);
-        northRoof.position.set(0, roofY + roofRise / 2, -dimensions.width / 4);
-        northRoof.rotation.x = -Math.PI / 2 - roofAngle; 
-        sceneRef.current.add(northRoof);
-        roofMeshesRef.current.push(northRoof);
-
-        const southRoof = new THREE.Mesh(new THREE.PlaneGeometry(dimensions.length + 1, roofSlantLength), roofMaterialMesh.clone());
-        southRoof.position.set(0, roofY + roofRise / 2, dimensions.width / 4);
-        southRoof.rotation.x = -Math.PI / 2 + roofAngle;
-        sceneRef.current.add(southRoof);
-        roofMeshesRef.current.push(southRoof);
-    };
-
-    const getWallData = () => {
-        const walls = [];
-        floors.forEach(floor => {
-            const directions = ['north', 'south', 'east', 'west'];
-            directions.forEach(dir => {
-                const isLong = dir === 'north' || dir === 'south';
-                walls.push({ id: `${floor}-${dir}`, floor, orientation: dir, length: isLong ? dimensions.length : dimensions.width, height: WALL_HEIGHT, area: (isLong ? dimensions.length : dimensions.width) * WALL_HEIGHT });
-            });
-        });
-        return walls;
-    };
-
-    const addFeature = (type) => {
-        if (!selectedWall) return;
-        setWallFeatures(prev => {
-            const current = prev[selectedWall] || [];
-            return { ...prev, [selectedWall]: [...current, { type, id: Date.now() }] };
-        });
-    };
-
-    const removeFeature = (wallId, featureId) => {
-        setWallFeatures(prev => ({ ...prev, [wallId]: prev[wallId].filter(f => f.id !== featureId) }));
-    };
-
-    const handleMaterialSelect = (materialId) => {
-        if (selectionMode === 'exterior' && selectedWall) {
-            setWallExterior(prev => ({ ...prev, [selectedWall]: materialId }));
-        } else if (selectionMode === 'insulation' && selectedWall) {
-            setWallInsulation(prev => ({ ...prev, [selectedWall]: materialId }));
-        }
-    };
-
-    const getWallExterior = (wallId) => {
-        const exteriorId = wallExterior[wallId] || 'brick-red';
-        return EXTERIOR_MATERIALS.find(mat => mat.id === exteriorId) || EXTERIOR_MATERIALS[0];
-    };
-
-    const getWallInsulation = (wallId) => {
-        const insulationId = wallInsulation[wallId] || 'none';
-        return INSULATION_OPTIONS.find(opt => opt.id === insulationId);
-    };
-
-    const calculateHVAC = () => {
-        const walls = getWallData();
-        let totalLoad = 0;
-
-        walls.forEach(wall => {
-            const features = wallFeatures[wall.id] || [];
-            let featureArea = 0;
-            let featureLoad = 0;
-            
-            let tempDiff = 0;
-            if (hvacMode === 'heating') {
-                tempDiff = wall.floor === 'basement' ? (insideTemp - groundTemp) : (insideTemp - outsideTemp);
-            } else {
-                tempDiff = wall.floor === 'basement' ? (groundTemp - insideTemp) : (outsideTemp - insideTemp);
-            }
-            tempDiff = Math.max(0, tempDiff);
-
-            features.forEach(f => {
-                const stats = FEATURE_STATS[f.type];
-                const area = stats.width * stats.height;
-                featureArea += area;
-                let uValue = 1 / stats.rValue;
-                if (hvacMode === 'heating' && timeOfDay === 'night' && nightCondition === 'clear') uValue *= 1.15; 
-                let load = area * uValue * tempDiff;
-
-                if (hvacMode === 'cooling' && f.type.includes('window') && timeOfDay === 'day' && sunVisible) {
-                    const SHGC = 0.5;
-                    let solarIntensity = 200;
-                    if (wall.orientation === 'east' || wall.orientation === 'west') solarIntensity *= 1.2;
-                    else if (wall.orientation === 'south') solarIntensity *= Math.sin(latitude * Math.PI/180);
-                    else if (wall.orientation === 'north') solarIntensity *= 0.2;
-                    load += (area * SHGC * solarIntensity);
-                } else if (hvacMode === 'heating' && f.type.includes('window') && timeOfDay === 'day' && sunVisible && wall.orientation === 'south') {
-                    const solarIntensity = 20 * Math.sin(latitude * Math.PI/180);
-                    load -= (area * solarIntensity);
-                }
-                featureLoad += load;
-            });
-
-            const netWallArea = Math.max(0, wall.area - featureArea);
-            const insulation = getWallInsulation(wall.id);
-            let rValue = insulation.rValue + 3;
-            if (hvacMode === 'heating' && wall.floor !== 'basement' && wall.orientation === windDirection) rValue *= 0.85;
-
-            const wallLoad = (netWallArea / rValue) * tempDiff;
-            totalLoad += (wallLoad + featureLoad);
-        });
-
-        const roofArea = dimensions.length * dimensions.width;
-        let effectiveAtticR = atticRValue;
-        if (hvacMode === 'heating' && timeOfDay === 'night' && nightCondition === 'clear') effectiveAtticR *= 0.8;
-        
-        let roofTempDiff = 0;
-        if (hvacMode === 'heating') {
-            roofTempDiff = Math.max(0, insideTemp - outsideTemp);
-        } else {
-            let effectiveOutside = outsideTemp;
-            if (timeOfDay === 'day' && sunVisible) {
-                const roofMat = ROOF_MATERIALS.find(m => m.id === roofMaterial);
-                const reflectivity = roofMat ? roofMat.reflectivity : 0.1;
-                effectiveOutside += (1 - reflectivity) * 50; 
-            }
-            roofTempDiff = Math.max(0, effectiveOutside - insideTemp);
-        }
-        totalLoad += (roofArea / effectiveAtticR) * roofTempDiff;
-
-        const volume = dimensions.length * dimensions.width * (floors.length * WALL_HEIGHT);
-        const acph = 0.5 + (windSpeed * 0.05);
-        const infiltrationLoad = volume * 0.018 * Math.abs(insideTemp - outsideTemp) * acph;
-        totalLoad += infiltrationLoad;
-
-        if (hvacMode === 'cooling') {
-            const peopleLoad = occupants * 450;
-            const applianceLoad = appliances === 'high' ? 3000 : (appliances === 'medium' ? 1500 : 500);
-            totalLoad += peopleLoad + applianceLoad;
-            if (humidity > 50) {
-                const factor = 1 + ((humidity - 50) / 100);
-                totalLoad *= factor;
-            }
-        }
-
-        // Apply Furnace Efficiency
-        let finalRequired = totalLoad;
-        if (hvacMode === 'heating') {
-            finalRequired = totalLoad / (furnaceEfficiency / 100);
-        }
-
-        return Math.max(0, Math.round(finalRequired));
-    };
-
-    const finalLoad = calculateHVAC();
-    const displayValue = hvacMode === 'heating' ? finalLoad.toLocaleString() : (finalLoad / 12000).toFixed(2);
-    const displayUnit = hvacMode === 'heating' ? 'BTU/hr' : 'Tons';
-    const themeColor = hvacMode === 'heating' ? 'orange' : 'cyan';
-
-    // --- DATA EXPORT / IMPORT FUNCTIONS ---
-
-    const exportJSON = () => {
-        const data = {
-            timestamp: new Date().toISOString(),
-            config: {
-                dimensions, numStories, wallInsulation, wallExterior, roofMaterial, wallFeatures, 
-                hvacMode, outsideTemp, groundTemp, insideTemp, windSpeed, windDirection,
-                timeOfDay, sunVisible, latitude, nightCondition, atticRValue, furnaceEfficiency,
-                humidity, occupants, appliances
-            }
-        };
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `house_project_${new Date().getTime()}.json`;
-        a.click();
-        URL.revokeObjectURL(url);
-    };
-
-    const importJSON = (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            try {
-                const data = JSON.parse(event.target.result);
-                if (data.config) {
-                    const c = data.config;
-                    if(c.dimensions) setDimensions(c.dimensions);
-                    if(c.numStories) setNumStories(c.numStories);
-                    if(c.wallInsulation) setWallInsulation(c.wallInsulation);
-                    if(c.wallExterior) setWallExterior(c.wallExterior);
-                    if(c.roofMaterial) setRoofMaterial(c.roofMaterial);
-                    if(c.wallFeatures) setWallFeatures(c.wallFeatures);
-                    if(c.hvacMode) setHvacMode(c.hvacMode);
-                    if(c.outsideTemp) setOutsideTemp(c.outsideTemp);
-                    if(c.groundTemp) setGroundTemp(c.groundTemp);
-                    if(c.insideTemp) setInsideTemp(c.insideTemp);
-                    if(c.windSpeed) setWindSpeed(c.windSpeed);
-                    if(c.windDirection) setWindDirection(c.windDirection);
-                    if(c.timeOfDay) setTimeOfDay(c.timeOfDay);
-                    if(c.sunVisible !== undefined) setSunVisible(c.sunVisible);
-                    if(c.latitude) setLatitude(c.latitude);
-                    if(c.nightCondition) setNightCondition(c.nightCondition);
-                    if(c.atticRValue) setAtticRValue(c.atticRValue);
-                    if(c.furnaceEfficiency) setFurnaceEfficiency(c.furnaceEfficiency);
-                    if(c.humidity) setHumidity(c.humidity);
-                    if(c.occupants) setOccupants(c.occupants);
-                    if(c.appliances) setAppliances(c.appliances);
-                }
-            } catch (err) {
-                alert("Error parsing JSON file");
-            }
-        };
-        reader.readAsText(file);
-        e.target.value = null; // reset input
-    };
-
-    const exportCSV = () => {
-        const walls = getWallData();
-        let csvContent = "data:text/csv;charset=utf-8,";
-        
-        // Header Info
-        csvContent += `Report Date,${new Date().toLocaleString()}\n`;
-        csvContent += `Mode,${hvacMode.toUpperCase()}\n`;
-        csvContent += `Total Load,${displayValue} ${displayUnit}\n`;
-        csvContent += `Efficiency,${furnaceEfficiency}%\n`;
-        csvContent += `Design Temps,In: ${insideTemp}F | Out: ${outsideTemp}F | Ground: ${groundTemp}F\n\n`;
-
-        // Table Headers
-        csvContent += "Component ID,Type,Gross Area (sqft),Net Area (sqft),R-Value,Delta T,Load (BTU/hr)\n";
-
-        let runningTotal = 0;
-
-        // Wall & Features Logic (Similar to calculateHVAC but logging rows)
-        walls.forEach(wall => {
-            const features = wallFeatures[wall.id] || [];
-            let featureArea = 0;
-            
-            let tempDiff = 0;
-            if (hvacMode === 'heating') {
-                tempDiff = wall.floor === 'basement' ? (insideTemp - groundTemp) : (insideTemp - outsideTemp);
-            } else {
-                tempDiff = wall.floor === 'basement' ? (groundTemp - insideTemp) : (outsideTemp - insideTemp);
-            }
-            tempDiff = Math.max(0, tempDiff);
-
-            features.forEach(f => {
-                const stats = FEATURE_STATS[f.type];
-                const area = stats.width * stats.height;
-                featureArea += area;
-                let uValue = 1 / stats.rValue;
-                if (hvacMode === 'heating' && timeOfDay === 'night' && nightCondition === 'clear') uValue *= 1.15; 
-                let load = area * uValue * tempDiff;
-
-                // Simple Solar Gain logic for CSV display (simplified from main calc for brevity)
-                let solarLoad = 0;
-                if (hvacMode === 'cooling' && f.type.includes('window') && timeOfDay === 'day' && sunVisible) {
-                    // Re-calc solar portion
-                    const SHGC = 0.5;
-                    let solarIntensity = 200;
-                    if (wall.orientation === 'east' || wall.orientation === 'west') solarIntensity *= 1.2;
-                    else if (wall.orientation === 'south') solarIntensity *= Math.sin(latitude * Math.PI/180);
-                    else if (wall.orientation === 'north') solarIntensity *= 0.2;
-                    solarLoad = (area * SHGC * solarIntensity);
-                    load += solarLoad;
-                } else if (hvacMode === 'heating' && f.type.includes('window') && timeOfDay === 'day' && sunVisible && wall.orientation === 'south') {
-                     const solarIntensity = 20 * Math.sin(latitude * Math.PI/180);
-                     solarLoad = -(area * solarIntensity);
-                     load += solarLoad;
-                }
-
-                csvContent += `${wall.id} - ${stats.name},Window/Door,${area},${area},${stats.rValue},${tempDiff.toFixed(1)},${Math.round(load)}\n`;
-                runningTotal += load;
-            });
-
-            const netWallArea = Math.max(0, wall.area - featureArea);
-            const insulation = getWallInsulation(wall.id);
-            let rValue = insulation.rValue + 3;
-            if (hvacMode === 'heating' && wall.floor !== 'basement' && wall.orientation === windDirection) rValue *= 0.85;
-
-            const wallLoad = (netWallArea / rValue) * tempDiff;
-            csvContent += `${wall.id},Wall,${wall.area},${netWallArea},${rValue.toFixed(1)},${tempDiff.toFixed(1)},${Math.round(wallLoad)}\n`;
-            runningTotal += wallLoad;
-        });
-
-        // Roof
-        const roofArea = dimensions.length * dimensions.width;
-        let effectiveAtticR = atticRValue;
-        if (hvacMode === 'heating' && timeOfDay === 'night' && nightCondition === 'clear') effectiveAtticR *= 0.8;
-        let roofTempDiff = hvacMode === 'heating' ? Math.max(0, insideTemp - outsideTemp) : Math.max(0, outsideTemp - insideTemp); 
-        // Note: Simplified roof temp logic for CSV report to avoid complexity
-        const roofLoad = (roofArea / effectiveAtticR) * roofTempDiff;
-        csvContent += `Roof,Ceiling,${roofArea},${roofArea},${effectiveAtticR},${roofTempDiff.toFixed(1)},${Math.round(roofLoad)}\n`;
-
-        // Infiltration
-        const volume = dimensions.length * dimensions.width * (floors.length * WALL_HEIGHT);
-        const acph = 0.5 + (windSpeed * 0.05);
-        const infiltrationLoad = volume * 0.018 * Math.abs(insideTemp - outsideTemp) * acph;
-        csvContent += `Infiltration (ACH: ${acph.toFixed(2)}),Air,N/A,N/A,N/A,${Math.abs(insideTemp - outsideTemp)},${Math.round(infiltrationLoad)}\n`;
-
-        // Internals
-        if (hvacMode === 'cooling') {
-             const peopleLoad = occupants * 450;
-             const applianceLoad = appliances === 'high' ? 3000 : (appliances === 'medium' ? 1500 : 500);
-             csvContent += `Occupants (${occupants}),Internal,N/A,N/A,N/A,N/A,${peopleLoad}\n`;
-             csvContent += `Appliances (${appliances}),Internal,N/A,N/A,N/A,N/A,${applianceLoad}\n`;
-        }
-
-        const encodedUri = encodeURI(csvContent);
-        const link = document.createElement("a");
-        link.setAttribute("href", encodedUri);
-        link.setAttribute("download", `hvac_report_${new Date().getTime()}.csv`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    }
-
-    const renderFloorPlan = () => {
-       const scale = 5;
-       return (
-            <svg width="100%" height={220 * floors.length} viewBox={`0 0 800 ${220 * floors.length}`} className="border border-gray-300 bg-white">
-                {floors.map((floor, floorIndex) => (
-                    <g key={floor} transform={`translate(50, ${50 + floorIndex * 220})`}>
-                        <text x={0} y={-10} fontSize="16" fontWeight="bold" className="uppercase">{floor} Floor</text>
-                        <rect x={0} y={0} width={dimensions.length * scale} height={20} fill={`#${getWallInsulation(`${floor}-north`).color.toString(16).padStart(6, '0')}`} stroke="#1f2937" strokeWidth="2" className="cursor-pointer hover:opacity-80" onClick={() => setSelectedWall(`${floor}-north`)} />
-                        <text x={dimensions.length * scale / 2} y={12} textAnchor="middle" fontSize="10" fill="#1f2937">N</text>
-                        <rect x={0} y={dimensions.width * scale - 20} width={dimensions.length * scale} height={20} fill={`#${getWallInsulation(`${floor}-south`).color.toString(16).padStart(6, '0')}`} stroke="#1f2937" strokeWidth="2" className="cursor-pointer hover:opacity-80" onClick={() => setSelectedWall(`${floor}-south`)} />
-                        <text x={dimensions.length * scale / 2} y={dimensions.width * scale - 8} textAnchor="middle" fontSize="10" fill="#1f2937">S</text>
-                        <rect x={0} y={20} width={20} height={dimensions.width * scale - 40} fill={`#${getWallInsulation(`${floor}-west`).color.toString(16).padStart(6, '0')}`} stroke="#1f2937" strokeWidth="2" className="cursor-pointer hover:opacity-80" onClick={() => setSelectedWall(`${floor}-west`)} />
-                        <text x={10} y={dimensions.width * scale / 2} textAnchor="middle" fontSize="10" fill="#1f2937">W</text>
-                        <rect x={dimensions.length * scale - 20} y={20} width={20} height={dimensions.width * scale - 40} fill={`#${getWallInsulation(`${floor}-east`).color.toString(16).padStart(6, '0')}`} stroke="#1f2937" strokeWidth="2" className="cursor-pointer hover:opacity-80" onClick={() => setSelectedWall(`${floor}-east`)} />
-                        <text x={dimensions.length * scale - 10} y={dimensions.width * scale / 2} textAnchor="middle" fontSize="10" fill="#1f2937">E</text>
-                        <rect x={20} y={20} width={dimensions.length * scale - 40} height={dimensions.width * scale - 40} fill="#f3f4f6" stroke="none" />
-                        <text x={dimensions.length * scale / 2} y={dimensions.width * scale + 20} textAnchor="middle" fontSize="12">{dimensions.length}' × {dimensions.width}'</text>
-                    </g>
-                ))}
-            </svg>
-        );
-    };
-
-    return (
-        <div className="min-h-screen bg-gray-50 p-2">
-            <div className="max-w-[950px] mx-auto">
-                <div className="bg-white rounded-lg shadow-lg p-4 mb-6">
-                    <div className="flex items-center gap-3 mb-6">
-                        <div className={`text-${themeColor}-600`}><HomeIcon /></div>
-                        <h1 className="text-3xl font-bold text-gray-900">Multi-Story House Builder & HVAC Calculator</h1>
-                    </div>
-
-                    <div className="grid grid-cols-[1fr_300px] gap-4">
-                        {/* Left Column: 3D/Floor Plan */}
-                        <div>
-                            <div className="flex items-end gap-4 mb-4 bg-gray-50 p-3 rounded-lg border border-gray-200">
-                                <div>
-                                    <label className="block text-xs font-semibold text-gray-600 mb-1">View Mode</label>
-                                    <div className="flex gap-1">
-                                        <button onClick={() => setViewMode('3d')} className={`px-3 py-1 rounded text-sm font-medium transition-colors ${viewMode === '3d' ? `bg-${themeColor}-600 text-white` : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>3D</button>
-                                        <button onClick={() => setViewMode('floor')} className={`px-3 py-1 rounded text-sm font-medium transition-colors ${viewMode === 'floor' ? `bg-${themeColor}-600 text-white` : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>Plan</button>
-                                    </div>
-                                </div>
-                                
-                                <div>
-                                    <label className="block text-xs font-semibold text-gray-600 mb-1">Length (ft)</label>
-                                    <input type="number" value={dimensions.length} onChange={(e) => setDimensions(prev => ({ ...prev, length: parseInt(e.target.value) || 0 }))} className="w-24 px-2 py-1 text-sm border border-gray-300 rounded" min="10" max="100" />
-                                </div>
-                                
-                                <div>
-                                    <label className="block text-xs font-semibold text-gray-600 mb-1">Width (ft)</label>
-                                    <input type="number" value={dimensions.width} onChange={(e) => setDimensions(prev => ({ ...prev, width: parseInt(e.target.value) || 0 }))} className="w-24 px-2 py-1 text-sm border border-gray-300 rounded" min="10" max="100" />
-                                </div>
-
-                                <div>
-                                    <label className="block text-xs font-semibold text-gray-600 mb-1">Stories</label>
-                                    <select value={numStories} onChange={(e) => setNumStories(parseInt(e.target.value))} className="w-24 px-2 py-1 text-sm border border-gray-300 rounded bg-white">
-                                        <option value="1">1 Story</option>
-                                        <option value="2">2 Stories</option>
-                                        <option value="3">3 Stories</option>
-                                    </select>
-                                </div>
-                            </div>
-
-                            <div className="mb-6 flex justify-center w-full">
-                                {viewMode === '3d' ? (
-                                    <div className="w-full">
-                                        <div ref={mountRef} className={`h-[600px] w-full border-4 border-gray-300 rounded-lg ${hvacMode==='cooling'?'bg-cyan-50':'bg-blue-50'}`}></div>
-                                        <p className="text-xs text-gray-500 mt-2 text-center">Drag to rotate • Right-click to pan • Scroll to zoom</p>
-                                    </div>
-                                ) : (
-                                    <div className="w-full overflow-auto h-[600px] border-4 border-gray-300 rounded-lg p-4 bg-gray-50">
-                                        {renderFloorPlan()}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* Right Column: HVAC Controls (Fixed Width) */}
-                        <div className="space-y-6">
-                            
-                            {/* HVAC CALCULATOR PANEL */}
-                            <div className={`bg-${themeColor}-50 border border-${themeColor}-200 rounded-lg p-5`}>
-                                <div className="flex justify-between items-center mb-4">
-                                    <h3 className={`text-lg font-bold text-${themeColor}-900 flex items-center gap-2`}>
-                                        {hvacMode==='heating' ? <FireIcon/> : <SnowIcon/>} 
-                                        {hvacMode==='heating' ? 'Heating' : 'Cooling'}
-                                    </h3>
-                                    <div className="flex bg-white rounded border border-gray-300 overflow-hidden">
-                                        <button onClick={()=>setHvacMode('heating')} className={`px-3 py-1 text-xs font-bold ${hvacMode==='heating'?'bg-orange-500 text-white':'text-gray-600 hover:bg-gray-100'}`}>Heat</button>
-                                        <button onClick={()=>setHvacMode('cooling')} className={`px-3 py-1 text-xs font-bold ${hvacMode==='cooling'?'bg-cyan-500 text-white':'text-gray-600 hover:bg-gray-100'}`}>Cool</button>
-                                    </div>
-                                </div>
-                                
-                                <div className="space-y-3">
-                                    {/* SCENARIO TOGGLES */}
-                                    <div className={`flex bg-${themeColor}-200 rounded p-1 mb-2`}>
-                                        <button onClick={()=>setTimeOfDay('day')} className={`flex-1 flex items-center justify-center gap-1 py-1 text-xs font-bold rounded ${timeOfDay==='day' ? `bg-white text-${themeColor}-900 shadow` : `text-${themeColor}-800`}`}><SunIcon/> Day</button>
-                                        <button onClick={()=>setTimeOfDay('night')} className={`flex-1 flex items-center justify-center gap-1 py-1 text-xs font-bold rounded ${timeOfDay==='night' ? `bg-white text-blue-900 shadow` : `text-${themeColor}-800`}`}><MoonIcon/> Night</button>
-                                    </div>
-
-                                    {timeOfDay === 'day' ? (
-                                        <div className="bg-white p-2 rounded border border-gray-200 mb-2 space-y-2">
-                                            <div className="flex items-center justify-between">
-                                                <span className="text-xs font-semibold text-gray-700">Overhead Sun</span>
-                                                <input type="checkbox" checked={sunVisible} onChange={e=>setSunVisible(e.target.checked)} />
-                                            </div>
-                                            <div>
-                                                <div className="flex justify-between text-xs font-semibold text-gray-700 mb-1">
-                                                    <span>Latitude</span>
-                                                    <span>{latitude}°</span>
-                                                </div>
-                                                <input type="range" min="0" max="90" value={latitude} onChange={e=>setLatitude(Number(e.target.value))} className="w-full" />
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <div className="bg-white p-2 rounded border border-gray-200 mb-2">
-                                            <label className="block text-xs font-semibold text-gray-700 mb-1">Sky Condition</label>
-                                            <select value={nightCondition} onChange={e=>setNightCondition(e.target.value)} className="w-full text-xs p-1 border rounded">
-                                                <option value="clear">Clear (Radiant Loss)</option>
-                                                <option value="cloudy">Cloudy (Insulated)</option>
-                                            </select>
-                                        </div>
-                                    )}
-
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div><label className={`block text-xs font-semibold text-${themeColor}-800 mb-1`}>Outside °F</label><input type="number" value={outsideTemp} onChange={(e) => setOutsideTemp(Number(e.target.value))} className={`w-full px-2 py-1 border border-${themeColor}-200 rounded text-sm`} /></div>
-                                        <div><label className={`block text-xs font-semibold text-${themeColor}-800 mb-1`}>Inside °F</label><input type="number" value={insideTemp} onChange={(e) => setInsideTemp(Number(e.target.value))} className={`w-full px-2 py-1 border border-${themeColor}-200 rounded text-sm`} /></div>
-                                        <div><label className={`block text-xs font-semibold text-${themeColor}-800 mb-1`}>Ground °F</label><input type="number" value={groundTemp} onChange={(e) => setGroundTemp(Number(e.target.value))} className={`w-full px-2 py-1 border border-${themeColor}-200 rounded text-sm`} /></div>
-                                        <div><label className={`block text-xs font-semibold text-${themeColor}-800 mb-1`}>Wind mph</label><input type="number" value={windSpeed} onChange={(e) => setWindSpeed(Number(e.target.value))} className={`w-full px-2 py-1 border border-${themeColor}-200 rounded text-sm`} /></div>
-                                    </div>
-                                    
-                                    {/* COOLING EXTRAS */}
-                                    {hvacMode === 'cooling' && (
-                                        <div className="bg-white p-2 rounded border border-cyan-200 space-y-2">
-                                            <div className="grid grid-cols-2 gap-2">
-                                                <div><label className="block text-xs font-bold text-gray-700">Humidity %</label><input type="number" value={humidity} onChange={e=>setHumidity(Number(e.target.value))} className="w-full p-1 border rounded text-xs"/></div>
-                                                <div><label className="block text-xs font-bold text-gray-700">Occupants</label><input type="number" value={occupants} onChange={e=>setOccupants(Number(e.target.value))} className="w-full p-1 border rounded text-xs"/></div>
-                                            </div>
-                                            <div>
-                                                <label className="block text-xs font-bold text-gray-700">Appliances</label>
-                                                <select value={appliances} onChange={e=>setAppliances(e.target.value)} className="w-full p-1 border rounded text-xs">
-                                                    <option value="low">Low (Basic)</option>
-                                                    <option value="medium">Medium (Typical)</option>
-                                                    <option value="high">High (Servers/Ovens)</option>
-                                                </select>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    <div>
-                                        <label className={`block text-xs font-semibold text-${themeColor}-800 mb-1`}>Attic Insulation (R)</label>
-                                        <input type="number" value={atticRValue} onChange={(e) => setAtticRValue(Number(e.target.value))} className={`w-full px-2 py-1 border border-${themeColor}-200 rounded text-sm`} />
-                                    </div>
-
-                                    <div>
-                                        <label className={`block text-xs font-semibold text-${themeColor}-800 mb-1`}>Wind Direction</label>
-                                        <select value={windDirection} onChange={(e) => setWindDirection(e.target.value)} className={`w-full px-2 py-1 border border-${themeColor}-200 rounded text-sm bg-white`}>
-                                            <option value="north">North</option>
-                                            <option value="south">South</option>
-                                            <option value="east">East</option>
-                                            <option value="west">West</option>
-                                        </select>
-                                    </div>
-                                    
-                                    {/* HEATING: Efficiency */}
-                                    {hvacMode === 'heating' && (
-                                        <div className="bg-white p-2 rounded border border-orange-200">
-                                            <label className="block text-xs font-semibold text-orange-800 mb-1">Furnace Efficiency</label>
-                                            <select value={furnaceEfficiency} onChange={e=>setFurnaceEfficiency(Number(e.target.value))} className="w-full px-2 py-1 border border-orange-200 rounded text-sm">
-                                                <option value="80">Standard (80%)</option>
-                                                <option value="96">High Efficiency (96%)</option>
-                                                <option value="60">Old Unit (60%)</option>
-                                            </select>
-                                        </div>
-                                    )}
-
-                                    <div className={`mt-4 pt-4 border-t border-${themeColor}-200`}>
-                                        <div className={`text-sm text-${themeColor}-800`}>Required Capacity:</div>
-                                        <div className={`text-3xl font-black text-${themeColor}-600`}>{displayValue} {displayUnit}</div>
-                                        <div className={`text-xs text-${themeColor}-700 mt-1 italic`}>
-                                            {hvacMode === 'heating' ? 'Input Rating Required' : 'Total Heat Gain'}
-                                        </div>
-                                        
-                                        {/* New Data Buttons */}
-                                        <div className="flex gap-2 mt-4 pt-2 border-t border-gray-200">
-                                            <button onClick={exportJSON} title="Export Save File" className="p-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded border border-gray-300">
-                                                <DownloadIcon />
-                                            </button>
-                                            <label className="p-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded border border-gray-300 cursor-pointer" title="Import Save File">
-                                                <UploadIcon />
-                                                <input type="file" ref={fileInputRef} onChange={importJSON} className="hidden" accept=".json" />
-                                            </label>
-                                            <button onClick={exportCSV} title="Download Report (CSV)" className="flex-1 px-3 py-2 bg-green-600 hover:bg-green-700 text-white text-xs font-bold rounded flex items-center justify-center gap-2">
-                                                <FileTextIcon /> Export CSV
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Selection Controls */}
-                            <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
-                                {selectedWall ? (
-                                    <div className="mb-4">
-                                        <h3 className="font-semibold text-gray-900">Edit: {selectedWall.toUpperCase()}</h3>
-                                        <p className="text-xs text-gray-600 mb-2">R-Value: {getWallInsulation(selectedWall).rValue + 3}</p>
-                                    </div>
-                                ) : (
-                                    <div className="mb-4 text-sm text-gray-500 italic">Select a wall to edit materials</div>
-                                )}
-
-                                <div className="flex gap-2 mb-4">
-                                    <button onClick={() => setSelectionMode('exterior')} className={`flex-1 px-2 py-1 rounded text-xs font-medium transition-colors ${selectionMode === 'exterior' ? 'bg-gray-800 text-white' : 'bg-gray-200'}`}>Ext</button>
-                                    <button onClick={() => setSelectionMode('insulation')} className={`flex-1 px-2 py-1 rounded text-xs font-medium transition-colors ${selectionMode === 'insulation' ? 'bg-gray-800 text-white' : 'bg-gray-200'}`}>Insul</button>
-                                    <button onClick={() => setSelectionMode('features')} className={`flex-1 px-2 py-1 rounded text-xs font-medium transition-colors ${selectionMode === 'features' ? 'bg-gray-800 text-white' : 'bg-gray-200'}`}>Features</button>
-                                </div>
-
-                                <div className="h-48 overflow-y-auto">
-                                    {selectionMode === 'exterior' && (
-                                        <div className="grid grid-cols-2 gap-2">
-                                            {EXTERIOR_MATERIALS.map(material => (
-                                                <button key={material.id} onClick={() => handleMaterialSelect(material.id)} disabled={!selectedWall} className={`p-2 rounded border text-left ${selectedWall && wallExterior[selectedWall] === material.id ? 'border-green-600 bg-green-50' : 'border-gray-300'} ${!selectedWall && 'opacity-50'}`}>
-                                                    <div className="w-full h-4 rounded mb-1" style={{ backgroundColor: `#${material.color.toString(16).padStart(6, '0')}` }}></div>
-                                                    <div className="text-xs font-medium">{material.name}</div>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    )}
-                                    
-                                    {selectionMode === 'insulation' && (
-                                        <div className="grid grid-cols-1 gap-2">
-                                            {INSULATION_OPTIONS.map(option => (
-                                                <button key={option.id} onClick={() => handleMaterialSelect(option.id)} disabled={!selectedWall} className={`p-2 rounded border text-left flex justify-between items-center ${selectedWall && wallInsulation[selectedWall] === option.id ? 'border-blue-600 bg-blue-50' : 'border-gray-300'} ${!selectedWall && 'opacity-50'}`}>
-                                                    <div>
-                                                        <div className="text-xs font-medium">{option.name}</div>
-                                                        <div className="text-xs text-gray-500">R-{option.rValue}</div>
-                                                    </div>
-                                                    <div className="w-4 h-4 rounded-full" style={{ backgroundColor: `#${option.color.toString(16).padStart(6, '0')}` }}></div>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    )}
-
-                                    {selectionMode === 'features' && selectedWall && (
-                                        <div className="space-y-2">
-                                            <div className="flex gap-1">
-                                                <button onClick={()=>addFeature('window-std')} className="flex-1 bg-green-100 p-2 text-xs border border-green-300 rounded hover:bg-green-200 font-bold">+ Win</button>
-                                                <button onClick={()=>addFeature('window-pic')} className="flex-1 bg-green-100 p-2 text-xs border border-green-300 rounded hover:bg-green-200 font-bold">+ Pic</button>
-                                                <button onClick={()=>addFeature('door')} className="flex-1 bg-amber-100 p-2 text-xs border border-amber-300 rounded hover:bg-amber-200 font-bold">+ Door</button>
-                                            </div>
-                                            
-                                            <div className="mt-2 border-t pt-2">
-                                                <div className="text-xs font-bold text-gray-500 mb-1">Current Features:</div>
-                                                {(wallFeatures[selectedWall] || []).map((f, i) => (
-                                                    <div key={f.id} className="flex justify-between items-center bg-white p-2 mb-1 rounded border text-xs">
-                                                        <span>{FEATURE_STATS[f.type].name}</span>
-                                                        <button onClick={()=>removeFeature(selectedWall, f.id)} className="text-red-500 hover:bg-red-50 rounded p-1"><TrashIcon/></button>
-                                                    </div>
-                                                ))}
-                                                {(!wallFeatures[selectedWall] || wallFeatures[selectedWall].length === 0) && <div className="text-xs italic text-gray-400">No features added</div>}
-                                            </div>
-                                        </div>
-                                    )}
-                                    {selectionMode === 'features' && !selectedWall && <div className="text-xs text-gray-400 italic">Select a wall to add features</div>}
-                                </div>
-                            </div>
-                            
-                            <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
-                                <h3 className="text-sm font-semibold mb-2">Roof Material</h3>
-                                <div className="grid grid-cols-2 gap-2">
-                                    {ROOF_MATERIALS.map(material => (
-                                        <button key={material.id} onClick={() => setRoofMaterial(material.id)} className={`p-2 rounded border text-left ${roofMaterial === material.id ? 'border-purple-600 bg-purple-50' : 'border-gray-300'}`}>
-                                            <div className="w-full h-4 rounded mb-1" style={{ backgroundColor: `#${material.color.toString(16).padStart(6, '0')}` }}></div>
-                                            <div className="text-xs font-medium">{material.name}</div>
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-
-                        </div>
-                    </div>
-                </div>
-            </div>
+    <button id="btnExportJSON" class="ghost">Export JSON</button>
+    <button id="btnImportJSON" class="ghost">Import JSON</button>
+    <button id="btnExportCSV" class="ghost">Export CSV</button>
+    <input id="jsonFileInput" type="file" accept=".json,application/json" style="display:none;">
+
+    <span class="hint" style="margin-left:6px;">
+      Draw: drag to add a member. Select: drag a node to move; double-click to edit; Delete key removes.
+    </span>
+  </div>
+
+  <div class="row">
+    <div class="col">
+      <div id="wrap">
+        <canvas id="base"    width="700" height="560"></canvas>
+        <canvas id="overlay" width="700" height="560"></canvas>
+      </div>
+
+      <div class="controls split" style="margin-top:10px; gap:12px;">
+        <button class="ghost labelbtn" disabled>Segment Divisions</button>
+        <input id="divCount"  type="number" min="1" max="50" value="10" style="width:80px;">
+
+        <button id="btnSolve" class="primary">Solve</button>
+        <button id="btnModes" class="ghost">Modes</button>
+        <button id="viewDef"  class="ghost">Deflections</button>
+        <button id="viewStressPanel" class="ghost">Stresses</button>
+
+        <button class="ghost labelbtn" disabled>Deflection Scale</button>
+        <input id="defScale"  type="number" step="any" value="1" style="width:80px;">
+
+        <label class="ghost labelbtn" disabled>Mode #</label>
+        <select id="modeSelect" style="width:70px;">
+          <option value="0">Static</option>
+        </select>
+
+        <button id="btnAnimate" class="ghost">Animate</button>
+        <label class="ghost labelbtn" style="margin-left:6px;" disabled>Freq (Hz)</label>
+
+        <button id="btnResetView" class="ghost">Reset Results</button>
+      </div>
+    </div>
+
+<div class="col panel stack">
+  <div>
+    <div><strong>Units (display only)</strong></div>
+    <div class="controls">
+      <button id="btnUS" class="ghost">US (in, lbs)</button>
+      <button id="btnSI" class="ghost">SI (m, N)</button>
+    </div>
+    <div class="hint">Solver is unit-agnostic; keep inputs consistent.</div>
+  </div>
+
+  <div class="panel-row">
+    <div class="panel-half">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <strong>Nodes (editable)</strong>
+        <span class="hint">Edit X/Y to move nodes</span>
+      </div>
+      <div id="nodeList" class="list"></div>
+    </div>
+
+    <div class="panel-half">
+      <div><strong>Members</strong></div>
+      <div id="memberList" class="list"></div>
+    </div>
+  </div>
+
+  <div class="panel-row">
+    <div class="panel-half">
+      <div><strong>Results (primary nodes)</strong></div>
+      <div id="resultList" class="list"></div>
+    </div>
+
+    <div class="panel-half">
+      <div id="stressPanelBlock">
+        <div class="controls" style="justify-content:space-between;">
+          <strong>Stress Panel</strong>
+          <button id="btnCloseStressPanel" class="ghost">Close</button>
         </div>
-    );
+        <canvas id="stressPanel"></canvas>
+        <div id="stressPanelHint" class="hint" style="margin-top:6px;">
+          Click a member (while this view is active) to plot σ<sub>L</sub> (red) & σ<sub>R</sub> (blue) vs length.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+  </div>
+
+<script>
+(() => {
+  // ===== Canvas & State =====
+  const base = document.getElementById('base');
+  const overlay = document.getElementById('overlay');
+  const stressCanvas = document.getElementById('stressPanel');
+  const stressBlock  = document.getElementById('stressPanelBlock');
+  const ctx = base.getContext('2d');
+  const ovr = overlay.getContext('2d');
+  const spx = stressCanvas.getContext('2d');
+
+  const nodeList   = document.getElementById('nodeList');
+  const memberList = document.getElementById('memberList');
+  const resultList = document.getElementById('resultList');
+
+  const MAX_MEMBERS = 50;
+  let mode = 'draw';        // 'draw' | 'select'
+  let viewMode = 'geom';    // 'geom' | 'def' | 'stresspanel'
+  let units = 'US';         // display only
+
+  // Truss nodes: {id,x,y, bc, Fx,Fy, Kx,Ky}
+  let nodes = [];
+  // Members: {id,n1,n2,E,A,I,S,c,wd,qix,qjx,qiy,qjy,label}
+  let members = [];
+  let nextNodeId = 1, nextMemberId = 1;
+
+  let dragStart = null, hoverEndNodeId = null;
+  let lastSolution = null;
+  let selectedMemberId = null;
+  let selectedNodeId = null;
+  let selectedMemberForDelete = null;
+  let movingNodeId = null;
+  let moveOffset = {dx:0, dy:0};
+
+
+  // Animation state
+  let anim = { on:false, t0:0, raf:null, scaleOverride:null };
+
+  // Optional frequency slider (may not exist in DOM)
+  const animFreq = document.getElementById('animFreq');
+  const animFreqVal = document.getElementById('animFreqVal');
+
+
+
+  // Modal shapes (first 3)
+  let modalData = { modes: [], dofMap: null };
+  let currentMode = 0; // 0 = static, 1..3 = mode #
+  const modeSelect = document.getElementById('modeSelect');
+
+
+  // Hover tooltip
+  let hoverInfo = null; // {x,y, lines:[...]} in screen coords
+
+  // ===== View / Camera State =====
+  const view = { scale: 1, offsetX: 0, offsetY: 0, userAdjusted: false };
+  const MIN_SCALE = 0.2;
+  const MAX_SCALE = 5;
+  let isPanning = false;
+  const panStart = { sx: 0, sy: 0, offsetX: 0, offsetY: 0 };
+
+  // ===== Helpers =====
+  const dist2 = (a,b,x,y) => (a-x)*(a-x)+(b-y)*(b-y);
+
+  function worldToScreen(wx, wy){
+    return {
+      x: wx * view.scale + view.offsetX,
+      y: wy * view.scale + view.offsetY
+    };
+  }
+  function screenToWorld(sx, sy){
+    return {
+      x: (sx - view.offsetX) / view.scale,
+      y: (sy - view.offsetY) / view.scale
+    };
+  }
+
+  function autoFitView(){
+    if (nodes.length === 0){
+      view.scale = 1;
+      view.offsetX = 0;
+      view.offsetY = 0;
+      return;
+    }
+    const bbox = modelBounds();
+    const w = bbox.w;
+    const h = bbox.h;
+    if (!(w > 0) || !(h > 0)){
+      view.scale = 1;
+      view.offsetX = 0;
+      view.offsetY = 0;
+      return;
+    }
+    const sx = (base.width  * 0.8) / w;
+    const sy = (base.height * 0.8) / h;
+    let s = Math.min(sx, sy);
+    s = Math.max(MIN_SCALE, Math.min(MAX_SCALE, s));
+    view.scale = s;
+
+    const cx = bbox.x0 + w/2;
+    const cy = bbox.y0 + h/2;
+    view.offsetX = base.width /2 - cx * view.scale;
+    view.offsetY = base.height/2 - cy * view.scale;
+  }
+  function autoFitIfNeeded(){
+    if (!view.userAdjusted){
+      autoFitView();
+    }
+  }
+
+  const nearNodeId = (x,y, tolPx=9) => {
+    const tolWorld = tolPx / view.scale;
+    let best=null, dmin=tolWorld*tolWorld;
+    for (const n of nodes) {
+      const d = dist2(n.x, n.y, x, y);
+      if (d <= dmin){ best=n; dmin=d; }
+    }
+    return best ? best.id : null;
+  };
+
+  const nodeById   = id => nodes.find(n=>n.id===id);
+  const memberById = id => members.find(m=>m.id===id);
+
+  const pointToSegmentProjectionT = (P, A, B) => {
+    const ABx=B.x-A.x, ABy=B.y-A.y, APx=P.x-A.x, APy=P.y-A.y;
+    const ab2 = ABx*ABx + ABy*ABy || 1e-9;
+    let t = (APx*ABx + APy*ABy)/ab2; return Math.max(0,Math.min(1,t));
+  };
+  const pointToSegmentDistance = (P, A, B) => {
+    const t = pointToSegmentProjectionT(P,A,B);
+    const Cx=A.x+t*(B.x-A.x), Cy=A.y+t*(B.y-A.y);
+    return Math.hypot(P.x-Cx, P.y-Cy);
+  };
+  const nearMemberId = (x,y, tolPx=6) => {
+    const tolWorld = tolPx / view.scale;
+    let bestId=null, best=tolWorld;
+    for (const m of members){
+      const a=nodeById(m.n1), b=nodeById(m.n2);
+      const d=pointToSegmentDistance({x,y},a,b);
+      if (d<best){best=d; bestId=m.id;}
+    }
+    return bestId;
+  };
+
+function addNode(x,y){
+  const id=nextNodeId++;
+  nodes.push({id,x,y,bc:'free',Fx:0,Fy:0,Kx:0,Ky:0,Wn:0});
+  refreshLists();
+  return id;
 }
 
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(<HouseBuilder />);
+  function addMember(n1,n2){
+    if (members.length>=MAX_MEMBERS){ Swal.fire('Limit reached','Max members reached for now.','info'); return null; }
+    const id=nextMemberId++;
+    // carry forward last props
+    let E=0,A=0,I=0,S=0,c=0,wd=0,qix=0,qjx=0,qiy=0,qjy=0,label=`M${id}`;
+    if (members.length>=1){
+      const t = members[members.length-1];
+      ({E,A,I,S,c,wd,qix,qjx,qiy,qjy} = t);
+    }
+    members.push({ id,n1,n2,E,A,I,S,c,wd,qix,qjx,qiy,qjy,label });
+    refreshLists();
+    return id;
+  }
+  function deleteMember(id){
+    const idx = members.findIndex(m=>m.id===id);
+    if (idx<0) return;
+    members.splice(idx,1);
+    lastSolution = null;
+    if (selectedMemberId===id) selectedMemberId=null;
+    if (selectedMemberForDelete===id) selectedMemberForDelete=null;
+    refreshLists();
+    autoFitIfNeeded();
+    draw();
+  }
+  function deleteNodeWithMembers(nodeId){
+    const nidx = nodes.findIndex(n=>n.id===nodeId);
+    if (nidx<0) return;
+    members = members.filter(m => m.n1!==nodeId && m.n2!==nodeId);
+    nodes.splice(nidx,1);
+    lastSolution = null;
+    if (selectedNodeId===nodeId) selectedNodeId=null;
+    refreshLists();
+    autoFitIfNeeded();
+    draw();
+  }
 
-    </script>
+  const yUp      = yCanvas => base.height - yCanvas;
+  const yCanvas = yUpVal  => base.height - yUpVal;
+
+  // ===== Active button helpers =====
+  const modeBtns = ['btnDraw','btnSelect'];
+  const viewBtns = ['viewGeom','viewDef','viewStressPanel'];
+  function setActiveGroup(ids, activeId){
+    ids.forEach(id => {
+      const el = document.getElementById(id);
+      el.classList.toggle('active', id===activeId);
+    });
+  }
+
+  // ===== UI Buttons =====
+  document.getElementById('btnDraw').onclick    = () => { mode='draw';   overlay.style.cursor='crosshair'; setActiveGroup(modeBtns,'btnDraw'); draw(); };
+  document.getElementById('btnSelect').onclick = () => { mode='select'; overlay.style.cursor='pointer';   setActiveGroup(modeBtns,'btnSelect'); draw(); };
+
+  document.getElementById('viewGeom').onclick = ()=>{ stopAnim(); viewMode='geom'; toggleStressPanel(false); setActiveGroup(viewBtns,'viewGeom'); draw(); };
+  document.getElementById('viewDef').onclick  = ()=>{ stopAnim(); viewMode='def';  toggleStressPanel(false); setActiveGroup(viewBtns,'viewDef');  draw(); };
+  document.getElementById('viewStressPanel').onclick = ()=>{ stopAnim(); viewMode='stresspanel'; toggleStressPanel(true); setActiveGroup(viewBtns,'viewStressPanel'); draw(); };
+  document.getElementById('btnCloseStressPanel').onclick = ()=>{ stopAnim(); viewMode='geom'; toggleStressPanel(false); setActiveGroup(viewBtns,'viewGeom'); draw(); };
+
+  document.getElementById('btnUndo').onclick = () => {
+    stopAnim(); lastSolution=null;
+    if (dragStart){
+      dragStart=null; hoverEndNodeId=null; draw(); return;
+    }
+    if (members.length){
+      members.pop();
+      refreshLists();
+      autoFitIfNeeded();
+      draw();
+      return;
+    }
+    if (nodes.length){
+      nodes.pop();
+      refreshLists();
+      autoFitIfNeeded();
+      draw();
+      return;
+    }
+  };
+  document.getElementById('btnClear').onclick = () => {
+    stopAnim();
+    nodes=[]; members=[]; nextNodeId=1; nextMemberId=1; lastSolution=null;
+    selectedNodeId=null; selectedMemberForDelete=null; selectedMemberId=null;
+    viewMode='geom'; toggleStressPanel(false);
+    setActiveGroup(modeBtns,'btnDraw'); setActiveGroup(viewBtns,'viewGeom');
+    view.userAdjusted = false;
+    autoFitView();
+    refreshLists();
+    draw();
+  };
+
+  // I/O: Export JSON
+  document.getElementById('btnExportJSON').onclick = () => {
+    const data = {
+      timestamp: new Date().toISOString(),
+      units, nodes, members
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = `truss_model_${new Date().getTime()}.json`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // I/O: Import JSON
+  const fileInput = document.getElementById('jsonFileInput');
+  document.getElementById('btnImportJSON').onclick = () => fileInput.click();
+  fileInput.addEventListener('change', (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    const rd = new FileReader();
+    rd.onload = () => {
+      try {
+        const obj = JSON.parse(rd.result);
+        if (!obj.nodes || !obj.members) throw new Error('Invalid JSON structure');
+        
+        nodes = obj.nodes.map(n => ({
+          id: n.id, x: n.x, y: n.y, bc: n.bc || 'free',
+          Fx: n.Fx || 0, Fy: n.Fy || 0, Kx: n.Kx || 0, Ky: n.Ky || 0, Wn: n.Wn || 0
+        }));
+        
+        members = obj.members.map(m => ({
+          id: m.id, n1: m.n1, n2: m.n2, E: m.E || 0, A: m.A || 0,
+          I: m.I || 0, S: m.S || 0, c: m.c || 0, wd: m.wd || 0,
+          qix: m.qix || 0, qjx: m.qjx || 0, qiy: m.qiy || 0, qjy: m.qjy || 0,
+          label: m.label || `M${m.id}`
+        }));
+
+        nextNodeId = (nodes.reduce((a, n) => Math.max(a, n.id), 0) || 0) + 1;
+        nextMemberId = (members.reduce((a, m) => Math.max(a, m.id), 0) || 0) + 1;
+        lastSolution = null; selectedNodeId = null; selectedMemberId = null;
+        view.userAdjusted = false;
+        
+        autoFitView();
+        refreshLists();
+        draw();
+        Swal.fire('Loaded', 'Model imported successfully.', 'success');
+      } catch (err) {
+        Swal.fire('Error', 'Failed to parse JSON file.', 'error');
+      }
+      fileInput.value = '';
+    };
+    rd.readAsText(f);
+  });
+
+  // I/O: Export CSV
+  document.getElementById('btnExportCSV').onclick = () => {
+    if (!lastSolution || !lastSolution.primaryRes) {
+      Swal.fire('No Results', 'Run a solution first to export results.', 'info');
+      return;
+    }
+    
+    const now = new Date();
+    let csv = `Date,${now.toLocaleDateString()}\nTime,${now.toLocaleTimeString()}\n\n`;
+    
+    // Nodal Results
+    csv += "Node ID,Ux (disp),Uy (disp),Reaction X,Reaction Y\n";
+    lastSolution.primaryRes.forEach(r => {
+      const rxn = lastSolution.reactionsByNode[r.id] || {Rx:0, Ry:0};
+      csv += `${r.id},${r.ux},${r.uy},${rxn.Rx.toFixed(4)},${rxn.Ry.toFixed(4)}\n`;
+    });
+
+    // Member Stresses (Summary)
+    csv += "\nMember ID,Sigma Min,Sigma Max\n";
+    for (const memId of Object.keys(lastSolution.stress)) {
+      const st = lastSolution.stress[memId];
+      if (!st) continue;
+      const all = st.sL.concat(st.sR);
+      const sMin = Math.min(...all);
+      const sMax = Math.max(...all);
+      csv += `${memId},${sMin.toFixed(4)},${sMax.toFixed(4)}\n`;
+    }
+
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = `truss_results_${now.getTime()}.csv`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  document.getElementById('btnUS').onclick = () => { units='US'; Swal.fire('Units set','US (in, lbs)','success'); };
+  document.getElementById('btnSI').onclick = () => { units='SI'; Swal.fire('Units set','SI (m, N)','success'); };
+
+  document.getElementById('btnSolve').onclick = () => { stopAnim(); solveTruss(); };
+  document.getElementById('btnModes').onclick = () => { stopAnim(); computeModes(); };
+  document.getElementById('btnResetView').onclick = () => { stopAnim(); lastSolution=null; selectedMemberId=null; draw(); };
+
+  // Animate controls
+  document.getElementById('btnAnimate').onclick = () => { if (anim.on) stopAnim(); else startAnim(); };
+  
+
+  if (animFreq && animFreqVal) {
+    animFreq.addEventListener('input', () => {
+      animFreqVal.textContent = animFreq.value;
+    });
+  }
+
+
+
+  modeSelect.addEventListener('change', () => {
+    currentMode = parseInt(modeSelect.value, 10) || 0;
+    anim.scaleOverride = null;   // reset animation envelope
+    draw();
+  });
+
+
+
+  function startAnim(){
+    if (anim.on) return;
+    anim.on = true; anim.t0 = 0;
+    const btn = document.getElementById('btnAnimate');
+    btn.textContent = 'Stop';
+    btn.classList.add('active'); // gray while active
+    const tick = (ts)=>{
+      if (!anim.on){ anim.raf=null; return; }
+      if (!anim.t0) anim.t0 = ts;
+      const t = (ts - anim.t0) / 1000;
+      
+      const f = animFreq ? (parseFloat(animFreq.value) || 1) : 1;
+      
+
+const base = parseFloat(document.getElementById('defScale').value) || 1;
+      const amp = 0.5 * (1 - Math.cos(2*Math.PI*f*t));
+      anim.scaleOverride = base * amp;
+      if (viewMode === 'def') draw();
+      anim.raf = requestAnimationFrame(tick);
+    };
+    anim.raf = requestAnimationFrame(tick);
+  }
+  function stopAnim(){
+    if (!anim.on) return;
+    anim.on = false; anim.scaleOverride = null;
+    if (anim.raf){ cancelAnimationFrame(anim.raf); anim.raf=null; }
+    if (viewMode === 'def') draw();
+    const btn = document.getElementById('btnAnimate');
+    btn.textContent = 'Animate';
+    btn.classList.remove('active');
+  }
+
+  // ===== Overlay Events =====
+  overlay.addEventListener('contextmenu', e => e.preventDefault());
+
+  overlay.addEventListener('mousedown', (e)=>{
+    hoverInfo = null;
+
+    // Right button -> start pan
+    if (e.button === 2){
+      isPanning = true;
+      panStart.sx = e.clientX;
+      panStart.sy = e.clientY;
+      panStart.offsetX = view.offsetX;
+      panStart.offsetY = view.offsetY;
+      view.userAdjusted = true;
+      overlay.style.cursor = 'grab';
+      e.preventDefault();
+      return;
+    }
+
+    const {x,y,sx,sy}=mousePos(e);
+
+    if (mode==='draw'){
+      const nid=nearNodeId(x,y);
+      let startNode, created=false, existing=false;
+      if (nid){ startNode=nodeById(nid); existing=true; }
+      else { const id=addNode(x,y); startNode=nodeById(id); created=true; }
+      dragStart={x:startNode.x, y:startNode.y, nodeId:startNode.id, createdStart:created, existingStart:existing};
+      hoverEndNodeId=null;
+    } else if (mode==='select'){
+      const nid = nearNodeId(x,y,8);
+      if (nid){
+        const n = nodeById(nid);
+        movingNodeId = nid;
+        moveOffset.dx = x - n.x;
+        moveOffset.dy = y - n.y;
+        selectedNodeId = nid;
+        selectedMemberForDelete = null;
+        overlay.style.cursor='grabbing';
+      } else {
+        movingNodeId = null;
+      }
+      dragStart={x,y,nodeId:null,createdStart:false}; hoverEndNodeId=null;
+    }
+    draw();
+  });
+
+  overlay.addEventListener('mousemove', (e)=>{
+    const {x,y,sx,sy}=mousePos(e);
+    hoverInfo = null;
+
+    // Pan in progress
+    if (isPanning){
+      const dx = e.clientX - panStart.sx;
+      const dy = e.clientY - panStart.sy;
+      view.offsetX = panStart.offsetX + dx;
+      view.offsetY = panStart.offsetY + dy;
+      view.userAdjusted = true;
+      draw();
+      return;
+    }
+
+    if (mode==='draw' && dragStart){
+      hoverEndNodeId = nearNodeId(x,y);
+      draw();
+
+      // live segment
+      const p0 = worldToScreen(dragStart.x, dragStart.y);
+      const p1 = worldToScreen(x, y);
+      ovr.save();
+      ovr.lineWidth=2; ovr.setLineDash([6,4]); ovr.strokeStyle='#3a86ff';
+      ovr.beginPath(); ovr.moveTo(p0.x,p0.y); ovr.lineTo(p1.x,p1.y); ovr.stroke();
+      if (dragStart.existingStart) highlightNode(ovr, nodeById(dragStart.nodeId));
+      if (hoverEndNodeId)        highlightNode(ovr, nodeById(hoverEndNodeId));
+
+      // live coordinate tag at current mouse (candidate end node) - displayed at screen coords
+      drawCoordTag(ovr, sx, sy, `(${x.toFixed(1)}, ${y.toFixed(1)})`);
+      ovr.restore();
+      return;
+    }
+
+    draw(); // clears overlay
+
+    // Selection + hover info
+    const mid=nearMemberId(x,y,6);
+    const nid=nearNodeId(x,y,8);
+
+    if (mode==='select'){
+      if (movingNodeId!==null){
+        const n = nodeById(movingNodeId);
+        n.x = x - moveOffset.dx;
+        n.y = y - moveOffset.dy;
+        lastSolution = null;
+        draw();
+        return;
+      }
+      if (mid){
+        const m=memberById(mid), a=nodeById(m.n1), b=nodeById(m.n2);
+        const A = worldToScreen(a.x,a.y);
+        const B = worldToScreen(b.x,b.y);
+        ovr.save(); ovr.lineWidth=4; ovr.strokeStyle='#ff006e';
+        ovr.beginPath(); ovr.moveTo(A.x,A.y); ovr.lineTo(B.x,B.y); ovr.stroke(); ovr.restore();
+        overlay.style.cursor='pointer';
+
+        // Hover tooltip for force & stress (if solved)
+        if (lastSolution){
+          const info = getMemberHoverInfo(mid, {x,y}); // world coords
+          if (info){
+            const p = worldToScreen(x,y);
+            hoverInfo = { x:p.x+12, y:p.y-12, lines:info };
+          }
+        }
+      } else if (nid){
+        const n=nodeById(nid);
+        const p = worldToScreen(n.x,n.y);
+        ovr.save(); ovr.fillStyle='rgba(16,185,129,0.22)';
+        ovr.beginPath(); ovr.arc(p.x,p.y,10,0,Math.PI*2); ovr.fill(); ovr.restore();
+        overlay.style.cursor='pointer';
+
+        // Show node coordinate tag on hover (screen coords)
+        drawCoordTag(ovr, p.x+12, p.y-12, `(${n.x.toFixed(1)}, ${n.y.toFixed(1)})`);
+      } else {
+        overlay.style.cursor='pointer';
+      }
+    }
+
+    if (hoverInfo) drawHoverTooltip(ovr, hoverInfo);
+  });
+
+  overlay.addEventListener('mouseup', (e)=>{
+    // End pan on right button up
+    if (isPanning && e.button === 2){
+      isPanning = false;
+      overlay.style.cursor = (mode === 'draw') ? 'crosshair' : 'pointer';
+      return;
+    }
+
+    const {x,y,sx,sy}=mousePos(e);
+    hoverInfo = null;
+
+    if (mode==='draw' && dragStart){
+      let nid=nearNodeId(x,y);
+      let endNode;
+      if (nid){ endNode=nodeById(nid); }
+      else { const id=addNode(x,y); endNode=nodeById(id); }
+      if (endNode.id===dragStart.nodeId){
+        if (dragStart.createdStart){ nodes.pop(); }
+        dragStart=null; hoverEndNodeId=null; refreshLists(); draw(); return;
+      }
+      const mid=addMember(dragStart.nodeId, endNode.id);
+      dragStart=null; hoverEndNodeId=null; refreshLists();
+      autoFitIfNeeded();
+      draw();
+      if (mid) editMember(memberById(mid));
+      return;
+    }
+    if (mode==='select'){
+      const mid=nearMemberId(x,y,6);
+      const nid=nearNodeId(x,y,8);
+
+      if (movingNodeId!==null){
+        movingNodeId = null;
+        overlay.style.cursor='pointer';
+        draw();
+        return;
+      }
+
+      if (viewMode==='stresspanel' && mid){
+        selectedMemberId = mid;
+        plotStressPanel();
+        return;
+      }
+
+      if (nid){
+        selectedNodeId = nid;
+        selectedMemberForDelete = null;
+        draw();
+        return;
+      }
+      if (mid){
+        selectedMemberForDelete = mid;
+        selectedNodeId = null;
+        draw();
+        return;
+      }
+
+      selectedNodeId = null;
+      selectedMemberForDelete = null;
+      draw();
+    }
+  });
+
+  overlay.addEventListener('dblclick', (e)=>{
+    if (mode!=='select') return;
+    const {x,y}=mousePos(e);
+    const nid=nearNodeId(x,y,8);
+    const mid=nearMemberId(x,y,6);
+    if (nid){ editNode(nodeById(nid)); draw(); return; }
+    if (mid){ editMember(memberById(mid)); draw(); return; }
+  });
+
+  // Mouse wheel zoom (around cursor)
+  overlay.addEventListener('wheel', (e)=>{
+    e.preventDefault();
+    if (nodes.length === 0) return;
+    const rect = overlay.getBoundingClientRect();
+    const sx = e.clientX - rect.left;
+    const sy = e.clientY - rect.top;
+    const world = screenToWorld(sx,sy);
+
+    const delta = e.deltaY < 0 ? 1.1 : 0.9;
+    let newScale = view.scale * delta;
+    newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, newScale));
+
+    view.scale = newScale;
+    view.offsetX = sx - world.x * view.scale;
+    view.offsetY = sy - world.y * view.scale;
+    view.userAdjusted = true;
+    draw();
+  }, { passive:false });
+
+  document.addEventListener('keydown', (e)=>{
+    if (mode!=='select') return;
+    if (e.key==='Delete' || e.key==='Backspace'){
+      if (selectedNodeId){
+        deleteNodeWithMembers(selectedNodeId);
+        selectedNodeId = null;
+        e.preventDefault();
+      } else if (selectedMemberForDelete){
+        deleteMember(selectedMemberForDelete);
+        selectedMemberForDelete = null;
+        e.preventDefault();
+      }
+    }
+  });
+
+  function mousePos(e){
+    const r=overlay.getBoundingClientRect();
+    const sx = e.clientX - r.left;
+    const sy = e.clientY - r.top;
+    const w = screenToWorld(sx,sy);
+    return { x:w.x, y:w.y, sx, sy };
+  }
+
+  // ===== Editors =====
+
+  function editNode(node){
+    const bcOptions = [
+      {value:'free',     text:'Free (no restraints)'},
+      {value:'simple',   text:'Pinned: u=0, v=0'},
+      {value:'rollerX',  text:'Roller-X: u=0, v free'},
+      {value:'rollerY',  text:'Roller-Y: v=0, u free'},
+      {value:'fixed',    text:'Fixed (truss): u=0, v=0'},
+    ];
+    const html = `
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
+        <label style="grid-column:1/3; font-weight:600;">Boundary Condition</label>
+        <select id="bc" class="swal2-select" style="grid-column:1/3;">
+          ${bcOptions.map(o=>`<option value="${o.value}" ${node.bc===o.value?'selected':''}>${o.text}</option>`).join('')}
+        </select>
+
+        <div style="grid-column:1/3; display:flex; gap:10px; align-items:center;">
+          <canvas id="bcGlyph" width="180" height="60" style="border:1px dashed #ddd; border-radius:6px;"></canvas>
+          <span class="hint">Global axes</span>
+        </div>
+
+        <label style="grid-column:1/3; font-weight:600; margin-top:6px;">Nodal Loads</label>
+        <label>Fx</label><input id="Fx" class="swal2-input" type="number" step="any" value="${node.Fx}">
+        <label>Fy</label><input id="Fy" class="swal2-input" type="number" step="any" value="${node.Fy}">
+
+        <label style="grid-column:1/3; font-weight:600; margin-top:6px;">Translational Springs</label>
+        <label>Kx</label><input id="Kx" class="swal2-input" type="number" step="any" value="${node.Kx}">
+        <label>Ky</label><input id="Ky" class="swal2-input" type="number" step="any" value="${node.Ky}">
+
+        <label style="grid-column:1/3; font-weight:600; margin-top:6px;">Node Weight</label>
+        <label>Wn</label>
+        <input id="Wn" class="swal2-input" type="number" step="any" value="${node.Wn || 0}">
+      </div>`;
+    Swal.fire({
+      title:`Node ${node.id}`,
+      html,
+      showCancelButton:true,
+      confirmButtonText:'Save',
+      didOpen:()=>{
+        const g=document.getElementById('bcGlyph').getContext('2d');
+        const sel=document.getElementById('bc');
+        drawBCGlyph(g, sel.value);
+        sel.addEventListener('change', ev => drawBCGlyph(g, ev.target.value));
+      },
+      
+preConfirm:()=>{
+  const v = id => parseFloat(document.getElementById(id).value)||0;
+  return {
+    bc: document.getElementById('bc').value,
+    Fx: v('Fx'),
+    Fy: v('Fy'),
+    Kx: v('Kx'),
+    Ky: v('Ky'),
+    Wn: v('Wn')   // <- add this line
+  };
+}
+}).then(res=>{ if (res.isConfirmed){ Object.assign(node,res.value); refreshLists(); draw(); }});
+}
+function editMember(m){
+  const html = `
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; align-items:center;">
+      <label>Label</label>
+      <input id="label" class="swal2-input" type="text" value="${m.label||''}">
+
+      <div style="grid-column:1/3; height:1px; background:#ececec; margin:6px 0;"></div>
+
+      <label>E</label>
+      <input id="E" class="swal2-input" type="number" step="any" value="${m.E}">
+
+      <label>wd (weight density)</label>
+      <input id="wd" class="swal2-input" type="number" step="any" value="${m.wd}">
+
+      <label>A</label>
+      <input id="A" class="swal2-input" type="number" step="any" value="${m.A}">
+
+      <label>I (for self-weight bending)</label>
+      <input id="I" class="swal2-input" type="number" step="any" value="${m.I||0}">
+
+      <label>S (section modulus)</label>
+      <input id="S" class="swal2-input" type="number" step="any" value="${m.S||0}">
+
+      <div class="hint" style="grid-column:1/3;">
+        If S is blank but I and c are known, σ<sub>b</sub> = M/S with S = I/c.
+        If neither present, bending from self-weight is skipped.
+      </div>
+
+      <div style="grid-column:1/3; height:1px; background:#ececec; margin:6px 0;"></div>
+
+      <label>qix (inactive)</label>
+      <input id="qix" class="swal2-input" type="number" step="any"
+             value="${m.qix}"
+             readonly
+             style="background:#ddd; color:#555; pointer-events:none;">
+
+      <label>qjx (inactive)</label>
+      <input id="qjx" class="swal2-input" type="number" step="any"
+             value="${m.qjx}"
+             readonly
+             style="background:#ddd; color:#555; pointer-events:none;">
+
+      <label>qiy (inactive)</label>
+      <input id="qiy" class="swal2-input" type="number" step="any"
+             value="${m.qiy}"
+             readonly
+             style="background:#ddd; color:#555; pointer-events:none;">
+
+      <label>qjy (inactive)</label>
+      <input id="qjy" class="swal2-input" type="number" step="any"
+             value="${m.qjy}"
+             readonly
+             style="background:#ddd; color:#555; pointer-events:none;">
+    </div>`;
+
+  Swal.fire({
+    title:`Member ${m.id}`,
+    html,
+    showCancelButton:true,
+    confirmButtonText:'Save',
+    preConfirm:()=>{
+      const v = id => parseFloat(document.getElementById(id)?.value) || 0;
+      const s = id => document.getElementById(id)?.value || '';
+
+      let I = v('I');
+      let S = v('S');
+      let c = (m.c || 0);   // existing fiber distance, if you ever set it
+
+      // If S not given but I and c are, back-calculate S = I/c
+      if ((S <= 0) && (I > 0 && c > 0)) {
+        S = I / c;
+      }
+
+      return {
+        label: s('label').trim(),
+
+        // axial / stiffness properties
+        E:  v('E'),
+        wd: v('wd'),
+        A:  v('A') || 0,
+        I:  I || 0,
+        S:  S || 0,
+        c:  c || 0,
+
+        // q-loads explicitly zeroed out in the physics
+        qix: 0,
+        qjx: 0,
+        qiy: 0,
+        qjy: 0
+      };
+    }
+  }).then(res=>{
+    if (res.isConfirmed){
+      Object.assign(m, res.value);
+      refreshLists();
+      draw();
+    }
+  });
+}
+
+  // === Support glyphs (canvas + editor) ===
+  function drawBCGlyph(g, bc){
+    g.clearRect(0,0,g.canvas.width,g.canvas.height);
+    g.save();
+    g.translate(20, g.canvas.height-20);
+    g.strokeStyle='#aaa'; g.lineWidth=1;
+    g.beginPath(); g.moveTo(0,0); g.lineTo(140,0); g.stroke();
+    g.beginPath(); g.moveTo(0,0); g.lineTo(0,-40); g.stroke();
+
+    if (bc==='fixed'){
+      g.lineWidth=6; g.strokeStyle='#222';
+      g.beginPath(); g.moveTo(0,0); g.lineTo(0,-30); g.stroke();
+      g.lineWidth=1; g.strokeStyle='#666';
+      for (let k=-14; k<=14; k+=7){ g.beginPath(); g.moveTo(0, k); g.lineTo(-8, k-6); g.stroke(); }
+    } else if (bc==='simple'){
+      g.fillStyle='#222';
+      g.beginPath(); g.moveTo(0,0); g.lineTo(-12,12); g.lineTo(12,12); g.closePath(); g.fill();
+      g.fillRect(-16,12,32,3);
+    } else if (bc==='rollerX'){
+      g.fillStyle='#222'; g.fillRect(-2, -4, 4, 8); g.fillRect(10, 2, 26, 3);
+    } else if (bc==='rollerY'){
+      g.fillStyle='#222'; g.fillRect(-2, -4, 4, 8); g.fillRect(-18, 12, 3, 26);
+    }
+    g.restore();
+  }
+
+  // ===== Draw =====
+  function draw(){
+    ctx.clearRect(0,0,base.width,base.height);
+    ovr.clearRect(0,0,overlay.width,overlay.height);
+    drawGrid(ctx);
+
+    const qScale = computeQScale();
+
+    ctx.save();
+    ctx.lineWidth=2; ctx.strokeStyle='#222';
+    ctx.font='12px system-ui'; ctx.fillStyle='#000';
+
+    for (const m of members){
+      const a=nodeById(m.n1), b=nodeById(m.n2);
+      const A = worldToScreen(a.x,a.y);
+      const B = worldToScreen(b.x,b.y);
+      ctx.beginPath(); ctx.moveTo(A.x,A.y); ctx.lineTo(B.x,B.y); ctx.stroke();
+
+      const mx=(a.x+b.x)/2, my=(a.y+b.y)/2;
+      const M = worldToScreen(mx,my);
+      ctx.fillText(m.label||`M${m.id}`, M.x+4, M.y-6);
+
+      if (viewMode==='geom' || viewMode==='def'){
+        drawDistributedLoads(ctx, m, qScale);
+      }
+    }
+    ctx.restore();
+
+for (const n of nodes){
+  drawNodeBC(ctx, n);
+  drawNodeLoadsAndSprings(ctx, n);
+
+  const p = worldToScreen(n.x, n.y);
+
+  // main node dot (blue)
+  ctx.save();
+  ctx.fillStyle = '#1d4ed8';
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // extra marker: black dot for explicit nodal weight (not from self-weight)
+  if (n.Wn && Math.abs(n.Wn) > 0){
+    ctx.save();
+    ctx.fillStyle = '#000';
+    // small black dot just above the node
+    ctx.beginPath();
+    ctx.arc(p.x, p.y - 8, 20, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // coordinate tag next to node (screen coords)
+  drawCoordTag(ctx, p.x + 10, p.y - 12,
+               `(${n.x.toFixed(1)}, ${n.y.toFixed(1)})`);
+}
+
+
+    // Support reactions (if available)
+    if (lastSolution && lastSolution.reactionsByNode){
+      drawReactions(ctx, lastSolution.reactionsByNode);
+    }
+
+    if (viewMode === 'def') {
+      let scale = parseFloat(document.getElementById('defScale').value) || 1;
+      if (anim.scaleOverride != null) scale = anim.scaleOverride;
+
+      // --- Mode shapes (if a mode is selected and available) ---
+      if (currentMode > 0 && modalData.modes[currentMode - 1]) {
+        const mode = modalData.modes[currentMode - 1];
+        const Umode = mode.Ufull;
+
+        ctx.save();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#e11d48';
+
+        for (const m of members) {
+          const a = nodeById(m.n1);
+          const b = nodeById(m.n2);
+          if (!a || !b) continue;
+
+          const bi = modalData.dofMap?.primary[m.n1];
+          const bj = modalData.dofMap?.primary[m.n2];
+          if (bi === undefined || bj === undefined) continue;
+
+          const ua = Umode[bi + 0] * scale;
+          const va = Umode[bi + 1] * scale;
+          const ub = Umode[bj + 0] * scale;
+          const vb = Umode[bj + 1] * scale;
+
+          const A = worldToScreen(a.x + ua, a.y + va);
+          const B = worldToScreen(b.x + ub, b.y + vb);
+
+          ctx.beginPath();
+          ctx.moveTo(A.x, A.y);
+          ctx.lineTo(B.x, B.y);
+          ctx.stroke();
+        }
+        ctx.restore();
+
+      // --- Static deflection (original behaviour) ---
+      } else if (lastSolution) {
+        const addQL = lastSolution.qAdd;
+
+        ctx.save();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#e11d48';
+
+        for (const poly of lastSolution.sublines) {
+          ctx.beginPath();
+          for (let k = 0; k < poly.length; k++) {
+            const p = poly[k];
+            let du = scale * p.u, dv = scale * p.v;
+
+            if (addQL && addQL.perMember[p.memId]) {
+              const qinfo = addQL.perMember[p.memId];
+              const yss = qinfo.yLocs[p.subIndex] || 0;
+              du -= scale * qinfo.s * yss;  // local y -> global
+              dv += scale * qinfo.c * yss;
+            }
+
+            const xWorld = p.x_up + du;
+            const yWorld = yCanvas(p.y_up + dv);
+            const S = worldToScreen(xWorld, yWorld);
+
+            if (k === 0) ctx.moveTo(S.x, S.y); else ctx.lineTo(S.x, S.y);
+          }
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+    }
+
+
+    drawSelection();
+
+    // Hover tooltip (if set by mousemove)
+    if (hoverInfo) drawHoverTooltip(ovr, hoverInfo);
+  }
+
+  function drawReactions(g, reactionsByNode){
+    g.save();
+    g.strokeStyle='#059669'; g.fillStyle='#059669'; g.lineWidth=2;
+    g.font='12px system-ui';
+    for (const nidStr of Object.keys(reactionsByNode)){
+      const nid = parseInt(nidStr,10);
+      const n = nodeById(nid); if (!n) continue;
+      const {Rx, Ry} = reactionsByNode[nid];
+      const p = worldToScreen(n.x,n.y);
+
+      if (Math.abs(Rx) > 1e-12){
+        const dir = Math.sign(Rx) || 1;
+        const len = 20 + 16*Math.min(1, Math.abs(Rx)/ (Math.abs(Rx)+1e-9));
+        drawArrow(g, p.x, p.y, p.x + dir*len, p.y);
+        g.fillText(`Rx=${round6(Rx)}`, p.x + dir*(len+6), p.y - 6);
+      }
+      if (Math.abs(Ry) > 1e-12){
+        const up = Ry>0; const len = 20 + 16*Math.min(1, Math.abs(Ry)/ (Math.abs(Ry)+1e-9));
+        drawArrow(g, p.x, p.y, p.x, p.y + (up ? -len : +len));
+        g.fillText(`Ry=${round6(Ry)}`, p.x + 6, p.y + (up ? -len-6 : len+14));
+      }
+    }
+    g.restore();
+  }
+
+  function drawNodeBC(g, node){
+    const {x,y,bc}=node;
+    const p = worldToScreen(x,y);
+    const X = p.x, Y = p.y;
+
+    g.save(); g.strokeStyle='#000'; g.fillStyle='#000';
+    if (bc==='fixed'){
+      g.lineWidth=6; g.beginPath(); g.moveTo(X-10, Y-16); g.lineTo(X-10, Y+16); g.stroke();
+      g.lineWidth=1; g.strokeStyle='#666';
+      for (let k=-14; k<=14; k+=7){ g.beginPath(); g.moveTo(X-10, Y+k); g.lineTo(X-18, Y+k-6); g.stroke(); }
+    } else if (bc==='simple'){
+      g.beginPath(); g.moveTo(X, Y+8); g.lineTo(X-10, Y+18); g.lineTo(X+10, Y+18); g.closePath(); g.fill();
+      g.fillRect(X-14, Y+18, 28, 3);
+    } else if (bc==='rollerX'){
+      g.beginPath(); g.moveTo(X-6,Y); g.lineTo(X+6,Y); g.stroke();
+      g.fillRect(X+10, Y+2, 26, 3);
+    } else if (bc==='rollerY'){
+      g.beginPath(); g.moveTo(X,Y-6); g.lineTo(X,Y+6); g.stroke();
+      g.fillRect(X-18, Y+12, 3, 26);
+    }
+    g.restore();
+  }
+
+  function drawSelection(){
+    if (selectedNodeId){
+      const n = nodeById(selectedNodeId);
+      if (n){
+        const p = worldToScreen(n.x,n.y);
+        ovr.save();
+        ovr.lineWidth=3; ovr.strokeStyle='#10b981';
+        ovr.beginPath(); ovr.arc(p.x,p.y,12,0,Math.PI*2); ovr.stroke();
+        ovr.restore();
+      }
+    }
+    if (selectedMemberForDelete){
+      const m = memberById(selectedMemberForDelete);
+      if (m){
+        const a=nodeById(m.n1), b=nodeById(m.n2);
+        const A = worldToScreen(a.x,a.y);
+        const B = worldToScreen(b.x,b.y);
+        ovr.save(); ovr.lineWidth=4; ovr.strokeStyle='#f59e0b';
+        ovr.beginPath(); ovr.moveTo(A.x,A.y); ovr.lineTo(B.x,B.y); ovr.stroke();
+        ovr.restore();
+      }
+    }
+  }
+
+  function drawGrid(g){
+    g.save();
+    g.lineWidth=1; g.strokeStyle='#eee'; g.fillStyle='#999';
+
+    // If no model, use simple fixed screen grid (as before)
+    if (nodes.length === 0){
+      const step=40;
+      for (let x=0; x<=base.width; x+=step){ g.beginPath(); g.moveTo(x,0); g.lineTo(x,base.height); g.stroke(); }
+      for (let y=0; y<=base.height; y+=step){ g.beginPath(); g.moveTo(0,y); g.lineTo(base.width,y); g.stroke(); }
+      g.restore();
+      return;
+    }
+
+    const bbox = modelBounds();
+    const nx = 10, ny = 10;
+    const stepX = bbox.w / nx || 1;
+    const stepY = bbox.h / ny || 1;
+
+    const startX = Math.floor(bbox.x0/stepX)*stepX;
+    const endX   = Math.ceil((bbox.x0 + bbox.w)/stepX)*stepX;
+    const startY = Math.floor(bbox.y0/stepY)*stepY;
+    const endY   = Math.ceil((bbox.y0 + bbox.h)/stepY)*stepY;
+
+    // Vertical lines
+    for (let x = startX; x <= endX + 1e-9; x += stepX){
+      const p1 = worldToScreen(x, startY);
+      const p2 = worldToScreen(x, endY);
+      g.beginPath(); g.moveTo(p1.x,p1.y); g.lineTo(p2.x,p2.y); g.stroke();
+    }
+    // Horizontal lines
+    for (let y = startY; y <= endY + 1e-9; y += stepY){
+      const p1 = worldToScreen(startX, y);
+      const p2 = worldToScreen(endX, y);
+      g.beginPath(); g.moveTo(p1.x,p1.y); g.lineTo(p2.x,p2.y); g.stroke();
+    }
+
+    g.restore();
+  }
+
+  function drawNodeLoadsAndSprings(g, node){
+    if (viewMode==='stresspanel') return;
+    const {x,y,Fx,Fy,Kx,Ky}=node;
+    const p = worldToScreen(x,y);
+    const X = p.x, Y = p.y;
+
+    g.save();
+    g.strokeStyle='#db2777'; g.fillStyle='#db2777'; g.lineWidth=2;
+    if (Fx!==0){ const sign=Fx>0?1:-1, L=26*sign; drawArrow(g,X,Y,X+L,Y); g.fillText('Fx', X+L+(sign>0?6:-18), Y-6); }
+    if (Fy!==0){ const sign=Fy>0?-1:1, L=26*sign; drawArrow(g,X,Y,X,Y+L); g.fillText('Fy', X+6, Y+L+(sign<0?-8:14)); }
+    g.strokeStyle='#0f766e'; g.fillStyle='#0f766e'; g.lineWidth=2;
+    if (Kx>0){ drawSpringX(g, X+16, Y, 18, 6); g.fillText('Kx', X+40, Y-6); }
+    if (Ky>0){ drawSpringY(g, X, Y+16, 18, 6); g.fillText('Ky', X+6, Y+42); }
+    g.restore();
+  }
+
+  // q-load graphics
+  function computeQScale(){
+    let maxQx=0, maxQy=0;
+    for (const m of members){
+      maxQx = Math.max(maxQx, Math.abs(m.qix||0), Math.abs(m.qjx||0));
+      maxQy = Math.max(maxQy, Math.abs(m.qiy||0), Math.abs(m.qjy||0));
+    }
+    return { maxQx: maxQx || 1, maxQy: maxQy || 1, lenX:28, lenY:28 };
+  }
+  function drawDistributedLoads(g, m, qScale){
+    const a=nodeById(m.n1), b=nodeById(m.n2);
+    const dx=b.x-a.x, dy=b.y-a.y;
+    const markers = 12;
+    // qx
+    for (let k=0;k<=markers;k++){
+      const t=k/markers, x=a.x+dx*t, y=a.y+dy*t;
+      const qx = (m.qix||0) + ((m.qjx||0) - (m.qix||0))*t;
+      if (Math.abs(qx)>1e-12){
+        const dir = Math.sign(qx)||1, len=Math.max(8, Math.abs(qx)/qScale.maxQx*qScale.lenX);
+        const P = worldToScreen(x,y);
+        drawArrow(g, P.x, P.y, P.x + dir*len, P.y);
+        if (k===Math.floor(markers/2)) g.fillText('qx', P.x + dir*len + (dir>0?6:-18), P.y-6);
+      }
+    }
+    // qy
+    for (let k=0;k<=markers;k++){
+      const t=k/markers, x=a.x+dx*t, y=a.y+dy*t;
+      const qy = (m.qiy||0) + ((m.qjy||0) - (m.qiy||0))*t;
+      if (Math.abs(qy)>1e-12){
+        const up=qy>0, len=Math.max(8, Math.abs(qy)/qScale.maxQy*qScale.lenY);
+        const P = worldToScreen(x,y);
+        drawArrow(g, P.x, P.y, P.x, P.y + (up ? -len : +len));
+        if (k===Math.floor(markers/2)) g.fillText('qy', P.x+6, P.y + (up ? -len-6 : len+14));
+      }
+    }
+  }
+
+  // ===== SOLVER (TRUSS) + q-load superposition =====
+
+function solveTruss(){
+  const DIV = Math.max(1, Math.min(50, (parseInt(document.getElementById('divCount').value)||10)));
+  try {
+    const build = buildAnalysisModelTruss(DIV);
+    const {N, dofMap, anodes, F, K, geom} = build; // note: geom pulled out
+
+    // sanity: at least one support
+    const supportCount = nodes.reduce((n,nd)=> n + ((nd.bc!=='free')?1:0), 0);
+    if (supportCount === 0) {
+      Swal.fire('No supports','Add at least one support (simple/roller).','error');
+      return;
+    }
+
+    // add node springs
+    for (const n of nodes){
+      const base = dofMap.primary[n.id]; if (base===undefined) continue;
+      if (n.Kx>0) K[base+0][base+0] += n.Kx;
+      if (n.Ky>0) K[base+1][base+1] += n.Ky;
+    }
+
+    // add external nodal loads
+    for (const n of nodes){
+      const b = dofMap.primary[n.id]; if (b===undefined) continue;
+      F[b+0] += n.Fx;
+      F[b+1] += n.Fy;
+    }
+
+    // add equivalent nodal loads from member self-weight (uniform w = wd*A, vertical down)
+    for (const m of members){
+      const g = geom[m.id]; if (!g) continue;
+      const sw = (m.wd||0)*(m.A||0);  // weight per unit length, positive magnitude
+      if (!sw) continue;
+      const Lm = g.L;
+      const Fy_each = -sw * Lm / 2;   // up is +, so down is negative
+      const bi = dofMap.primary[m.n1];
+      const bj = dofMap.primary[m.n2];
+      if (bi !== undefined) F[bi+1] += Fy_each;
+      if (bj !== undefined) F[bj+1] += Fy_each;
+    }
+
+    // boundary conditions
+    const constrained = new Set();
+    for (const n of nodes){
+      const b = dofMap.primary[n.id]; if (b===undefined) continue;
+      if (n.bc==='fixed' || n.bc==='simple'){
+        constrained.add(b+0); constrained.add(b+1);
+      } else if (n.bc==='rollerX'){
+        constrained.add(b+0);
+      } else if (n.bc==='rollerY'){
+        constrained.add(b+1);
+      }
+    }
+    const allIdx = [...Array(N).keys()];
+    const freeIdx = allIdx.filter(i => !constrained.has(i));
+    if (freeIdx.length===0){
+      console.warn('All DOFs constrained', {dofMap,nodes});
+      Swal.fire('No free DOFs','All translational DOFs are restrained.','error');
+      return;
+    }
+
+    const Kff = matPick(K, freeIdx, freeIdx);
+    const Ff  = vecPick(F, freeIdx);
+    let Uf;
+    try { Uf = numeric.solve(Kff, Ff); } catch { throw new Error('singular'); }
+    if (Uf.some(v => !isFinite(v))) throw new Error('singular');
+
+    const U = Array(N).fill(0);
+    freeIdx.forEach((gi, k) => { U[gi] = Uf[k]; });
+
+    const KU = numeric.dot(K, U);
+    const R = KU.map((v,i)=>v - F[i]);
+
+    // Map reactions to nodes (only restrained DOFs matter)
+    const reactionsByNode = {};
+    for (const n of nodes){
+      const b = dofMap.primary[n.id];
+      let Rx = 0, Ry = 0;
+      if (constrained.has(b+0)) Rx = R[b+0];
+      if (constrained.has(b+1)) Ry = R[b+1];
+      reactionsByNode[n.id] = {Rx, Ry};
+    }
+
+    // ----- build sampled polylines & axial forces (no interior DOFs) -----
+    const sublines = [];
+    const axial    = {};
+    const samplesByMember = {};
+
+    for (const m of members){
+      const g = build.geom[m.id]; if (!g) continue;
+
+      const bi = build.dofMap.analysis[g.i];
+      const bj = build.dofMap.analysis[g.j];
+
+      const ui = {u:U[bi+0], v:U[bi+1]};
+      const uj = {u:U[bj+0], v:U[bj+1]};
+
+      // constant axial force in a 2D bar
+      const dux = (U[bj+0]-U[bi+0]), duy = (U[bj+1]-U[bi+1]);
+      const Nbar = (m.E||0)*(m.A||0)/g.L * ( g.c*dux + g.s*duy ); // + tension
+      axial[m.id] = { N:[Nbar,Nbar], cnt:[1,1] };
+
+      // sampled polyline (DIV+2 points including ends)
+      const poly = [];
+      const S = build.DIV;
+      const pi = build.anodes[g.i], pj = build.anodes[g.j];
+
+      samplesByMember[m.id] = [];
+      for (let k=0; k<=S+1; k++){
+        const t = k/(S+1);
+        const x_up = pi.x_up + t*(pj.x_up - pi.x_up);
+        const y_up = pi.y_up + t*(pj.y_up - pi.y_up);
+        const u = ui.u*(1-t) + uj.u*t;
+        const v = ui.v*(1-t) + uj.v*t;
+
+        poly.push({ memId:m.id, subIndex:k, x_up, y_up, u, v });
+        samplesByMember[m.id].push({t, x: t*g.L, c:g.c, s:g.s});
+      }
+      sublines.push(poly);
+    }
+
+    // ----- self-weight simply-supported superposition & stresses (q loads deactivated) -----
+    const qAdd = { perMember:{}, yLocsByMember:{} };
+    const stress = {};
+
+    for (const m of members){
+      const g = build.geom[m.id]; if (!g) continue;
+      const S = build.DIV + 2;
+      const smp = samplesByMember[m.id];
+
+      const sw = (m.wd||0)*(m.A||0);   // self-weight per unit length
+      // q loads are intentionally ignored here
+      const Qx = 0;
+      const Qy = -sw;                  // up positive, so self-weight is downward
+      const w  = -g.s*Qx + g.c*Qy;     // local transverse load (uniform)
+
+      const E=m.E||0, I=m.I||0, useBend=(E>0&&I>0);
+      const yLocs=[], xs=[];
+      for (let k=0; k<S; k++){
+        const x = smp[k].x; xs.push(x);
+        // simply supported beam deflection under uniform w
+        yLocs.push(
+          useBend ? (w * x * (g.L*g.L*g.L - 2*g.L*x*x + x*x*x)) / (24*E*I) : 0
+        );
+      }
+      qAdd.perMember[m.id] = { yLocs, xs, c:g.c, s:g.s };
+      qAdd.yLocsByMember[m.id] = yLocs;
+
+      // stresses (axial from truss + bending from self-weight)
+      const A=m.A||0;
+      const Smod = (m.S>0)? m.S : ((m.I>0 && m.c>0)? (m.I/m.c) : 0);
+      const sL=[], sR=[], pts=[];
+      const pi = build.anodes[g.i], pj = build.anodes[g.j];
+
+      for (let k=0; k<S; k++){
+        const t = smp[k].t;
+        const x_up = pi.x_up + t*(pj.x_up - pi.x_up);
+        const y_up = pi.y_up + t*(pj.y_up - pi.y_up);
+        const Na = axial[m.id].N[0];        // constant along a bar
+        const sigAx = (A>0)? (Na/A) : 0;
+
+        let sigB = 0;
+        if (useBend && Smod>0){
+          const x = xs[k];
+          const Ra = w * g.L / 2;
+          const Mx = Ra * x - w * x*x / 2;  // simply supported under uniform w
+          sigB = Mx / Smod;
+        }
+        sL.push(sigAx - sigB);  // one fiber
+        sR.push(sigAx + sigB);  // opposite fiber
+        pts.push({x_up, y_up});
+      }
+      stress[m.id] = { pts, sL, sR };
+    }
+
+    lastSolution = {
+      Ufull:U,
+      dofMap:build.dofMap,
+      anodes:build.anodes,
+      sublines,
+      reactions:R,
+      reactionsByNode,
+      axial,
+      stress,
+      qAdd,
+      geom: build.geom
+    };
+
+    lastSolution.primaryRes = nodes.map(n=>{
+      const b = build.dofMap.primary[n.id];
+      return { id:n.id, ux:round6(U[b+0]), uy:round6(U[b+1]) };
+    });
+    showResults(lastSolution.primaryRes);
+    summarizeMemberStresses();
+
+    // auto deflection scale (includes self-weight bending via qAdd)
+    const bbox = modelBounds();
+    const Lref = Math.max(bbox.w, bbox.h) || 1;
+    let maxDisp=0;
+    for (const aidStr of Object.keys(lastSolution.anodes)){
+      const aid = parseInt(aidStr,10);
+      const b = lastSolution.dofMap.analysis[aid];
+      const u = lastSolution.Ufull[b+0], v = lastSolution.Ufull[b+1];
+      maxDisp = Math.max(maxDisp, Math.hypot(u,v));
+    }
+    for (const mem of members){
+      const yLocs = qAdd.yLocsByMember[mem.id]||[];
+      for (const y of yLocs) maxDisp = Math.max(maxDisp, Math.abs(y));
+    }
+    const defScaleAuto = (maxDisp>0) ? (0.20*Lref/maxDisp) : 1;
+    document.getElementById('defScale').value = +defScaleAuto.toFixed(4);
+
+    if (viewMode==='stresspanel') plotStressPanel();
+    draw();
+  } catch (err){
+    console.error(err);
+    Swal.fire({
+      icon:'error',
+      title:'Solve failed',
+      html:`<div style="text-align:left">
+        <div><b>Likely causes</b></div>
+        <ul style="margin:6px 0 0 18px;">
+          <li>Under-constrained truss (need enough supports).</li>
+          <li>Member has zero length or missing E/A.</li>
+        </ul>
+      </div>`
+    });
+  }
+}
+
+  // ===== MODAL ANALYSIS (FIRST 3 MODES) =====
+  function computeModes(){
+    const DIV = Math.max(1, Math.min(50, (parseInt(document.getElementById('divCount').value)||10)));
+
+    try{
+      // Build the bare truss model (same as static solve)
+      const build = buildAnalysisModelTruss(DIV);
+      const { N, dofMap, anodes, F, K, geom } = build;
+
+      // Must have at least one support
+      const supportCount = nodes.reduce((n, nd) => n + ((nd.bc !== 'free') ? 1 : 0), 0);
+      if (supportCount === 0){
+        Swal.fire('No supports','Add at least one support (simple/roller/fixed) before modal analysis.','error');
+        return;
+      }
+
+      // Boundary conditions (same pattern as in solveTruss)
+      const constrained = new Set();
+      for (const n of nodes){
+        const b = dofMap.primary[n.id];
+        if (b === undefined) continue;
+        if (n.bc === 'fixed' || n.bc === 'simple'){
+          constrained.add(b+0); constrained.add(b+1);
+        } else if (n.bc === 'rollerX'){
+          constrained.add(b+0);
+        } else if (n.bc === 'rollerY'){
+          constrained.add(b+1);
+        }
+      }
+
+      const allIdx = [...Array(N).keys()];
+      const freeIdx = allIdx.filter(i => !constrained.has(i));
+      if (freeIdx.length === 0){
+        Swal.fire('No free DOFs','All DOFs are restrained; modal analysis not meaningful.','error');
+        return;
+      }
+
+      // ----- Lumped mass from member self-weight (A, wd required) -----
+      const Mdiag = new Array(N).fill(0);
+      const G = 386.09;  // in/s^2, adjust if you work strictly in SI
+
+      // First pass: validate that all members have A and wd
+      for (const m of members){
+        const gEl = geom[m.id];
+        if (!gEl) continue;   // member may have been skipped if zero length
+        const A  = m.A  || 0;
+        const wd = m.wd || 0;
+        if (A <= 0 || wd <= 0){
+          Swal.fire(
+            'Modal analysis requires A and wd',
+            `Member ${m.id} is missing cross-sectional area A or weight density wd.\n\nSet both > 0 for all members before running modes.`,
+            'error'
+          );
+          return;
+        }
+      }
+
+      // Second pass: assemble lumped nodal masses
+      for (const m of members){
+        const gEl = geom[m.id];
+        if (!gEl) continue;
+        const A  = m.A  || 0;
+        const wd = m.wd || 0;
+        const L  = gEl.L;
+
+        const wLine = wd * A;        // weight per unit length
+        const mTot  = wLine * L / G; // total mass from self-weight
+        const mNode = mTot / 2;      // each end gets half
+
+        const pidI = anodes[gEl.i].primary;
+        const pidJ = anodes[gEl.j].primary;
+        const bi   = dofMap.primary[pidI];
+        const bj   = dofMap.primary[pidJ];
+
+        // Lump into translational DOFs
+        Mdiag[bi+0] += mNode;
+        Mdiag[bi+1] += mNode;
+        Mdiag[bj+0] += mNode;
+        Mdiag[bj+1] += mNode;
+      }
+
+      // Add explicit node weights (Wn) to the diagonal mass matrix
+      for (const n of nodes){
+        const b = dofMap.primary[n.id];
+        if (b === undefined) continue;
+        const Wn = n.Wn || 0;   // node weight in same units as other weights
+        if (Wn > 0){
+          const mNode = Wn / G;
+          Mdiag[b+0] += mNode;
+          Mdiag[b+1] += mNode;
+        }
+      }
+
+      // Check that every free DOF has positive mass
+      for (const gi of freeIdx){
+        if (Mdiag[gi] <= 0){
+          Swal.fire(
+            'Zero-mass DOF detected',
+            'Some free DOFs have zero lumped mass.\n\nCheck A and wd on all members so every free node carries mass.',
+            'error'
+          );
+          return;
+        }
+      }
+
+      // ----- Extract Kff and Mff (diagonal) and form scaled eigenproblem -----
+      const Kff = matPick(K, freeIdx, freeIdx);
+      const nf  = freeIdx.length;
+      const MdiagF = freeIdx.map(gi => Mdiag[gi]);
+
+      // Build K̃ = D Kff D with D = diag(1/sqrt(M))
+      const Kt = zeros(nf, nf);
+      for (let i=0;i<nf;i++){
+        const di = Math.sqrt(MdiagF[i]);
+        for (let j=0;j<nf;j++){
+          const dj = Math.sqrt(MdiagF[j]);
+          Kt[i][j] = Kff[i][j] / (di * dj);
+        }
+      }
+
+      // ----- Eigen solve -----
+      let eig;
+      try{
+        eig = numeric.eig(Kt);
+      } catch(err){
+        console.error(err);
+        Swal.fire('Modal solve failed','Eigenvalue solver did not converge.','error');
+        return;
+      }
+
+      const lambdas = (eig && eig.lambda && eig.lambda.x) ? eig.lambda.x : [];
+      if (!lambdas.length){
+        Swal.fire('Modal solve failed','No eigenvalues were returned by the solver.','error');
+        return;
+      }
+
+      // Collect positive, non-tiny eigenvalues
+      const modesMeta = [];
+      for (let k=0;k<lambdas.length;k++){
+        const lam = lambdas[k];
+        if (!isFinite(lam) || lam <= 1e-8) continue; // treat tiny/negative as rigid body
+        modesMeta.push({ lam, index:k });
+      }
+      if (!modesMeta.length){
+        Swal.fire(
+          'Mechanism / rigid body motion',
+          'No positive eigenvalues were found.\nThe structure is not fully restrained for modal analysis.',
+          'error'
+        );
+        return;
+      }
+
+      // Sort by ascending λ and take first 3
+      modesMeta.sort((a,b) => a.lam - b.lam);
+      const maxModes = Math.min(3, modesMeta.length);
+
+      // ----- Build physical mode shapes (global DOF vectors) -----
+      const Evecs = eig.E.x;       // eigenvectors in columns
+      modalData = { modes: [], dofMap };  // reset & store mapping
+
+      for (let i=0;i<maxModes;i++){
+        const meta = modesMeta[i];
+        const eigIndex = meta.index;
+
+        // φ (eigenvector of K̃)
+        const phi = [];
+        for (let r=0;r<nf;r++){
+          phi.push(Evecs[r][eigIndex]);
+        }
+
+        // xFree = D φ, with Dii = 1/sqrt(Mi)
+        const xFree = new Array(nf);
+        for (let j=0;j<nf;j++){
+          xFree[j] = phi[j] / Math.sqrt(MdiagF[j]);  // physical coords
+        }
+
+        // Expand to full DOF vector (constrained DOFs = 0)
+        const Ufull = new Array(N).fill(0);
+        freeIdx.forEach((gi,k) => { Ufull[gi] = xFree[k]; });
+
+        const omega = Math.sqrt(meta.lam);       // rad/s
+        const freq  = omega / (2*Math.PI);       // Hz
+
+        modalData.modes.push({ omega, freq, Ufull });
+      }
+
+      // Update Mode selector options
+      modeSelect.innerHTML = '<option value="0">Static</option>';
+      for (let i=0;i<modalData.modes.length;i++){
+        modeSelect.innerHTML += `<option value="${i+1}">${i+1}</option>`;
+      }
+      currentMode = 1;   // default to first mode after solve
+
+      // Auto-scale deflection for visibility using first mode
+      if (modalData.modes.length){
+        const bbox = modelBounds();
+        const Lref = Math.max(bbox.w, bbox.h) || 1;
+        const U1   = modalData.modes[0].Ufull;
+        let maxDisp = 0;
+        for (let gi of freeIdx){
+          const ux = U1[gi];
+          maxDisp = Math.max(maxDisp, Math.abs(ux));
+        }
+        const defScaleAuto = (maxDisp>0) ? (0.20 * Lref / maxDisp) : 1;
+        document.getElementById('defScale').value = +defScaleAuto.toFixed(4);
+      }
+
+      // ----- Build popup summary table (unchanged behaviour) -----
+      let html = `
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <tr>
+            <th style="text-align:left;padding:4px;border-bottom:1px solid #ddd;">Mode</th>
+            <th style="text-align:right;padding:4px;border-bottom:1px solid #ddd;">ω</th>
+            <th style="text-align:right;padding:4px;border-bottom:1px solid #ddd;">f</th>
+          </tr>
+      `;
+
+      for (let i=0;i<modalData.modes.length;i++){
+        const m = modalData.modes[i];
+        html += `
+          <tr>
+            <td style="padding:4px;">${i+1}</td>
+            <td style="padding:4px;text-align:right;">${m.omega.toFixed(4)}</td>
+            <td style="padding:4px;text-align:right;">${m.freq.toFixed(4)}</td>
+          </tr>
+        `;
+      }
+
+      html += `
+        </table>
+        <div style="margin-top:6px;font-size:11px;color:#666;">
+          ω and f are in units consistent with your length/force inputs and the assumed g = ${G.toFixed(2)}.
+        </div>
+      `;
+
+      Swal.fire({
+        icon:'info',
+        title:'First natural modes',
+        html
+      });
+
+      // Refresh view if we're in deflection view
+      if (viewMode === 'def') draw();
+
+    } catch(err){
+      console.error(err);
+      modalData = { modes: [], dofMap: null };
+      currentMode = 0;
+      modeSelect.innerHTML = '<option value="0">Static</option>';
+      Swal.fire('Modal solve failed','Unexpected error during modal analysis.','error');
+    }
+  }
+
+
+
+  // ===== Build model (TRUSS) – primary-node DOFs only =====
+  function buildAnalysisModelTruss(DIV){
+    const anodes = {};
+    const dofMap = { primary:{}, analysis:{} };
+    let aNextId = 1;
+
+    // analysis nodes == primary nodes only (2 DOF/node)
+    for (const n of nodes){
+      const id=aNextId++;
+      anodes[id] = { x_up:n.x, y_up:yUp(n.y), primary:n.id };
+      dofMap.primary[n.id] = (id-1)*2;
+      dofMap.analysis[id] = (id-1)*2;
+    }
+
+    // one bar per member
+    const elems = [];
+    const geom  = {};
+    for (const m of members){
+      const ni = getAnalysisIdForPrimary(m.n1, anodes);
+      const nj = getAnalysisIdForPrimary(m.n2, anodes);
+      const pi = anodes[ni], pj = anodes[nj];
+      const dx = pj.x_up - pi.x_up, dy = pj.y_up - pi.y_up;
+      const L = Math.hypot(dx,dy); if (L<1e-9) continue;
+      const c = dx/L, s = dy/L;
+
+      elems.push({ i:ni, j:nj, L, c, s, E:m.E||0, A:m.A||0, memId:m.id });
+      geom[m.id] = { i:ni, j:nj, L, c, s };
+    }
+
+    const N = Object.keys(anodes).length * 2;
+    const K = zeros(N,N);
+    const F = zeros(N);
+
+    // assemble (axial only)
+    for (const el of elems){
+      const k = (el.E*el.A)/el.L;
+      const {c,s} = el;
+      const kG = [
+        [ k*c*c,   k*c*s,  -k*c*c,  -k*c*s ],
+        [ k*c*s,   k*s*s,  -k*c*s,  -k*s*s ],
+        [-k*c*c,  -k*c*s,   k*c*c,   k*c*s ],
+        [-k*c*s,  -k*s*s,   k*c*s,   k*s*s ]
+      ];
+      const ib = dofMap.analysis[el.i], jb = dofMap.analysis[el.j];
+      addToGlobalVar(K, kG, [ib+0, ib+1, jb+0, jb+1]);
+    }
+
+    return { N, dofMap, anodes, F, K, elems, geom, DIV: Math.max(1, Math.min(50, DIV|0)) };
+  }
+
+  // ===== Stress Panel =====
+
+function plotStressPanel(){
+  if (stressBlock.style.display === 'none') return;
+  resizeStressCanvas();
+  const w = stressCanvas.width, h = stressCanvas.height;
+  spx.clearRect(0, 0, w, h);
+
+  if (!lastSolution || !selectedMemberId){
+    spx.save();
+    spx.fillStyle = '#999';
+    spx.fillText('Solve and click a member to plot stresses.', 10, 20);
+    spx.restore();
+    return;
+  }
+
+  const st = lastSolution.stress[selectedMemberId];
+  if (!st){
+    spx.fillText('Selected member has no stress data.', 10, 20);
+    return;
+  }
+
+  const xs = [0];
+  let Lsum = 0;
+  for (let i = 1; i < st.pts.length; i++){
+    const x0 = st.pts[i-1].x_up, y0 = st.pts[i-1].y_up;
+    const x1 = st.pts[i].x_up,   y1 = st.pts[i].y_up;
+    Lsum += Math.hypot(x1 - x0, y1 - y0);
+    xs.push(Lsum);
+  }
+
+  // Use actual stresses (same sign convention as summary)
+  const minS = Math.min(...st.sL, ...st.sR);
+  const maxS = Math.max(...st.sL, ...st.sR);
+
+  const left = 45, right = 15, top = 15, bot = 30;
+
+  spx.save();
+  spx.strokeStyle = '#444';
+  spx.lineWidth = 1;
+  spx.beginPath();
+  spx.moveTo(left, top);
+  spx.lineTo(left, h - bot);
+  spx.lineTo(w - right, h - bot);
+  spx.stroke();
+
+  spx.fillStyle = '#333';
+  spx.fillText('σ', 8, top + 10);
+  spx.fillText('x', w - right - 10, h - bot + 18);
+
+  const xMap = x => left + (w - left - right) * (x / Lsum || 0);
+  const yMap = s => (h - bot) - (h - top - bot) * ((s - minS) / (maxS - minS || 1));
+
+  // zero-stress line
+  const y0 = yMap(0);
+  spx.strokeStyle = '#ddd';
+  spx.setLineDash([4, 4]);
+  spx.beginPath();
+  spx.moveTo(left, y0);
+  spx.lineTo(w - right, y0);
+  spx.stroke();
+  spx.setLineDash([]);
+
+  // σL (red)
+  spx.strokeStyle = '#ef4444';
+  spx.beginPath();
+  for (let i = 0; i < xs.length; i++){
+    const x = xMap(xs[i]);
+    const y = yMap(st.sL[i]);
+    if (i === 0) spx.moveTo(x, y); else spx.lineTo(x, y);
+  }
+  spx.stroke();
+
+  // σR (blue)
+  spx.strokeStyle = '#3b82f6';
+  spx.beginPath();
+  for (let i = 0; i < xs.length; i++){
+    const x = xMap(xs[i]);
+    const y = yMap(st.sR[i]);
+    if (i === 0) spx.moveTo(x, y); else spx.lineTo(x, y);
+  }
+  spx.stroke();
+
+  spx.fillStyle = '#666';
+  spx.fillText(`${minS.toFixed(3)}`, 6, yMap(minS) + 4);
+  spx.fillText(`${maxS.toFixed(3)}`, 6, yMap(maxS) + 4);
+  spx.fillText(`Member ${selectedMemberId}`, left + 6, top + 12);
+  spx.restore();
+}
+
+
+  // ===== Member stress summary (sidebar) =====
+  function summarizeMemberStresses(){
+    if (!lastSolution || !lastSolution.stress) return;
+    const items = [];
+    for (const memId of Object.keys(lastSolution.stress)){
+      const st = lastSolution.stress[memId];
+      if (!st) continue;
+      const all = st.sL.concat(st.sR);
+      const sMin = Math.min(...all);
+      const sMax = Math.max(...all);
+      items.push(`<div>Member ${memId}: σmin=${sMin.toFixed(3)}, σmax=${sMax.toFixed(3)}</div>`);
+    }
+    const box = document.getElementById('resultList');
+    box.insertAdjacentHTML('beforeend',
+      `<div style="margin-top:6px;border-top:1px dashed #ddd;padding-top:6px;">
+         <strong>Member Stress Summary</strong>${items.join('')||'<div class="hint">No members.</div>'}
+       </div>`);
+  }
+
+  // ===== Hover info helpers =====
+  function getMemberHoverInfo(memId, Pworld){
+    if (!lastSolution) return null;
+    const m = memberById(memId); if (!m) return null;
+    const a=nodeById(m.n1), b=nodeById(m.n2);
+    const tWorld = pointToSegmentProjectionT(Pworld, a, b);
+    const st = lastSolution.stress[memId]; if (!st) return null;
+    const xs=[0]; let Lsum=0;
+    for (let i=1;i<st.pts.length;i++){
+      const x0=st.pts[i-1].x_up, y0=st.pts[i-1].y_up, x1=st.pts[i].x_up, y1=st.pts[i].y_up;
+      Lsum += Math.hypot(x1-x0, y1-y0);
+      xs.push(Lsum);
+    }
+    const pi = lastSolution.anodes[lastSolution.geom[memId].i];
+    const pj = lastSolution.anodes[lastSolution.geom[memId].j];
+    const Px_up = pi.x_up + tWorld*(pj.x_up - pi.x_up);
+    const Py_up = pi.y_up + tWorld*(pj.y_up - pi.y_up);
+    let bestK=0, bestD=Infinity, run=0;
+    for (let k=0;k<st.pts.length;k++){
+      const dx = st.pts[k].x_up - Px_up, dy = st.pts[k].y_up - Py_up;
+      const d = dx*dx + dy*dy;
+      if (d<bestD){ bestD=d; bestK=k; run=xs[k]; }
+    }
+    const Nbar = (lastSolution.axial[memId]?.N?.[0]) || 0;
+    const sL = st.sL[bestK] ?? 0;
+    const sR = st.sR[bestK] ?? 0;
+    const sense = (Nbar>=0) ? 'tension' : 'compression';
+    return [
+      `${m.label||`M${memId}`}`,
+      `N = ${round6(Nbar)} (${sense})`,
+      `x ≈ ${round6(run)} along`,
+      `σL = ${round6(sL)}, σR = ${round6(sR)}`
+    ];
+  }
+
+  // ======= NODE PANEL (editable X/Y) =======
+  function refreshLists(){
+    // Nodes: editable X/Y inputs that live-update geometry
+    nodeList.innerHTML = nodes.map(n =>
+      `<div class="node-row">
+         <span class="badge">Node ${n.id}</span>
+         <input type="number" class="nedit" data-id="${n.id}" data-field="x" step="any" value="${n.x}">
+         <input type="number" class="nedit" data-id="${n.id}" data-field="y" step="any" value="${n.y}">
+         <button class="ghost" data-del-node="${n.id}" title="Delete node">✖</button>
+       </div>`
+    ).join('') || '<div class="hint">No nodes yet.</div>';
+
+    memberList.innerHTML = members.map(m =>
+      `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+         <span>Member ${m.id} [${m.label||''}]: n${m.n1}–n${m.n2} | E=${fmt(m.E)} A=${fmt(m.A)} I=${fmt(m.I)} S=${fmt(m.S)} wd=${fmt(m.wd)} qx=${fmt(m.qix)}→${fmt(m.qjx)} qy=${fmt(m.qiy)}→${fmt(m.qjy)}</span>
+         <button class="ghost" data-del-member="${m.id}" title="Delete member">✖</button>
+       </div>`
+    ).join('') || '<div class="hint">No members yet.</div>';
+  }
+  const fmt = v => (v===0 || isNaN(v)) ? '0' : String(v);
+
+  // Node panel: delete
+  nodeList.addEventListener('click', (e)=>{
+    const btn = e.target.closest('[data-del-node]');
+    if (!btn) return;
+    const id = parseInt(btn.getAttribute('data-del-node'),10);
+    deleteNodeWithMembers(id);
+  });
+
+  // Node panel: live-edit X/Y (input = live update + draw; change = refresh row formatting)
+  nodeList.addEventListener('input', (e)=>{
+    const inp = e.target.closest('.nedit');
+    if (!inp) return;
+    const id = parseInt(inp.dataset.id,10);
+    const field = inp.dataset.field;
+    const n = nodeById(id); if (!n) return;
+    const val = parseFloat(inp.value);
+    if (!isFinite(val)) return;
+    n[field] = val;
+    lastSolution = null; // geometry changed
+    draw();
+  });
+  nodeList.addEventListener('change', (e)=>{
+    const inp = e.target.closest('.nedit');
+    if (!inp) return;
+    // On commit, re-render list so numbers are normalized
+    refreshLists();
+    autoFitIfNeeded();
+    draw();
+  });
+
+  // ===== Canvas helpers =====
+  function drawCoordTag(g, x, y, text){
+    const padX = 6, padY = 4;
+    g.save();
+    g.font='11px system-ui';
+    const w = g.measureText(text).width + 2*padX;
+    const h = 18;
+    const xx = Math.min(Math.max(4, x), g.canvas.width - w - 4);
+    const yy = Math.min(Math.max(4, y - h), g.canvas.height - h - 4);
+    g.fillStyle='rgba(17,24,39,0.82)';
+    g.strokeStyle='rgba(255,255,255,0.15)';
+    g.lineWidth=1;
+    g.beginPath(); g.rect(xx, yy, w, h); g.fill(); g.stroke();
+    g.fillStyle='#fff';
+    g.fillText(text, xx + padX, yy + 12);
+    g.restore();
+  }
+
+  function drawHoverTooltip(g, tip){
+    const pad=8, lh=16;
+    const w = Math.max(...tip.lines.map(s=>g.measureText(s).width)) + 2*pad;
+    const h = tip.lines.length*lh + 2*pad;
+    const x = Math.min(Math.max(6, tip.x), g.canvas.width - w - 6);
+    const y = Math.min(Math.max(6, tip.y - h), g.canvas.height - h - 6);
+
+    g.save();
+    g.fillStyle='rgba(0,0,0,0.75)';
+    g.strokeStyle='rgba(255,255,255,0.15)';
+    g.lineWidth=1;
+    g.beginPath(); g.rect(x,y,w,h); g.fill(); g.stroke();
+
+    g.fillStyle='#fff'; g.font='12px system-ui';
+    for (let i=0;i<tip.lines.length;i++){
+      g.fillText(tip.lines[i], x+pad, y+pad + (i+0.85)*lh);
+    }
+    g.restore();
+  }
+
+  // ===== Math helpers =====
+  function addToGlobalVar(K, ke, map){
+    for (let r=0;r<map.length;r++){
+      const R=map[r];
+      for (let c=0;c<map.length;c++){
+        const C=map[c];
+        K[R][C] += ke[r][c];
+      }
+    }
+  }
+  function matPick(A, rows, cols){ const M=rows.length,N=cols.length,out=new Array(M); for(let i=0;i<M;i++){ out[i]=new Array(N); for (let j=0;j<N;j++) out[i][j]=A[rows[i]][cols[j]]; } return out; }
+  function vecPick(v, rows){ return rows.map(i=>v[i]); }
+  function getAnalysisIdForPrimary(pid, anodes){ for (const [aid,obj] of Object.entries(anodes)){ if (obj.primary===pid) return parseInt(aid,10); } return null; }
+  function zeros(n,m){ if (m===undefined){ const v=new Array(n); for (let i=0;i<n;i++) v[i]=0; return v; } const A=new Array(n); for (let i=0;i<n;i++){ A[i]=new Array(m); for (let j=0;j<m;j++) A[i][j]=0; } return A; }
+  const round6 = x => Math.abs(x)<1e-12 ? 0 : Math.round(x*1e6)/1e6;
+
+  function modelBounds(){
+    if (nodes.length===0) return {x0:0,y0:0,w:1,h:1};
+    let minx=+Infinity, miny=+Infinity, maxx=-Infinity, maxy=-Infinity;
+    for (const n of nodes){ minx=Math.min(minx,n.x); maxx=Math.max(maxx,n.x); miny=Math.min(miny,n.y); maxy=Math.max(maxy,n.y); }
+    return {x0:minx, y0:miny, w:(maxx-minx)||1, h:(maxy-miny)||1};
+  }
+
+  // drawing helpers
+  function drawArrow(g, x1,y1, x2,y2){
+    g.beginPath(); g.moveTo(x1,y1); g.lineTo(x2,y2); g.stroke();
+    const ang=Math.atan2(y2-y1, x2-x1), ah=7;
+    g.beginPath();
+    g.moveTo(x2,y2);
+    g.lineTo(x2 - ah*Math.cos(ang - Math.PI/6), y2 - ah*Math.sin(ang - Math.PI/6));
+    g.lineTo(x2 - ah*Math.cos(ang + Math.PI/6), y2 - ah*Math.sin(ang + Math.PI/6));
+    g.closePath(); g.fill();
+  }
+  function drawSpringX(g, x,y, len=20, amp=5){
+    const n=5, dx=len/(n*2);
+    g.beginPath(); g.moveTo(x,y);
+    for (let i=0;i<n;i++){ g.lineTo(x+dx*(2*i+1), y-amp); g.lineTo(x+dx*(2*i+2), y+amp); }
+    g.stroke();
+  }
+  function drawSpringY(g, x,y, len=20, amp=5){
+    const n=5, dy=len/(n*2);
+    g.beginPath(); g.moveTo(x,y);
+    for (let i=0;i<n;i++){ g.lineTo(x-amp, y+dy*(2*i+1)); g.lineTo(x+amp, y+dy*(2*i+2)); }
+    g.stroke();
+  }
+  function highlightNode(g, n){
+    if (!n) return;
+    const p = worldToScreen(n.x,n.y);
+    g.save();
+    g.lineWidth=3; g.strokeStyle='#10b981';
+    g.beginPath(); g.arc(p.x,p.y,10,0,Math.PI*2); g.stroke();
+    g.restore();
+  }
+
+  // ===== Lists & Results =====
+  function showResults(primaryRes){
+    resultList.innerHTML = primaryRes.map(r =>
+      `<div>Node ${r.id}: ux=${r.ux}, uy=${r.uy}</div>`
+    ).join('') || '<div class="hint">Solve to see displacements.</div>';
+  }
+
+  function resizeStressCanvas(){
+    stressCanvas.style.width = '100%';
+    const w = Math.max(200, stressCanvas.parentElement.clientWidth);
+    const h = 260;
+    stressCanvas.width = w;
+    stressCanvas.height = h;
+  }
+  function toggleStressPanel(show){
+    stressBlock.style.display = show ? 'block' : 'none';
+    document.getElementById('stressPanelHint').style.display = show ? 'block' : 'none';
+    if (show) resizeStressCanvas();
+  }
+
+  // ===== Kickoff =====
+  setActiveGroup(modeBtns,'btnDraw');
+  setActiveGroup(viewBtns,'viewGeom');
+  refreshLists();
+  draw();
+})();
+</script>
 </body>
 </html>
 
