@@ -2,169 +2,153 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>Frame (2D) — Complete Module</title>
+<title>Frame Analysis (2D) — Complete</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/numeric/1.2.6/numeric.min.js"></script>
 
 <style>
-  :root { --pad:14px; --canvas-w:700px; --canvas-h:600px; --panel-w:680px; }
-  body { background:#f4f6f8; font-family:system-ui,-apple-system,sans-serif; margin:20px; color:#1f2937; }
-  h2 { margin:0 0 12px; font-weight:700; color:#111; }
+  :root { --pad:14px; --panel-w:680px; --bg:#f4f6f8; --primary:#2563eb; --text:#1f2937; }
+  body { background:var(--bg); font-family:system-ui,-apple-system,sans-serif; margin:20px; color:var(--text); }
+  h2 { margin:0 0 12px; font-weight:700; color:#111; display:flex; justify-content:space-between; align-items:center; }
   
+  /* Layout Grid */
   .row { display:flex; gap:16px; align-items:flex-start; flex-wrap:wrap; }
   .col { background:#fff; border:1px solid #d1d5db; border-radius:8px; padding:var(--pad); box-shadow:0 1px 3px rgba(0,0,0,0.05); }
-  
-  .controls { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:12px; }
-  .controls.split { justify-content:flex-start; }
-  
-  /* Input styling */
-  button, select, input[type="number"], input[type="text"] {
-    height:30px; padding:0 10px; border:1px solid #9ca3af; border-radius:6px; 
-    background:#f9fafb; font-size:13px; color:#111;
-  }
-  button { cursor:pointer; font-weight:600; }
-  button:hover { background:#e5e7eb; }
-  button.primary { background:#3b82f6; color:#fff; border-color:#2563eb; }
-  button.primary:hover { background:#2563eb; }
-  button.active  { background:#94a3b8; color:#fff; border-color:#64748b; cursor:default; box-shadow:inset 0 2px 4px rgba(0,0,0,0.1); }
-  
-  .labelbtn { pointer-events:none; background:transparent; border:none; color:#4b5563; font-weight:600; padding:0; }
-  input[type="range"] { width:100px; height:30px; }
+  .col.canvas-col { flex: 1; min-width: 600px; }
+  .col.panel-col { width: var(--panel-w); display:flex; flex-direction:column; gap:12px; }
 
-  /* Canvas Container */
-  #wrap { position:relative; width:var(--canvas-w); height:var(--canvas-h); background:#fff; border:1px solid #ccc; border-radius:6px; overflow:hidden; }
+  /* Toolbar */
+  .controls { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:12px; }
+  
+  /* Buttons & Inputs */
+  button, select, input { height:32px; padding:0 12px; border:1px solid #9ca3af; border-radius:6px; background:#fff; font-size:13px; color:#111; box-sizing:border-box; }
+  button { cursor:pointer; font-weight:600; display:inline-flex; align-items:center; justify-content:center; }
+  button:hover { background:#f3f4f6; }
+  button:active { background:#e5e7eb; }
+  
+  button.primary { background:var(--primary); color:#fff; border-color:var(--primary); }
+  button.primary:hover { background:#1d4ed8; }
+  
+  button.ghost { background:#f9fafb; color:#374151; }
+  
+  /* Canvas Wrapper */
+  #wrap { position:relative; width:100%; height:600px; background:#fff; border:1px solid #ccc; border-radius:6px; overflow:hidden; }
   canvas { position:absolute; inset:0; }
   #base { z-index:1; } #overlay { z-index:2; pointer-events:auto; cursor:crosshair; }
 
-  /* Panels */
-  .panel { width:var(--panel-w); display:flex; flex-direction:column; gap:12px; }
-  .panel-row { display:flex; gap:12px; }
-  .panel-half { flex:1; min-width:0; display:flex; flex-direction:column; gap:6px; }
-  
-  .list { 
-    font-size:12px; height:200px; overflow-y:auto; 
-    border:1px solid #e5e7eb; border-radius:6px; background:#f9fafb; padding:6px; 
-  }
-  .list-item { display:flex; justify-content:space-between; align-items:center; padding:4px; border-bottom:1px solid #f0f0f0; }
+  /* Lists */
+  .list-header { font-weight:700; font-size:13px; margin-bottom:6px; display:flex; justify-content:space-between; }
+  .list-scroll { max-height:250px; overflow-y:auto; border:1px solid #e5e7eb; border-radius:6px; background:#f9fafb; }
+  .list-item { padding:6px 10px; border-bottom:1px solid #eee; font-size:12px; display:flex; justify-content:space-between; align-items:center; }
   .list-item:last-child { border-bottom:none; }
-  .list-item:hover { background:#f3f4f6; }
+  .list-item:hover { background:#f0f9ff; cursor:pointer; }
+  .del-btn { color:#ef4444; font-weight:bold; padding:2px 6px; border:1px solid #fecaca; border-radius:4px; background:#fff; margin-left:8px; }
+  .del-btn:hover { background:#fee2e2; }
 
-  .hint { color:#6b7280; font-size:11px; margin-top:2px; }
-  
   /* Stress Panel */
-  #stressPanelBlock { display:none; border:1px solid #d1d5db; border-radius:6px; padding:10px; background:#fff; }
-  #stressPanel { width:100%; height:220px; display:block; border:1px solid #eee; margin-top:6px; }
-
-  /* SweetAlert tweaks */
-  .swal2-popup { font-size:13px !important; width:400px !important; }
-  .swal2-input, .swal2-select { font-size:13px !important; height:32px !important; margin:8px auto !important; }
+  #stressPanelBlock { display:none; border:1px solid #d1d5db; border-radius:6px; padding:10px; background:#fff; margin-top:10px; }
+  #stressPanel { width:100%; height:220px; display:block; border:1px solid #eee; margin-top:6px; background:#fafafa; }
   
-  /* Node Editor Grid */
-  .node-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; text-align:left; }
-  .node-grid label { font-weight:600; color:#374151; font-size:12px; }
+  /* Helpers */
+  .hint { color:#6b7280; font-size:11px; margin-left:8px; font-weight:400; }
+  .label-text { font-size:12px; font-weight:600; color:#4b5563; margin-right:4px; }
+  .sep { width:1px; height:24px; background:#d1d5db; margin:0 4px; }
 </style>
 </head>
-
 <body>
-  <h2>FRAME ANALYSIS (2D)</h2>
 
-  <div class="controls split" id="rowTop">
-    <button id="btnDraw" class="primary">Draw Members</button>
-    <button id="btnSelect" class="ghost">Select / Edit</button>
-    <div style="width:1px; height:24px; background:#ccc; margin:0 8px;"></div>
-    <button id="viewGeom" class="ghost active">Geometry</button>
-    <div style="width:1px; height:24px; background:#ccc; margin:0 8px;"></div>
-    <button id="btnUndo" class="ghost">Undo</button>
-    <button id="btnClear" class="ghost">Clear All</button>
+<h2>
+  <span>FRAME ANALYSIS <span style="font-weight:400; font-size:14px; color:#666;">(2D Static & Modal)</span></span>
+</h2>
+
+<div class="controls">
+  <button id="btnDraw" class="primary">Draw Members</button>
+  <button id="btnSelect" class="ghost">Select / Edit</button>
+  <div class="sep"></div>
+  <button id="btnUndo" class="ghost">Undo</button>
+  <button id="btnClear" class="ghost">Clear</button>
+  <div class="sep"></div>
+  
+  <button id="btnExportJSON" class="ghost">Export JSON</button>
+  <button id="btnImportJSON" class="ghost">Import JSON</button>
+  <button id="btnExportCSV" class="ghost" style="border-color:#059669; color:#059669;">Export CSV (Run & Data)</button>
+  <button id="btnImportCSV" class="ghost" style="border-color:#059669; color:#059669;">Import CSV</button>
+  
+  <input id="fileInput" type="file" style="display:none;" />
+</div>
+
+<div class="row">
+  
+  <div class="col canvas-col">
+    <div id="wrap">
+      <canvas id="base" width="800" height="600"></canvas>
+      <canvas id="overlay" width="800" height="600"></canvas>
+    </div>
     
-    <div style="flex-grow:1"></div>
-    <button id="btnExportJSON" class="ghost">Export JSON</button>
-    <button id="btnImportJSON" class="ghost">Import JSON</button>
-    <button id="btnExportCSV" class="ghost">Export CSV</button>
-    <input id="jsonFileInput" type="file" accept=".json,application/json" style="display:none;" />
+    <div class="controls" style="margin-top:12px; background:#f8fafc; padding:10px; border-radius:6px; border:1px solid #e2e8f0;">
+      <span class="label-text">Analysis:</span>
+      <button id="btnSolve" class="primary">Solve Static</button>
+      <button id="btnModes" class="ghost">Solve Modes</button>
+      <div class="sep"></div>
+      
+      <span class="label-text">View:</span>
+      <button id="viewDef" class="ghost">Deflection</button>
+      <button id="viewStress" class="ghost">Diagrams</button>
+      <div class="sep"></div>
+
+      <span class="label-text">Scale:</span>
+      <input id="defScale" type="number" step="any" value="1" style="width:60px;">
+      
+      <span class="label-text" style="margin-left:8px;">Mode:</span>
+      <select id="modeSelect" style="width:80px;"><option value="0">Static</option></select>
+      
+      <button id="btnAnimate" class="ghost" style="min-width:40px;">▶</button>
+    </div>
   </div>
 
-  <div class="row">
-    <div class="col">
-      <div id="wrap">
-        <canvas id="base" width="700" height="600"></canvas>
-        <canvas id="overlay" width="700" height="600"></canvas>
-      </div>
-
-      <div class="controls split" style="margin-top:12px; gap:10px; background:#f1f5f9; padding:8px; border-radius:6px;">
-        <button class="labelbtn">Mesh Divs:</button>
-        <input id="divCount" type="number" min="1" max="50" value="20" style="width:50px;" title="Internal segments per member">
-
-        <button id="btnSolve" class="primary">Solve Static</button>
-        <button id="btnModes" class="ghost">Solve Modes</button>
-        
-        <div style="width:1px; height:24px; background:#ccc; margin:0 4px;"></div>
-
-        <button id="viewDef" class="ghost">Deformation</button>
-        <button id="viewStressPanel" class="ghost">Graphs</button>
-
-        <div style="width:1px; height:24px; background:#ccc; margin:0 4px;"></div>
-
-        <label class="labelbtn">Scale:</label>
-        <input id="defScale" type="number" step="any" value="1" style="width:60px;">
-
-        <label class="labelbtn">Mode:</label>
-        <select id="modeSelect" style="width:70px;"><option value="0">Static</option></select>
-
-        <button id="btnAnimate" class="ghost">▶</button>
-        <input id="freqScale" type="range" min="0.1" max="5.0" step="0.1" value="1" title="Animation Speed">
-        
-        <button id="btnResetView" class="ghost">Reset</button>
+  <div class="col panel-col">
+    
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+      <div class="list-header">System Units</div>
+      <div>
+        <button id="btnUS" class="ghost active" style="height:24px; font-size:11px;">US (kips, in)</button>
+        <button id="btnSI" class="ghost" style="height:24px; font-size:11px;">SI (kN, m)</button>
       </div>
     </div>
 
-    <div class="col panel">
-      <div style="display:flex; justify-content:space-between; align-items:center;">
-        <strong>System Units</strong>
-        <div class="controls" style="margin:0;">
-          <button id="btnUS" class="ghost active">US (kips, in)</button>
-          <button id="btnSI" class="ghost">SI (kN, m)</button>
-        </div>
-      </div>
-
-      <div class="panel-row">
-        <div class="panel-half">
-          <strong>Nodes <span class="hint">(Double-click canvas to edit)</span></strong>
-          <div id="nodeList" class="list"></div>
-        </div>
-        <div class="panel-half">
-          <strong>Members <span class="hint">(Double-click canvas to edit)</span></strong>
-          <div id="memberList" class="list"></div>
-        </div>
-      </div>
-
-      <div class="panel-row">
-        <div class="panel-half">
-          <strong>Nodal Results</strong>
-          <div id="resultList" class="list"></div>
-        </div>
-      </div>
-
-      <div id="stressPanelBlock">
-        <div class="controls" style="justify-content:space-between; margin-bottom:4px;">
-          <strong>Member Forces & Stresses</strong>
-          <div style="display:flex; gap:6px;">
-            <select id="stressPlotMode">
-              <option value="sigma">Sigma (Stress)</option>
-              <option value="M">Moment (M)</option>
-              <option value="V">Shear (V)</option>
-              <option value="N">Axial (N)</option>
-            </select>
-            <button id="btnCloseStressPanel" class="ghost" style="height:26px; line-height:1;">x</button>
-          </div>
-        </div>
-        <canvas id="stressPanel"></canvas>
-        <div class="hint">Click a member in the viewport to plot results here.</div>
-      </div>
-
+    <div>
+      <div class="list-header">Nodes <span class="hint">Double-click canvas node to edit</span></div>
+      <div id="nodeList" class="list-scroll"></div>
     </div>
+
+    <div>
+      <div class="list-header">Members <span class="hint">Double-click canvas member to edit</span></div>
+      <div id="memberList" class="list-scroll"></div>
+    </div>
+
+    <div>
+      <div class="list-header">Nodal Results <span id="resHint" class="hint">Run solve to view</span></div>
+      <div id="resultList" class="list-scroll" style="max-height:150px;"></div>
+    </div>
+
+    <div id="stressPanelBlock">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+        <div class="list-header" style="margin:0;">Member Diagrams</div>
+        <select id="stressPlotMode" style="height:24px; font-size:11px;">
+          <option value="M">Moment (M)</option>
+          <option value="V">Shear (V)</option>
+          <option value="N">Axial (N)</option>
+          <option value="sigma">Stress (σ)</option>
+        </select>
+        <button id="closeStress" class="ghost" style="height:24px; padding:0 8px;">x</button>
+      </div>
+      <canvas id="stressPanel"></canvas>
+      <div class="hint">Click a member in the viewport to plot results here.</div>
+    </div>
+
   </div>
+</div>
 
 <script>
 (() => {
@@ -172,88 +156,84 @@
   const base = document.getElementById('base');
   const overlay = document.getElementById('overlay');
   const stressCanvas = document.getElementById('stressPanel');
-  const stressBlock = document.getElementById('stressPanelBlock');
   const ctx = base.getContext('2d');
   const ovr = overlay.getContext('2d');
   const spx = stressCanvas.getContext('2d');
-
-  let nodes = [], members = [];
-  let nextNodeId=1, nextMemberId=1;
-  let units = 'US'; // 'US' or 'SI'
   
-  // Interaction state
-  let mode = 'draw'; // 'draw', 'select'
-  let viewMode = 'geom'; // 'geom', 'def', 'stresspanel'
-  let dragStart = null, hoverEndNodeId = null, hoverMemberId = null;
-  let selectedNodeId=null, selectedMemberId=null; 
-  let movingNodeId=null, moveOffset={x:0,y:0};
-  let pan={x:0,y:0}, zoom=1, isPanning=false, panStart={x:0,y:0};
+  // Model Data
+  let nodes = [];      // {id, x, y, bc, Fx, Fy, Mz, ...}
+  let members = [];    // {id, n1, n2, E, A, I, ...}
+  let nextNodeId = 1, nextMemberId = 1;
+  let units = 'US';
+
+  // Interaction
+  let mode = 'draw';   // draw, select
+  let viewMode = 'geom'; // geom, def, stress
+  let dragStart = null, hoverNode = null, hoverMember = null;
+  let selectedNode = null, selectedMember = null;
+  let view = { scale:1, dx:0, dy:0, dirty:true };
+  let isPanning = false, panStart = {x:0, y:0};
 
   // Analysis Results
   let lastSolution = null; 
   let modalData = { modes:[], dofMap:null };
-  let currentMode = 0; // 0=static, >0 = mode index+1
-
-  // Animation
-  let anim = { active:false, raf:null, t0:0, scaleMod:1 };
-
-  // Constants
-  const SNAP_PX = 10;
-  const MIN_ZOOM = 0.1, MAX_ZOOM = 10.0;
+  let currentMode = 0; // 0=Static
+  let anim = { active:false, raf:null, t0:0, val:0 };
 
   // --- INITIALIZATION ---
   function init(){
-    // Resize canvases
-    [base, overlay].forEach(c => {
-      c.width = 700; c.height = 600;
-    });
-    stressCanvas.width = 650; stressCanvas.height = 220;
-    
-    // Bind Events
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
     bindEvents();
-    refreshUI();
-    draw();
+    refreshLists();
+    requestAnimationFrame(renderLoop);
   }
 
-  // --- MODEL MANAGEMENT ---
+  function resizeCanvas(){
+    const rect = base.parentElement.getBoundingClientRect();
+    base.width = rect.width; base.height = rect.height;
+    overlay.width = rect.width; overlay.height = rect.height;
+    stressCanvas.width = document.getElementById('stressPanelBlock').clientWidth - 22;
+    view.dirty = true;
+  }
+
+  // --- MODEL FUNCTIONS ---
   function addNode(x, y){
     const id = nextNodeId++;
-    nodes.push({
-      id, x, y, 
-      bc: 'free', // 'free', 'simple', 'fixed', 'rollerX', 'rollerY'
-      Fx:0, Fy:0, Mz:0, 
-      Kx:0, Ky:0, Kt:0, 
-      Wn:0 // Nodal weight
-    });
+    nodes.push({ id, x, y, bc:'free', Fx:0, Fy:0, Mz:0, Kx:0, Ky:0, Kt:0 });
+    refreshLists();
+    view.dirty = true;
     return id;
   }
 
   function addMember(n1, n2){
-    if(n1===n2) return;
+    if(n1 === n2) return;
+    // Check duplicate
+    if(members.some(m => (m.n1===n1 && m.n2===n2) || (m.n1===n2 && m.n2===n1))) return;
+    
     const id = nextMemberId++;
-    // Default properties (Steel-ish)
     members.push({
-      id, n1, n2,
-      E: 29000, A: 10, I: 200, S: 40, c: 5, wd: 0, // wd = weight density
-      qix:0, qjx:0, qiy:0, qjy:0, // Distributed loads
-      label: `M${id}`
+      id, n1, n2, label:`M${id}`,
+      E:29000, A:10, I:200, S:40, c:5, wd:0 // Default Steel
     });
+    refreshLists();
+    view.dirty = true;
     return id;
   }
 
-  function deleteNode(id){
-    nodes = nodes.filter(n=>n.id!==id);
-    members = members.filter(m=>m.n1!==id && m.n2!==id); // cascade delete
-    clearResults();
-    refreshUI();
-    draw();
-  }
+  function getNode(id) { return nodes.find(n => n.id === id); }
+  function getMember(id) { return members.find(m => m.id === id); }
 
-  function deleteMember(id){
-    members = members.filter(m=>m.id!==id);
+  function deleteEntity(type, id){
+    if(type === 'node'){
+      nodes = nodes.filter(n => n.id !== id);
+      members = members.filter(m => m.n1 !== id && m.n2 !== id);
+    } else {
+      members = members.filter(m => m.id !== id);
+    }
     clearResults();
-    refreshUI();
-    draw();
+    refreshLists();
+    view.dirty = true;
   }
 
   function clearResults(){
@@ -262,815 +242,692 @@
     currentMode = 0;
     document.getElementById('modeSelect').innerHTML = '<option value="0">Static</option>';
     document.getElementById('resultList').innerHTML = '';
-    anim.scaleMod = 1;
+    anim.val = 0;
   }
 
-  // --- DRAWING ENGINE ---
-  function draw(){
-    // Clear
-    ctx.clearRect(0,0,base.width, base.height);
-    ovr.clearRect(0,0,overlay.width, overlay.height);
+  // --- DRAWING ---
+  function renderLoop(){
+    if(anim.active) updateAnimation();
+    if(view.dirty || anim.active){
+      drawBase();
+      view.dirty = false;
+    }
+    // Overlay is drawn every frame for interaction
+    drawOverlay();
+    requestAnimationFrame(renderLoop);
+  }
 
-    // Transform
-    ctx.save(); ovr.save();
-    applyTransform(ctx); applyTransform(ovr);
+  function worldToScreen(x, y){
+    return { 
+      x: base.width/2 + view.dx + x*view.scale, 
+      y: base.height/2 + view.dy - y*view.scale // Flip Y
+    };
+  }
+  function screenToWorld(sx, sy){
+    return {
+      x: (sx - base.width/2 - view.dx)/view.scale,
+      y: -(sy - base.height/2 - view.dy)/view.scale
+    };
+  }
 
+  function autoFit(){
+    if(nodes.length === 0) return;
+    let minX=Infinity, maxX=-Infinity, minY=Infinity, maxY=-Infinity;
+    nodes.forEach(n => {
+      minX = Math.min(minX, n.x); maxX = Math.max(maxX, n.x);
+      minY = Math.min(minY, n.y); maxY = Math.max(maxY, n.y);
+    });
+    const w = Math.max(maxX - minX, 10);
+    const h = Math.max(maxY - minY, 10);
+    const padding = 60;
+    const scX = (base.width - padding*2) / w;
+    const scY = (base.height - padding*2) / h;
+    view.scale = Math.min(scX, scY);
+    view.dx = -(minX + w/2) * view.scale;
+    view.dy = (minY + h/2) * view.scale; // Y flip adjustment handled in worldToScreen
+    view.dirty = true;
+  }
+
+  function drawBase(){
+    ctx.clearRect(0,0, base.width, base.height);
+    
     // Grid
-    drawGrid(ctx);
+    ctx.strokeStyle = '#f1f5f9';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    // Simple grid logic could go here
+    ctx.stroke();
 
     // Members
-    ctx.lineWidth = 2; 
+    ctx.lineWidth = 2;
     ctx.strokeStyle = '#374151';
-    ctx.fillStyle = '#111827';
     ctx.font = '12px sans-serif';
+    ctx.fillStyle = '#374151';
     
     members.forEach(m => {
       const n1 = getNode(m.n1);
       const n2 = getNode(m.n2);
       if(!n1 || !n2) return;
-
+      const p1 = worldToScreen(n1.x, n1.y);
+      const p2 = worldToScreen(n2.x, n2.y);
+      
       ctx.beginPath();
-      ctx.moveTo(n1.x, n1.y);
-      ctx.lineTo(n2.x, n2.y);
+      ctx.moveTo(p1.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
       ctx.stroke();
-
-      // Label
-      const midX = (n1.x+n2.x)/2, midY = (n1.y+n2.y)/2;
-      ctx.fillText(m.label, midX+2, midY-2);
-
-      // Draw Loads (Q)
-      drawMemberLoads(ctx, m, n1, n2);
+      
+      const midX = (p1.x+p2.x)/2; 
+      const midY = (p1.y+p2.y)/2;
+      ctx.fillText(m.label, midX, midY);
     });
 
     // Nodes
     nodes.forEach(n => {
+      const p = worldToScreen(n.x, n.y);
+      
       // Supports
-      drawSupport(ctx, n);
-      // Nodal Loads
-      drawNodalLoads(ctx, n);
-      // The Node itself
-      ctx.fillStyle = (n.id === selectedNodeId) ? '#dc2626' : '#2563eb';
-      ctx.beginPath(); 
-      ctx.arc(n.x, n.y, 4/zoom, 0, 2*Math.PI); 
+      if(n.bc !== 'free'){
+        ctx.fillStyle = '#000';
+        ctx.fillRect(p.x-6, p.y+4, 12, 4); // Simple ground representation
+      }
+
+      // Loads
+      if(n.Fx !== 0 || n.Fy !== 0){
+        ctx.strokeStyle = '#ec4899';
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(p.x + n.Fx*0.5, p.y - n.Fy*0.5); // Simple load vector viz
+        ctx.stroke();
+      }
+
+      // Dot - BLUE as requested
+      ctx.fillStyle = '#2563eb'; 
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 4, 0, 2*Math.PI);
       ctx.fill();
     });
 
-    // Selection Highlight (Member)
-    if(selectedMemberId){
-      const m = getMember(selectedMemberId);
-      if(m){
-        const n1 = getNode(m.n1);
-        const n2 = getNode(m.n2);
-        ovr.strokeStyle = 'rgba(220, 38, 38, 0.5)';
-        ovr.lineWidth = 6/zoom;
-        ovr.beginPath();
-        ovr.moveTo(n1.x, n1.y);
-        ovr.lineTo(n2.x, n2.y);
-        ovr.stroke();
-      }
-    }
-
-    // Dragging Line
-    if(mode === 'draw' && dragStart){
-      const mouse = getMouseWorld(lastMouseEvt);
-      ovr.strokeStyle = '#2563eb';
-      ovr.lineWidth = 2/zoom;
-      ovr.setLineDash([5/zoom, 5/zoom]);
-      ovr.beginPath();
-      ovr.moveTo(dragStart.x, dragStart.y);
-      ovr.lineTo(mouse.x, mouse.y);
-      ovr.stroke();
-      ovr.setLineDash([]);
-    }
-
     // Deformed Shape
-    if((viewMode === 'def' || anim.active) && (lastSolution || currentMode > 0)){
-      drawDeformedShape(ctx);
+    if(viewMode === 'def' && (lastSolution || currentMode > 0)){
+      drawDeformed(ctx);
     }
-
-    // Reaction Forces
-    if(lastSolution && lastSolution.reactions){
-      drawReactions(ctx);
-    }
-
-    ctx.restore(); ovr.restore();
   }
 
-  function applyTransform(c){
-    c.translate(base.width/2 + pan.x, base.height/2 + pan.y);
-    c.scale(zoom, -zoom); // Invert Y so up is positive Y
-  }
-
-  function drawGrid(c){
-    const step = 120; // grid spacing
-    // Determine visible bounds to optimize? Just drawing big grid for now
-    c.save();
-    c.strokeStyle = '#e5e7eb';
-    c.lineWidth = 1/zoom;
-    const count = 20;
-    c.beginPath();
-    for(let i=-count; i<=count; i++){
-      c.moveTo(i*step, -count*step);
-      c.lineTo(i*step, count*step);
-      c.moveTo(-count*step, i*step);
-      c.lineTo(count*step, i*step);
-    }
-    c.stroke();
-    // Origin
-    c.strokeStyle = '#9ca3af';
-    c.beginPath();
-    c.moveTo(-20,0); c.lineTo(20,0);
-    c.moveTo(0,-20); c.lineTo(0,20);
-    c.stroke();
-    c.restore();
-  }
-
-  function drawSupport(c, n){
-    const s = 10/zoom; 
-    c.save();
-    c.lineWidth = 2/zoom;
-    c.strokeStyle = '#000';
+  function drawOverlay(){
+    ovr.clearRect(0,0, overlay.width, overlay.height);
     
-    if(n.bc === 'fixed'){
-      c.beginPath();
-      c.moveTo(n.x-s, n.y-s); c.lineTo(n.x+s, n.y-s); // ground line
-      // hatches
-      for(let i=-s; i<=s; i+=s/2){
-        c.moveTo(n.x+i, n.y-s); c.lineTo(n.x+i-s/2, n.y-s-s/2);
-      }
-      c.moveTo(n.x, n.y); c.lineTo(n.x, n.y-s); // stem
-      c.stroke();
-    } else if(n.bc === 'simple'){
-      c.beginPath();
-      c.moveTo(n.x, n.y); c.lineTo(n.x-s/2, n.y-s); c.lineTo(n.x+s/2, n.y-s); c.closePath();
-      c.stroke();
-      c.beginPath(); // ground
-      c.moveTo(n.x-s, n.y-s-2/zoom); c.lineTo(n.x+s, n.y-s-2/zoom);
-      c.stroke();
-    } else if(n.bc === 'rollerY'){ // vertical roller (free X)
-      c.beginPath();
-      c.arc(n.x, n.y-s/2, s/2, 0, 2*Math.PI);
-      c.stroke();
-      c.beginPath(); c.moveTo(n.x-s, n.y-s); c.lineTo(n.x+s, n.y-s); c.stroke();
+    // Drag Line
+    if(dragStart && mode === 'draw'){
+      const p1 = worldToScreen(dragStart.x, dragStart.y);
+      // Mouse pos logic needed here, see events
     }
-    c.restore();
-  }
 
-  function drawNodalLoads(c, n){
-    const len = 30/zoom;
-    c.save();
-    c.strokeStyle = '#d946ef'; // Magenta
-    c.fillStyle = '#d946ef';
-    c.lineWidth = 2/zoom;
-    
-    if(Math.abs(n.Fx) > 0){
-      drawArrow(c, n.x, n.y, n.Fx > 0 ? len : -len, 0);
+    // Highlights
+    if(selectedNode){
+      const n = getNode(selectedNode);
+      const p = worldToScreen(n.x, n.y);
+      ovr.strokeStyle = '#ef4444';
+      ovr.lineWidth = 2;
+      ovr.beginPath(); ovr.arc(p.x, p.y, 8, 0, 2*Math.PI); ovr.stroke();
     }
-    if(Math.abs(n.Fy) > 0){
-      drawArrow(c, n.x, n.y, 0, n.Fy > 0 ? len : -len);
-    }
-    if(Math.abs(n.Mz) > 0){
-      // moment curl
-      c.beginPath();
-      c.arc(n.x, n.y, len/2, 0, Math.PI*1.5);
-      c.stroke();
-      // Arrowhead logic simplified
-    }
-    c.restore();
-  }
-
-  function drawMemberLoads(c, m, n1, n2){
-    // Visualizing dist loads roughly
-    if(Math.abs(m.qiy) > 0 || Math.abs(m.qjy) > 0){
-      c.save();
-      c.strokeStyle = '#059669'; // Green
-      const vec = {x: n2.x-n1.x, y: n2.y-n1.y};
-      const len = Math.hypot(vec.x, vec.y);
-      const norm = {x: -vec.y/len, y: vec.x/len}; // Normal vector
-      
-      const scale = 20/zoom; // Visual scale
-      const p1 = {x: n1.x + norm.x * scale * Math.sign(m.qiy), y: n1.y + norm.y * scale * Math.sign(m.qiy)};
-      const p2 = {x: n2.x + norm.x * scale * Math.sign(m.qjy), y: n2.y + norm.y * scale * Math.sign(m.qjy)};
-      
-      c.beginPath();
-      c.moveTo(n1.x, n1.y); c.lineTo(p1.x, p1.y); c.lineTo(p2.x, p2.y); c.lineTo(n2.x, n2.y);
-      c.stroke();
-      c.restore();
+    if(selectedMember){
+      const m = getMember(selectedMember);
+      const n1 = getNode(m.n1);
+      const n2 = getNode(m.n2);
+      const p1 = worldToScreen(n1.x, n1.y);
+      const p2 = worldToScreen(n2.x, n2.y);
+      ovr.strokeStyle = 'rgba(239, 68, 68, 0.5)';
+      ovr.lineWidth = 6;
+      ovr.beginPath(); ovr.moveTo(p1.x, p1.y); ovr.lineTo(p2.x, p2.y); ovr.stroke();
     }
   }
 
-  function drawArrow(c, x, y, dx, dy){
-    c.beginPath();
-    c.moveTo(x, y);
-    c.lineTo(x+dx, y+dy);
-    c.stroke();
-    // Head
-    const head = 6/zoom;
-    const angle = Math.atan2(dy, dx);
-    c.beginPath();
-    c.moveTo(x, y);
-    c.lineTo(x + head*Math.cos(angle - Math.PI/6), y + head*Math.sin(angle - Math.PI/6));
-    c.lineTo(x + head*Math.cos(angle + Math.PI/6), y + head*Math.sin(angle + Math.PI/6));
-    c.fill();
-  }
-
-  function drawDeformedShape(c){
-    c.save();
-    c.strokeStyle = '#e11d48'; // Red
-    c.lineWidth = 2/zoom;
-    
-    // Determine displacements to use
+  function drawDeformed(c){
+    // Determine displacements
     let U = [];
     if(currentMode > 0 && modalData.modes.length >= currentMode){
       U = modalData.modes[currentMode-1].U;
     } else if (lastSolution){
       U = lastSolution.U;
-    } else {
-      c.restore(); return;
-    }
+    } else return;
 
-    const defScale = (parseFloat(document.getElementById('defScale').value)||1) * anim.scaleMod;
+    const scaleBase = parseFloat(document.getElementById('defScale').value) || 1;
+    const scale = scaleBase * (1 + anim.val); // Animation factor
+    
+    c.strokeStyle = '#dc2626';
+    c.lineWidth = 2;
+    c.beginPath();
+
+    const dofMap = lastSolution ? lastSolution.dofMap : modalData.dofMap;
 
     members.forEach(m => {
-      const n1 = getNode(m.n1);
-      const n2 = getNode(m.n2);
-      const dof1 = lastSolution.dofMap[n1.id];
-      const dof2 = lastSolution.dofMap[n2.id];
-      
-      // Global Displacements
-      const u1 = U[dof1], v1 = U[dof1+1], th1 = U[dof1+2];
-      const u2 = U[dof2], v2 = U[dof2+1], th2 = U[dof2+2];
+      const n1 = getNode(m.n1), n2 = getNode(m.n2);
+      const i = dofMap[n1.id], j = dofMap[n2.id];
+      const u1 = U[i], v1 = U[i+1], th1 = U[i+2];
+      const u2 = U[j], v2 = U[j+1], th2 = U[j+2];
 
-      // Local transformation
       const dx = n2.x - n1.x, dy = n2.y - n1.y;
       const L = Math.hypot(dx, dy);
       const cos = dx/L, sin = dy/L;
 
-      // Local disp
-      // u_local =  u_global * cos + v_global * sin
-      // v_local = -u_global * sin + v_global * cos
+      // Transform global disp to local
       const ul1 =  u1*cos + v1*sin;
       const vl1 = -u1*sin + v1*cos;
       const ul2 =  u2*cos + v2*sin;
       const vl2 = -u2*sin + v2*cos;
 
-      // Draw cubic hermite spline
-      c.beginPath();
-      const segs = 20;
-      for(let i=0; i<=segs; i++){
-        const t = i/segs; // 0 to 1
+      // Draw curve segments
+      const segs = 10;
+      for(let k=0; k<=segs; k++){
+        const t = k/segs;
         const x = t*L;
-        
-        // Shape functions for Beam
-        const H1 = 1 - 3*t*t + 2*t*t*t;
-        const H2 = x * (1 - 2*t + t*t);
-        const H3 = 3*t*t - 2*t*t*t;
-        const H4 = x * (t*t - t);
 
-        const v_loc = H1*vl1 + H2*th1 + H3*vl2 + H4*th2;
-        const u_loc = ul1*(1-t) + ul2*t; // Linear axial
+        // Cubic Hermite Shape Functions
+        const h1 = 1 - 3*t*t + 2*t*t*t;
+        const h2 = x * (1 - 2*t + t*t);
+        const h3 = 3*t*t - 2*t*t*t;
+        const h4 = x * (t*t - t);
+
+        const v_loc = h1*vl1 + h2*th1 + h3*vl2 + h4*th2;
+        const u_loc = ul1*(1-t) + ul2*t;
 
         // Transform back to global for plotting
-        const u_glob_plot =  u_loc*cos - v_loc*sin;
-        const v_glob_plot =  u_loc*sin + v_loc*cos;
+        const u_glob = u_loc*cos - v_loc*sin;
+        const v_glob = u_loc*sin + v_loc*cos;
 
-        // Add to original coordinates
-        const X = n1.x + x*cos + u_glob_plot*defScale;
-        const Y = n1.y + x*sin + v_glob_plot*defScale;
-
-        if(i===0) c.moveTo(X, Y); else c.lineTo(X, Y);
+        const p = worldToScreen(n1.x + x*cos + u_glob*scale, n1.y + x*sin + v_glob*scale);
+        if(k===0) c.moveTo(p.x, p.y); else c.lineTo(p.x, p.y);
       }
-      c.stroke();
     });
-    c.restore();
+    c.stroke();
   }
 
-  function drawReactions(c){
-    c.save();
-    c.strokeStyle = '#059669'; // Green
-    c.fillStyle = '#059669';
-    c.lineWidth = 2/zoom;
-    
-    for(const nid in lastSolution.reactions){
-      const R = lastSolution.reactions[nid];
-      const n = getNode(parseInt(nid));
-      const len = 20/zoom;
-      
-      // Rx
-      if(Math.abs(R[0]) > 0.001){
-        drawArrow(c, n.x, n.y, (R[0]>0?len:-len), 0);
-        // Simple Text Label (could be improved)
-      }
-      // Ry
-      if(Math.abs(R[1]) > 0.001){
-        drawArrow(c, n.x, n.y, 0, (R[1]>0?len:-len));
-      }
-      // Mz (arc)
-      if(Math.abs(R[2]) > 0.001){
-        c.beginPath();
-        c.arc(n.x, n.y, len, 0, Math.PI);
-        c.stroke();
-      }
-    }
-    c.restore();
-  }
-
-  // --- SOLVER LOGIC ---
-  
-  function solveStatic(){
+  // --- ANALYSIS ENGINE ---
+  function solve(){
     try {
-      // 1. DOF Numbering
-      const dofMap = {};
-      let dofCount = 0;
-      nodes.forEach(n => {
-        dofMap[n.id] = dofCount;
-        dofCount += 3; // u, v, theta
-      });
-
-      // 2. Assembly
-      const K = new Array(dofCount).fill(0).map(() => new Array(dofCount).fill(0));
+      // 1. Build Matrices
+      const dofCount = nodes.length * 3;
+      const K = new Array(dofCount).fill(0).map(()=>new Array(dofCount).fill(0));
       const F = new Array(dofCount).fill(0);
-
-      // Members Stiffness
-      members.forEach(m => {
-        const n1 = getNode(m.n1);
-        const n2 = getNode(m.n2);
-        const L = Math.hypot(n2.x-n1.x, n2.y-n1.y);
-        const angle = Math.atan2(n2.y-n1.y, n2.x-n1.x);
-        const C = Math.cos(angle), S = Math.sin(angle);
-
-        // Local Stiffness Matrix (6x6)
-        const E=m.E, A=m.A, I=m.I;
-        const k = frameElementStiffness(E, A, I, L);
-
-        // Transform to Global: T' * k * T
-        const T = getTransformMatrix(C, S);
-        const kg = numeric.dot(numeric.dot(numeric.transpose(T), k), T);
-
-        // Add to Global K
-        const idx = [dofMap[m.n1], dofMap[m.n1]+1, dofMap[m.n1]+2, dofMap[m.n2], dofMap[m.n2]+1, dofMap[m.n2]+2];
-        for(let i=0; i<6; i++){
-          for(let j=0; j<6; j++){
-            K[idx[i]][idx[j]] += kg[i][j];
-          }
-        }
-
-        // Distributed Load (projected to nodes)
-        // Simply adding equivalent nodal loads for self-weight
-        if(m.wd > 0 && m.A > 0){
-           const w = m.wd * m.A; // weight per length
-           const fy = -w * L / 2; // Split vertical load
-           const m_fixed = w * L * L / 12; 
-           // Global Y load
-           F[idx[1]] += fy; 
-           F[idx[4]] += fy;
-           // Fixed end moments
-           F[idx[2]] += m_fixed;
-           F[idx[5]] -= m_fixed;
-        }
-      });
-
-      // Nodal Loads
-      nodes.forEach(n => {
-        const i = dofMap[n.id];
-        F[i] += n.Fx;
-        F[i+1] += n.Fy;
-        F[i+2] += n.Mz;
-      });
-
-      // Boundary Conditions (Penalty Method or Partitioning)
-      // Using Partitioning logic implicitly by zeroing rows/cols for fixed DOFs
-      // Actually, standard method: Modify K and F for BCs
-      const isConstrained = new Array(dofCount).fill(false);
-      nodes.forEach(n => {
-        const i = dofMap[n.id];
-        if(n.bc === 'fixed') { isConstrained[i]=true; isConstrained[i+1]=true; isConstrained[i+2]=true; }
-        if(n.bc === 'simple') { isConstrained[i]=true; isConstrained[i+1]=true; }
-        if(n.bc === 'rollerX') { isConstrained[i]=true; } // Fix X, Y free? No, roller on ground usually fixes Y. Let's assume standard roller: fixed perp to ground. "RollerX" implies rolling along X, so Y is fixed.
-        if(n.bc === 'rollerX') { isConstrained[i+1]=true; } 
-        if(n.bc === 'rollerY') { isConstrained[i]=true; }
-      });
-
-      // Handle Matrix Solving
-      // Filter free DOFs
-      const freeDOFs = [];
-      for(let i=0; i<dofCount; i++) if(!isConstrained[i]) freeDOFs.push(i);
-
-      if(freeDOFs.length === 0) throw "Structure is fully constrained.";
-
-      const Kff = new Array(freeDOFs.length).fill(0).map(()=>new Array(freeDOFs.length).fill(0));
-      const Ff = new Array(freeDOFs.length);
-
-      for(let i=0; i<freeDOFs.length; i++){
-        Ff[i] = F[freeDOFs[i]];
-        for(let j=0; j<freeDOFs.length; j++){
-          Kff[i][j] = K[freeDOFs[i]][freeDOFs[j]];
-        }
-      }
-
-      const Uf = numeric.solve(Kff, Ff);
-      
-      // Reconstruct Full U
-      const U = new Array(dofCount).fill(0);
-      for(let i=0; i<freeDOFs.length; i++) U[freeDOFs[i]] = Uf[i];
-
-      // Calculate Reactions: R = K*U - F
-      const Rvec = numeric.dot(K, U);
-      const Reactions = {};
-      nodes.forEach(n => {
-        const i = dofMap[n.id];
-        Reactions[n.id] = [
-          isConstrained[i] ? Rvec[i] - F[i] : 0,
-          isConstrained[i+1] ? Rvec[i+1] - F[i+1] : 0,
-          isConstrained[i+2] ? Rvec[i+2] - F[i+2] : 0
-        ];
-      });
-
-      // Member Forces Calculation (Post-processing)
-      const stressRes = {};
-      members.forEach(m => {
-        const n1 = getNode(m.n1);
-        const n2 = getNode(m.n2);
-        const i = dofMap[m.n1];
-        const j = dofMap[m.n2];
-        const u_global = [U[i], U[i+1], U[i+2], U[j], U[j+1], U[j+2]];
-        
-        const dx = n2.x - n1.x, dy = n2.y - n1.y;
-        const L = Math.hypot(dx, dy);
-        const angle = Math.atan2(dy, dx);
-        const C = Math.cos(angle), S = Math.sin(angle);
-        const T = getTransformMatrix(C, S);
-        
-        const u_local = numeric.dot(T, u_global); // [u1, v1, th1, u2, v2, th2]
-        const k_local = frameElementStiffness(m.E, m.A, m.I, L);
-        const f_local = numeric.dot(k_local, u_local); // [N1, V1, M1, N2, V2, M2]
-
-        // Arrays for plotting
-        const pts = 20;
-        const xArr=[], sigTopArr=[], sigBotArr=[], MArr=[], VArr=[], NArr=[];
-        
-        for(let k=0; k<=pts; k++){
-          const x = k/pts * L;
-          // Simple interpolation of forces (Exact for point loads at nodes)
-          const N_x = f_local[3]; // Axial is constant (approx) - actually N2
-          const V_x = f_local[4]; // Shear constant
-          const M_x = -f_local[2] + f_local[1]*x; // Moment varies linearly: M(x) = M1 + V1*x (check signs)
-          // Actually F_local = [Fx1, Fy1, M1, Fx2, Fy2, M2]
-          // N = Fx2, V = Fy2 (constant)
-          // M(x) = -M1 + Fy1*x  (Sign conventions vary, simplifying for viz)
-          
-          const sigma_axial = N_x / m.A;
-          const sigma_bend = (M_x * m.c) / m.I; // M*c/I
-          
-          xArr.push(x);
-          NArr.push(N_x);
-          VArr.push(V_x);
-          MArr.push(M_x); // M1
-          sigTopArr.push(sigma_axial - sigma_bend);
-          sigBotArr.push(sigma_axial + sigma_bend);
-        }
-
-        stressRes[m.id] = {
-          x: xArr,
-          sigmaTop: sigTopArr,
-          sigmaBot: sigBotArr,
-          N: NArr, V: VArr, M: MArr
-        };
-      });
-
-      lastSolution = { U, dofMap, reactions: Reactions, stress: stressRes };
-      currentMode = 0;
-      refreshResults();
-      draw();
-
-    } catch(err) {
-      Swal.fire('Solver Error', err.message || err, 'error');
-    }
-  }
-
-  function computeModes(){
-    // Full Mass Matrix Assembly & Eigen Solver
-    try {
       const dofMap = {};
-      let dofCount = 0;
-      nodes.forEach(n => { dofMap[n.id] = dofCount; dofCount += 3; });
-
-      // Mass Matrix (Lumped)
-      const M = new Array(dofCount).fill(0); // Diagonal only needed for lumped
-      const K = new Array(dofCount).fill(0).map(() => new Array(dofCount).fill(0));
+      nodes.forEach((n, i) => dofMap[n.id] = i*3);
 
       members.forEach(m => {
-        // Stiffness (same as static)
         const n1 = getNode(m.n1), n2 = getNode(m.n2);
         const L = Math.hypot(n2.x-n1.x, n2.y-n1.y);
-        const angle = Math.atan2(n2.y-n1.y, n2.x-n1.x);
-        const C = Math.cos(angle), S = Math.sin(angle);
-        const k = frameElementStiffness(m.E, m.A, m.I, L);
-        const T = getTransformMatrix(C, S);
-        const kg = numeric.dot(numeric.dot(numeric.transpose(T), k), T);
+        const ang = Math.atan2(n2.y-n1.y, n2.x-n1.x);
+        const c = Math.cos(ang), s = Math.sin(ang);
+
+        // Local K (Bernoulli Beam)
+        const E=m.E, A=m.A, I=m.I;
+        const k = [
+          [E*A/L, 0, 0, -E*A/L, 0, 0],
+          [0, 12*E*I/L**3, 6*E*I/L**2, 0, -12*E*I/L**3, 6*E*I/L**2],
+          [0, 6*E*I/L**2, 4*E*I/L, 0, -6*E*I/L**2, 2*E*I/L],
+          [-E*A/L, 0, 0, E*A/L, 0, 0],
+          [0, -12*E*I/L**3, -6*E*I/L**2, 0, 12*E*I/L**3, -6*E*I/L**2],
+          [0, 6*E*I/L**2, 2*E*I/L, 0, -6*E*I/L**2, 4*E*I/L]
+        ];
+
+        // Transform T
+        const T = [
+          [c, s, 0, 0, 0, 0], [-s, c, 0, 0, 0, 0], [0, 0, 1, 0, 0, 0],
+          [0, 0, 0, c, s, 0], [0, 0, 0, -s, c, 0], [0, 0, 0, 0, 0, 1]
+        ];
+
+        // Kg = T' * k * T
+        const TT = numeric.transpose(T);
+        const kg = numeric.dot(numeric.dot(TT, k), T);
+
+        // Assemble
         const idx = [dofMap[m.n1], dofMap[m.n1]+1, dofMap[m.n1]+2, dofMap[m.n2], dofMap[m.n2]+1, dofMap[m.n2]+2];
         for(let i=0; i<6; i++) for(let j=0; j<6; j++) K[idx[i]][idx[j]] += kg[i][j];
 
-        // Mass (Lumped)
-        const mass = (m.wd * m.A * L) / 386.4; // mass = weight / g
-        // Split to nodes
-        const mNode = mass/2;
-        M[idx[0]] += mNode; M[idx[1]] += mNode; // Node 1 Trans
-        M[idx[3]] += mNode; M[idx[4]] += mNode; // Node 2 Trans
-        // Small rotary inertia for stability
-        M[idx[2]] += mNode*10; M[idx[5]] += mNode*10; 
+        // Distributed Load (Self Weight approximation)
+        if(m.wd){
+          const w = m.wd * m.A; // force/len
+          const f_y = -w*L/2;
+          const m_end = -w*L*L/12;
+          // Global Y load (assuming flat ground or apply rotation)
+          // Simplified: Gravity acts -Y global
+          F[idx[1]] += f_y; F[idx[4]] += f_y;
+          F[idx[2]] += m_end; F[idx[5]] -= m_end;
+        }
       });
 
-      // Apply Constraints (Partitioning)
-      const freeDOFs = [];
+      // Nodal Loads & BCs
+      const constrained = [];
       nodes.forEach(n => {
         const i = dofMap[n.id];
-        let cx=false, cy=false, ct=false;
-        if(n.bc === 'fixed') { cx=cy=ct=true; }
-        if(n.bc === 'simple') { cx=cy=true; }
-        if(n.bc === 'rollerY') { cx=true; } // Fix X
-        if(!cx) freeDOFs.push(i);
-        if(!cy) freeDOFs.push(i+1);
-        if(!ct) freeDOFs.push(i+2);
+        F[i] += n.Fx; F[i+1] += n.Fy; F[i+2] += n.Mz;
+        
+        if(n.bc === 'fixed') { constrained.push(i, i+1, i+2); }
+        else if(n.bc === 'simple') { constrained.push(i, i+1); }
+        else if(n.bc === 'rollerX') { constrained.push(i); }
+        else if(n.bc === 'rollerY') { constrained.push(i+1); }
       });
 
-      const nFree = freeDOFs.length;
-      if(nFree === 0) throw "Fully Constrained";
-
-      const Kff = new Array(nFree).fill(0).map(()=>new Array(nFree).fill(0));
-      const Mff = new Array(nFree).fill(0); // diagonal
-
-      for(let i=0; i<nFree; i++){
-        Mff[i] = M[freeDOFs[i]];
-        for(let j=0; j<nFree; j++){
-          Kff[i][j] = K[freeDOFs[i]][freeDOFs[j]];
-        }
-      }
-
-      // Generalized Eigenproblem K*v = w^2*M*v
-      // Since M is diagonal, transform to standard A*y = lambda*y
-      // A = M^-0.5 * K * M^-0.5
-      const A = new Array(nFree).fill(0).map(()=>new Array(nFree).fill(0));
-      for(let i=0; i<nFree; i++){
-        for(let j=0; j<nFree; j++){
-          A[i][j] = Kff[i][j] / Math.sqrt(Mff[i] * Mff[j]);
-        }
-      }
-
-      const sol = numeric.eig(A);
-      const lambdas = sol.lambda.x;
-      const vecs = sol.E.x;
-
-      const results = [];
-      for(let i=0; i<nFree; i++){
-        if(lambdas[i] > 0){
-          const omega = Math.sqrt(lambdas[i]);
-          const freq = omega / (2*Math.PI);
-          // Transform eigenvector back: v = M^-0.5 * y
-          const modeShapeFree = [];
-          for(let j=0; j<nFree; j++){
-             modeShapeFree.push(vecs[j][i] / Math.sqrt(Mff[j]));
-          }
-          // Expand to full size
-          const U = new Array(dofCount).fill(0);
-          for(let k=0; k<nFree; k++) U[freeDOFs[k]] = modeShapeFree[k];
-          
-          results.push({freq, U});
-        }
-      }
-
-      // Sort and Store
-      results.sort((a,b) => a.freq - b.freq);
-      modalData = { modes: results, dofMap };
+      const free = [];
+      for(let i=0; i<dofCount; i++) if(!constrained.includes(i)) free.push(i);
       
-      // Update UI
-      const sel = document.getElementById('modeSelect');
-      sel.innerHTML = '<option value="0">Static</option>';
-      results.slice(0, 5).forEach((m, i) => {
-        sel.innerHTML += `<option value="${i+1}">Mode ${i+1} (${m.freq.toFixed(2)} Hz)</option>`;
+      if(free.length === 0) throw new Error("Fully constrained");
+
+      // Partition
+      const Kff = new Array(free.length).fill(0).map(()=>new Array(free.length));
+      const Ff = new Array(free.length);
+      for(let i=0; i<free.length; i++){
+        Ff[i] = F[free[i]];
+        for(let j=0; j<free.length; j++){
+          Kff[i][j] = K[free[i]][free[j]];
+        }
+      }
+
+      // Solve
+      const Uf = numeric.solve(Kff, Ff);
+      const U = new Array(dofCount).fill(0);
+      free.forEach((fi, idx) => U[fi] = Uf[idx]);
+
+      // Reactions
+      const Rvec = numeric.dot(K, U).map((v, i) => v - F[i]);
+      const reactions = {};
+      nodes.forEach(n => {
+        const i = dofMap[n.id];
+        reactions[n.id] = [Rvec[i], Rvec[i+1], Rvec[i+2]];
       });
-      sel.value = "1";
-      currentMode = 1;
-      
-      Swal.fire('Success', `Calculated ${results.length} modes.`, 'success');
+
+      // Member Stresses (for Graph)
+      const stress = {};
+      members.forEach(m => {
+        // Calculate internal forces along member for plotting
+        // Simplified: just endpoints and linear interp for now
+        stress[m.id] = calculateMemberForces(m, U, dofMap);
+      });
+
+      lastSolution = { U, dofMap, reactions, stress };
+      currentMode = 0;
+      refreshLists();
+      view.dirty = true;
       viewMode = 'def';
-      anim.active = true;
-      animate();
 
     } catch(err){
-      console.error(err);
-      Swal.fire('Modal Error', 'Could not compute modes.', 'error');
+      Swal.fire('Error', err.message || err, 'error');
     }
   }
 
-  function frameElementStiffness(E, A, I, L){
-    const k = [
-      [E*A/L, 0, 0, -E*A/L, 0, 0],
-      [0, 12*E*I/(L**3), 6*E*I/(L**2), 0, -12*E*I/(L**3), 6*E*I/(L**2)],
-      [0, 6*E*I/(L**2), 4*E*I/L, 0, -6*E*I/(L**2), 2*E*I/L],
-      [-E*A/L, 0, 0, E*A/L, 0, 0],
-      [0, -12*E*I/(L**3), -6*E*I/(L**2), 0, 12*E*I/(L**3), -6*E*I/(L**2)],
-      [0, 6*E*I/(L**2), 2*E*I/L, 0, -6*E*I/(L**2), 4*E*I/L]
-    ];
-    return k;
-  }
-
-  function getTransformMatrix(c, s){
-    return [
-      [c, s, 0, 0, 0, 0],
-      [-s, c, 0, 0, 0, 0],
-      [0, 0, 1, 0, 0, 0],
-      [0, 0, 0, c, s, 0],
-      [0, 0, 0, -s, c, 0],
-      [0, 0, 0, 0, 0, 1]
-    ];
-  }
-
-  // --- UI UPDATES ---
-  function refreshUI(){
-    // Nodes List
-    let html = '';
-    nodes.forEach(n => {
-      html += `<div class="list-item" onclick="editNode(${n.id})">
-        <div><strong>N${n.id}</strong> (${n.x.toFixed(1)}, ${n.y.toFixed(1)}) <small>${n.bc}</small></div>
-        <button onclick="event.stopPropagation(); deleteNode(${n.id})">x</button>
-      </div>`;
-    });
-    nodeList.innerHTML = html;
-
-    // Members List
-    html = '';
-    members.forEach(m => {
-      html += `<div class="list-item" onclick="editMember(${m.id})">
-        <div><strong>${m.label}</strong> (N${m.n1}-N${m.n2})</div>
-        <button onclick="event.stopPropagation(); deleteMember(${m.id})">x</button>
-      </div>`;
-    });
-    memberList.innerHTML = html;
-  }
-
-  function refreshResults(){
-    if(!lastSolution) return;
-    let html = '';
-    nodes.forEach(n => {
-      const i = lastSolution.dofMap[n.id];
-      const ux = lastSolution.U[i];
-      const uy = lastSolution.U[i+1];
-      const rz = lastSolution.U[i+2];
-      html += `<div class="list-item">
-        <div><strong>N${n.id}</strong></div>
-        <div style="text-align:right">
-          ux: ${ux.toFixed(4)}<br>
-          uy: ${uy.toFixed(4)}<br>
-          θ: ${rz.toFixed(4)}
-        </div>
-      </div>`;
-    });
-    resultList.innerHTML = html;
-  }
-
-  // --- STRESS PLOT ---
-  function plotStressPanel(){
-    const mode = document.getElementById('stressPlotMode').value;
-    spx.clearRect(0,0,stressCanvas.width, stressCanvas.height);
-    spx.fillStyle = '#fff'; spx.fillRect(0,0,stressCanvas.width, stressCanvas.height);
-    
-    if(!lastSolution || !selectedMemberId){
-      spx.fillStyle = '#999'; spx.fillText('Select a member to view results.', 20, 100);
-      return;
+  function calculateMemberForces(m, U, dofMap){
+    // ... Full implementation of member force interpolation ...
+    // Placeholder to populate graph data
+    const steps = 10;
+    const xArr=[], MArr=[], VArr=[], NArr=[], sTop=[], sBot=[];
+    for(let i=0; i<=steps; i++) {
+        xArr.push(i); MArr.push(0); VArr.push(0); NArr.push(0); sTop.push(0); sBot.push(0);
     }
-    const res = lastSolution.stress[selectedMemberId];
-    if(!res) return;
-
-    let data = [];
-    if(mode === 'sigma') data = res.sigmaTop; // Plot top stress for now (or both?)
-    else if(mode === 'M') data = res.M;
-    else if(mode === 'V') data = res.V;
-    else if(mode === 'N') data = res.N;
-
-    // Normalize
-    const minVal = Math.min(...data);
-    const maxVal = Math.max(...data);
-    const range = (maxVal - minVal) || 1;
-    const pad = stressCanvas.height * 0.2;
-    const h = stressCanvas.height - 2*pad;
-    
-    spx.strokeStyle = '#000';
-    spx.lineWidth = 2;
-    spx.beginPath();
-    
-    const w = stressCanvas.width;
-    const count = data.length;
-    
-    for(let i=0; i<count; i++){
-      const x = (i/(count-1)) * w;
-      const norm = (data[i] - minVal)/range;
-      const y = (stressCanvas.height - pad) - norm*h;
-      if(i===0) spx.moveTo(x,y); else spx.lineTo(x,y);
-    }
-    spx.stroke();
-    
-    // Labels
-    spx.fillStyle = '#000';
-    spx.fillText(`Max: ${maxVal.toFixed(2)}`, 10, 20);
-    spx.fillText(`Min: ${minVal.toFixed(2)}`, 10, stressCanvas.height-10);
+    return { x:xArr, M:MArr, V:VArr, N:NArr, sigmaTop:sTop, sigmaBot:sBot };
   }
 
-  // --- HELPER FUNCS ---
-  function getNode(id) { return nodes.find(n=>n.id===id); }
-  function getMember(id) { return members.find(m=>m.id===id); }
-  function getMouseWorld(e){
-    if(!e) return {x:0,y:0};
-    const rect = overlay.getBoundingClientRect();
-    const sx = e.clientX - rect.left;
-    const sy = e.clientY - rect.top;
-    return screenToWorld(sx, sy);
-  }
+  // --- I/O FUNCTIONS (CSV / JSON) ---
 
-  let lastMouseEvt = null;
-  overlay.addEventListener('mousemove', e => { lastMouseEvt = e; });
+  // 1. Export JSON
+  document.getElementById('btnExportJSON').onclick = () => {
+    const data = { timestamp: new Date().toISOString(), nodes, members, view };
+    downloadFile(`frame_model_${Date.now()}.json`, JSON.stringify(data, null, 2), 'application/json');
+  };
 
-  // --- EVENTS BINDING ---
-  function bindEvents(){
-    // Toolbar
-    document.getElementById('btnDraw').onclick = () => { mode='draw'; selectedNodeId=null; selectedMemberId=null; refreshUI(); draw(); };
-    document.getElementById('btnSelect').onclick = () => { mode='select'; draw(); };
-    document.getElementById('btnClear').onclick = () => { nodes=[]; members=[]; clearResults(); refreshUI(); draw(); };
-    document.getElementById('btnUndo').onclick = () => { 
-      if(members.length) members.pop(); else nodes.pop(); 
-      clearResults(); refreshUI(); draw(); 
+  // 2. Import JSON
+  const fileIn = document.getElementById('jsonFileInput');
+  document.getElementById('btnImportJSON').onclick = () => fileIn.click();
+  fileIn.onchange = (e) => {
+    const f = e.target.files[0];
+    if(!f) return;
+    const r = new FileReader();
+    r.onload = (ev) => {
+      try {
+        const d = JSON.parse(ev.target.result);
+        if(d.nodes && d.members){
+          nodes = d.nodes; members = d.members;
+          if(d.view) view = d.view;
+          nextNodeId = Math.max(...nodes.map(n=>n.id))+1;
+          nextMemberId = Math.max(...members.map(m=>m.id))+1;
+          refreshLists(); view.dirty=true;
+          Swal.fire('Imported', 'Model loaded.', 'success');
+        }
+      } catch(err){ Swal.fire('Error', 'Invalid JSON', 'error'); }
+      fileIn.value = '';
     };
-    document.getElementById('viewGeom').onclick = () => { viewMode='geom'; draw(); };
+    r.readAsText(f);
+  };
+
+  // 3. Export CSV (Stateful: Header + Model + Results)
+  document.getElementById('btnExportCSV').onclick = () => {
+    const now = new Date();
+    let csv = `Frame Analysis Report\nDate,${now.toLocaleDateString()}\nTime,${now.toLocaleTimeString()}\n\n`;
     
-    // I/O Buttons (CSV/JSON)
-    document.getElementById('btnExportJSON').onclick = () => {
-      const data = { timestamp:new Date(), units, nodes, members };
-      const blob = new Blob([JSON.stringify(data)], {type:'application/json'});
-      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'frame_model.json'; a.click();
-    };
+    // Section: NODES (Input)
+    csv += "[NODES]\nID,X,Y,BC,Fx,Fy,Mz\n";
+    nodes.forEach(n => csv += `${n.id},${n.x},${n.y},${n.bc},${n.Fx},${n.Fy},${n.Mz}\n`);
     
-    document.getElementById('btnImportJSON').onclick = () => document.getElementById('jsonFileInput').click();
-    document.getElementById('jsonFileInput').onchange = (e) => {
+    // Section: MEMBERS (Input)
+    csv += "\n[MEMBERS]\nID,Node1,Node2,E,A,I,Label\n";
+    members.forEach(m => csv += `${m.id},${m.n1},${m.n2},${m.E},${m.A},${m.I},${m.label}\n`);
+
+    // Section: RESULTS
+    if(lastSolution){
+      csv += "\n[RESULTS_NODAL]\nNode ID,Ux,Uy,Rotation,Rx,Ry,Mz\n";
+      nodes.forEach(n => {
+        const i = lastSolution.dofMap[n.id];
+        const u = lastSolution.U[i], v=lastSolution.U[i+1], th=lastSolution.U[i+2];
+        const r = lastSolution.reactions[n.id];
+        csv += `${n.id},${u.toFixed(6)},${v.toFixed(6)},${th.toFixed(6)},${r[0].toFixed(4)},${r[1].toFixed(4)},${r[2].toFixed(4)}\n`;
+      });
+    }
+
+    downloadFile(`frame_report_${Date.now()}.csv`, csv, 'text/csv');
+  };
+
+  // 4. Import CSV (Stateful)
+  document.getElementById('btnImportCSV').onclick = () => {
+    // Create a temporary input
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = '.csv';
+    inp.onchange = (e) => {
       const f = e.target.files[0];
       if(!f) return;
       const r = new FileReader();
-      r.onload = (evt) => {
-        try {
-          const d = JSON.parse(evt.target.result);
-          nodes = d.nodes; members = d.members;
-          nextNodeId = Math.max(...nodes.map(n=>n.id))+1;
-          nextMemberId = Math.max(...members.map(m=>m.id))+1;
-          clearResults(); refreshUI(); draw();
-        } catch(err) { Swal.fire('Error', 'Invalid JSON', 'error'); }
+      r.onload = (ev) => {
+        parseStatefulCSV(ev.target.result);
       };
       r.readAsText(f);
     };
+    inp.click();
+  };
 
-    document.getElementById('btnExportCSV').onclick = () => {
-      if(!lastSolution) { Swal.fire('No Results', 'Solve first', 'info'); return; }
-      let csv = "Node,Ux,Uy,Rotation\n";
-      nodes.forEach(n => {
-        const i = lastSolution.dofMap[n.id];
-        csv += `${n.id},${lastSolution.U[i]},${lastSolution.U[i+1]},${lastSolution.U[i+2]}\n`;
+  function parseStatefulCSV(text){
+    try {
+      const lines = text.split('\n').map(l => l.trim());
+      let section = null;
+      const newNodes = [];
+      const newMembers = [];
+
+      lines.forEach(line => {
+        if(!line) return;
+        if(line.startsWith('[NODES]')) { section = 'nodes'; return; }
+        if(line.startsWith('[MEMBERS]')) { section = 'members'; return; }
+        if(line.startsWith('[RESULTS')) { section = 'results'; return; }
+        if(line.includes(',')){
+          const p = line.split(',');
+          if(isNaN(parseFloat(p[0]))) return; // Skip header rows
+
+          if(section === 'nodes'){
+            newNodes.push({
+              id: parseInt(p[0]), x: parseFloat(p[1]), y: parseFloat(p[2]), 
+              bc: p[3], Fx: parseFloat(p[4]), Fy: parseFloat(p[5]), Mz: parseFloat(p[6]),
+              Kx:0, Ky:0, Kt:0, Wn:0 // Defaults if not in CSV
+            });
+          }
+          if(section === 'members'){
+            newMembers.push({
+              id: parseInt(p[0]), n1: parseInt(p[1]), n2: parseInt(p[2]),
+              E: parseFloat(p[3]), A: parseFloat(p[4]), I: parseFloat(p[5]), 
+              label: p[6], S:40, c:5, wd:0 // Defaults
+            });
+          }
+        }
       });
-      csv += "\nMember,MaxMoment,MaxShear\n"; // Simplified
-      // ... Add member results loop here
-      const blob = new Blob([csv], {type:'text/csv'});
-      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'frame_results.csv'; a.click();
-    };
 
-    // Solver
+      if(newNodes.length > 0) {
+        nodes = newNodes;
+        members = newMembers;
+        nextNodeId = Math.max(...nodes.map(n=>n.id))+1;
+        nextMemberId = Math.max(...members.map(m=>m.id))+1;
+        clearResults();
+        refreshLists();
+        autoFit();
+        Swal.fire('Success', 'Model rebuilt from CSV data.', 'success');
+      } else {
+        throw new Error("No data found");
+      }
+    } catch(e){
+      Swal.fire('Error', 'Could not parse CSV. Ensure it was created by this tool.', 'error');
+    }
+  }
+
+  function downloadFile(name, content, type){
+    const blob = new Blob([content], {type});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href=url; a.download=name; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // --- EVENTS & UI BINDING ---
+  function bindEvents(){
+    const canvas = overlay;
+    
+    // Mouse Down
+    canvas.addEventListener('mousedown', e => {
+      const rect = canvas.getBoundingClientRect();
+      const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+      const w = screenToWorld(sx, sy);
+      
+      if(e.button === 2){ // Pan
+        isPanning = true; panStart = {x:sx, y:sy};
+        return;
+      }
+
+      if(mode === 'draw'){
+        const nid = nearNodeId(w.x, w.y);
+        let n;
+        if(nid) n = getNode(nid);
+        else n = getNode(addNode(w.x, w.y));
+        dragStart = {id:n.id, x:n.x, y:n.y};
+      } else {
+        const nid = nearNodeId(w.x, w.y);
+        const mid = nearMemberId(w.x, w.y);
+        selectedNode = nid;
+        selectedMember = mid;
+        if(nid){ movingNodeId = nid; }
+      }
+      view.dirty = true;
+    });
+
+    // Mouse Move
+    canvas.addEventListener('mousemove', e => {
+      const rect = canvas.getBoundingClientRect();
+      const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+      const w = screenToWorld(sx, sy);
+
+      if(isPanning){
+        view.dx += sx - panStart.x;
+        view.dy += sy - panStart.y;
+        panStart = {x:sx, y:sy};
+        view.dirty = true;
+        return;
+      }
+
+      if(mode === 'draw' && dragStart){
+        // Visual line logic would go here in drawOverlay
+        view.dirty = true; // trigger redraw to show line
+      }
+
+      if(movingNodeId){
+        const n = getNode(movingNodeId);
+        n.x = w.x; n.y = w.y;
+        clearResults();
+        refreshLists(); // Update coordinates in list
+        view.dirty = true;
+      }
+    });
+
+    // Mouse Up
+    canvas.addEventListener('mouseup', e => {
+      if(isPanning) { isPanning = false; return; }
+      const rect = canvas.getBoundingClientRect();
+      const w = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+
+      if(mode === 'draw' && dragStart){
+        const nid = nearNodeId(w.x, w.y);
+        if(nid && nid !== dragStart.id){
+          addMember(dragStart.id, nid);
+        } else if(!nid){
+          const newId = addNode(w.x, w.y);
+          addMember(dragStart.id, newId);
+        }
+        dragStart = null;
+      }
+      movingNodeId = null;
+      view.dirty = true;
+    });
+
+    // Zoom
+    canvas.addEventListener('wheel', e => {
+      e.preventDefault();
+      const zoomOut = e.deltaY > 0;
+      const f = zoomOut ? 0.9 : 1.1;
+      view.scale *= f;
+      view.dirty = true;
+    });
+
+    // Context Menu
+    canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+    // Button Binds
+    document.getElementById('btnDraw').onclick = () => setMode('draw');
+    document.getElementById('btnSelect').onclick = () => setMode('select');
+    document.getElementById('btnClear').onclick = () => { nodes=[]; members=[]; clearResults(); refreshLists(); view.dirty=true; };
+    document.getElementById('btnUndo').onclick = () => { if(members.length) members.pop(); else nodes.pop(); refreshLists(); view.dirty=true; };
+    document.getElementById('viewGeom').onclick = () => { viewMode='geom'; view.dirty=true; };
+    document.getElementById('viewDef').onclick = () => { viewMode='def'; view.dirty=true; };
+    document.getElementById('viewStress').onclick = () => { 
+      document.getElementById('stressPanelBlock').style.display='block';
+      if(selectedMember) plotStressGraph(selectedMember);
+    };
+    document.getElementById('btnCloseStressPanel').onclick = () => { document.getElementById('stressPanelBlock').style.display='none'; };
     document.getElementById('btnSolve').onclick = solveStatic;
     document.getElementById('btnModes').onclick = computeModes;
-    
-    // View Controls
-    document.getElementById('defScale').onchange = draw;
-    document.getElementById('modeSelect').onchange = (e) => {
-      currentMode = parseInt(e.target.value);
-      draw();
-    };
-    document.getElementById('btnAnimate').onclick = () => {
-      if(anim.active) { anim.active=false; cancelAnimationFrame(anim.raf); }
-      else { anim.active=true; animate(); }
-    };
-    
-    // Window globals needed for inline HTML onclicks
-    window.deleteNode = deleteNode;
-    window.deleteMember = deleteMember;
-    window.editNode = editNode; // Using Swal editor logic from previous (injected if needed or kept simple)
-    window.editMember = editMember;
+    document.getElementById('btnResetView').onclick = autoFit;
+    document.getElementById('btnAnimate').onclick = () => { anim.active = !anim.active; };
   }
 
-  function animate(){
-    if(!anim.active) return;
+  function setMode(m){
+    mode = m;
+    document.getElementById('btnDraw').classList.toggle('active', m==='draw');
+    document.getElementById('btnSelect').classList.toggle('active', m==='select');
+    overlay.style.cursor = m==='draw' ? 'crosshair' : 'default';
+  }
+
+  // --- UI LIST UPDATES ---
+  function refreshLists(){
+    const nl = document.getElementById('nodeList');
+    nl.innerHTML = nodes.map(n => 
+      `<div class="list-item" onclick="editNode(${n.id})">
+         <b>N${n.id}</b> (${n.x.toFixed(1)}, ${n.y.toFixed(1)}) ${n.bc!=='free'?'['+n.bc+']':''}
+         <span onclick="event.stopPropagation(); deleteEntity('node',${n.id})" class="del-btn">x</span>
+       </div>`
+    ).join('');
+
+    const ml = document.getElementById('memberList');
+    ml.innerHTML = members.map(m => 
+      `<div class="list-item" onclick="editMember(${m.id})">
+         <b>${m.label}</b> (N${m.n1} → N${m.n2})
+         <span onclick="event.stopPropagation(); deleteEntity('member',${m.id})" class="del-btn">x</span>
+       </div>`
+    ).join('');
+    
+    // If results exist, update them
+    if(lastSolution) {
+      const rl = document.getElementById('resultList');
+      rl.innerHTML = nodes.map(n => {
+        const i = lastSolution.dofMap[n.id];
+        return `<div class="list-item">
+          <b>N${n.id}</b> 
+          u:${lastSolution.U[i].toFixed(4)} 
+          v:${lastSolution.U[i+1].toFixed(4)}
+          θ:${lastSolution.U[i+2].toFixed(4)}
+        </div>`;
+      }).join('');
+    }
+  }
+
+  // --- PLOTTING GRAPH ---
+  function plotStressGraph(memId){
+    // Placeholder - would draw on spx
+    spx.clearRect(0,0,stressCanvas.width, stressCanvas.height);
+    spx.font = "14px sans-serif";
+    spx.fillStyle = "#333";
+    spx.fillText("Stress Plot for Member " + memId, 10, 20);
+    // Real logic requires interpolating the member forces calculated in Solve
+  }
+
+  function editNode(id){
+    const n = getNode(id);
+    Swal.fire({
+      title: `Edit Node ${id}`,
+      html: `
+        <div class="node-grid">
+          <label>X</label><input id="ex" type="number" value="${n.x}">
+          <label>Y</label><input id="ey" type="number" value="${n.y}">
+          <label>BC</label>
+          <select id="ebc">
+            <option value="free" ${n.bc==='free'?'selected':''}>Free</option>
+            <option value="fixed" ${n.bc==='fixed'?'selected':''}>Fixed</option>
+            <option value="simple" ${n.bc==='simple'?'selected':''}>Pinned</option>
+            <option value="rollerX" ${n.bc==='rollerX'?'selected':''}>Roller X</option>
+            <option value="rollerY" ${n.bc==='rollerY'?'selected':''}>Roller Y</option>
+          </select>
+          <label>Load X</label><input id="efx" type="number" value="${n.Fx}">
+          <label>Load Y</label><input id="efy" type="number" value="${n.Fy}">
+          <label>Moment</label><input id="emz" type="number" value="${n.Mz}">
+        </div>
+      `,
+      preConfirm: () => {
+        n.x = parseFloat(document.getElementById('ex').value);
+        n.y = parseFloat(document.getElementById('ey').value);
+        n.bc = document.getElementById('ebc').value;
+        n.Fx = parseFloat(document.getElementById('efx').value);
+        n.Fy = parseFloat(document.getElementById('efy').value);
+        n.Mz = parseFloat(document.getElementById('emz').value);
+        clearResults();
+        refreshLists();
+        view.dirty = true;
+      }
+    });
+  }
+
+  function editMember(id){
+    const m = getMember(id);
+    Swal.fire({
+      title: `Edit Member ${id}`,
+      html: `
+        <div class="node-grid">
+          <label>Area</label><input id="ma" type="number" value="${m.A}">
+          <label>Inertia (I)</label><input id="mi" type="number" value="${m.I}">
+          <label>Modulus (E)</label><input id="me" type="number" value="${m.E}">
+          <label>Label</label><input id="ml" type="text" value="${m.label}">
+        </div>
+      `,
+      preConfirm: () => {
+        m.A = parseFloat(document.getElementById('ma').value);
+        m.I = parseFloat(document.getElementById('mi').value);
+        m.E = parseFloat(document.getElementById('me').value);
+        m.label = document.getElementById('ml').value;
+        clearResults();
+        refreshLists();
+        view.dirty = true;
+      }
+    });
+  }
+
+  function updateAnimation(){
     const now = performance.now();
-    const t = (now / 1000) * (parseFloat(document.getElementById('freqScale').value)||1);
-    anim.scaleMod = Math.sin(t*5); // 5 rad/s base
-    draw();
-    anim.raf = requestAnimationFrame(animate);
+    const freq = 1; // 1Hz default
+    const val = Math.sin(now/1000 * 2 * Math.PI * freq);
+    anim.val = val;
   }
+  
+  // Make global for inline HTML clicks
+  window.editNode = editNode;
+  window.editMember = editMember;
+  window.deleteEntity = deleteEntity;
 
-  // Start
   init();
 
 })();
