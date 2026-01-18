@@ -1,2770 +1,914 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<meta http-equiv="x-dns-prefetch-control" content="on">
+<link rel="icon" href="data:,">
 <meta charset="UTF-8" />
-<title>Frame — Draw • Solve • Reactions • Stresses</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/numeric/1.2.6/numeric.min.js"></script>
-
+<title>Bonded Rubber — Mold → Cool (v1.2.5 • FEM + Two-k Curved Cones)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
 <style>
-  :root { --pad:18px; --canvas-w:700px; --canvas-h:560px; --panel-w:680px; }
-  body { background:#f6f7fb; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; margin:20px; }
-  h2 { margin:0 0 10px; }
-  .row { display:flex; gap:16px; align-items:flex-start; flex-wrap:wrap; }
-  .col { background:#fff; border:1px solid #ddd; border-radius:12px; padding:var(--pad); }
-  .controls { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:10px; }
-  .controls.split { justify-content:flex-start; }
-  button, select, input[type="number"], input[type="text"]{
-    height:32px; padding:0 10px; border:1px solid #bbb; border-radius:8px; background:#eee; font-size:14px; color:#333;
-  }
-  input[type="range"]{ width:120px; }
-  button { cursor:pointer; transition:background 0.15s ease, color 0.15s ease, border-color 0.15s ease; }
-  button.primary { background:#eee; color:#333; border-color:#bbb; }
-  button.ghost   { background:#eee; color:#333; border-color:#bbb; }
-  /* Grayed-out look for active/selected buttons */
-  button.active  { background:#cfd8e3; color:#555; border-color:#9aa6b2; box-shadow: inset 0 0 0 1px #9aa6b2; cursor:default; }
+  :root{ --panel-w:280px; --gap:16px; --pad:14px; --bg:#f6f7fb; --ink:#111; --muted:#666; --border:#ddd; --accent:#0b73c8; }
+  *{box-sizing:border-box;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+  body{margin:18px;background:var(--bg);color:var(--ink)}
+  h2{margin:0 0 8px}
 
-  .labelbtn { pointer-events:none; opacity:1; font-weight:600; }
-
-  .stack { display:flex; flex-direction:column; gap:8px; }
-  
-  /* --- compact dual-column panel layout --- */
-  .panel-row {
-    display: flex;
-    gap: 10px;
-    margin-top: 10px;
+  /* --- ROW stays horizontal, scrolls if needed --- */
+  .row{
+    display:flex;
+    gap:var(--gap);
+    align-items:flex-start;
+    flex-wrap:nowrap;        /* keep panels side-by-side */
+    overflow-x:auto;         /* allow sideways scroll on small viewports */
+    scroll-behavior:smooth;
   }
-  .panel-half {
-    flex: 1;
-    min-width: 0;
+  /* remove any previous wrap behavior */
+  /* (If you had a media query that set flex-wrap:wrap, this overrides it) */
+
+  /* Fix the left UI panel width; keep content from shrinking */
+  #inputs{
+    flex:0 0 var(--panel-w);
+    min-width:var(--panel-w);
   }
 
-  #wrap { position:relative; width:var(--canvas-w); height:var(--canvas-h); background:#fff; border:1px solid #ccc; border-radius:8px; }
-  canvas { position:absolute; inset:0; }
-  #base { z-index:1; } #overlay { z-index:2; pointer-events:auto; cursor:crosshair; }
+  /* Right panel can stay auto; its explicit width comes from inline style below */
+  .panel-right{
+    flex:0 0 auto;
+    min-width:0; /* allow inner canvases to define the width */
+  }
 
-  .panel { width:var(--panel-w); }
-  .list { font-size:13px; max-height:240px; overflow:auto; border:1px dashed #ddd; padding:8px; border-radius:8px; }
-  .hint { color:#666; font-size:12px; }
-  .swal2-popup { font-size:12px !important; width:auto !important; min-width:360px !important; }
-  .swal2-input, .swal2-select { font-size:12px !important; height:28px !important; }
-
-  /* Node panel inputs */
-  .node-row { display:grid; grid-template-columns: 54px 1fr 1fr 28px; gap:6px; align-items:center; }
-  .node-row > .badge { justify-self:start; font-weight:600; color:#334155; }
-  .node-row input[type="number"]{ width:100%; height:28px; padding:0 6px; border-radius:6px; }
-  .node-row button { height:28px; padding:0 8px; }
-
-  #stressPanelBlock { display:none; }
-  #stressPanel { width:100%; height:260px; position:static; border:1px solid #ccc; border-radius:8px; }
+  .panel{width:var(--panel-w);background:#fff;border:1px solid var(--border);border-radius:12px;padding:var(--pad);overflow:hidden}
+  .panel[style*="flex:1"]{width:auto}
+  .field{display:grid;grid-template-columns: 1fr 190px;align-items:center;gap:12px;margin:6px 0}
+  .field label{font-size:13px;color:#222}
+  .field input, .field select, .field button{height:36px;border:1px solid var(--border);border-radius:10px;padding:0 10px;font-size:14px;background:#fff}
+  .field input[type="number"]{text-align:right}
+  .group{border-top:1px dashed #e2e2e2;margin:10px 0;padding-top:10px}
+  .btn{background:var(--accent);color:#fff;border:none;cursor:pointer;font-weight:600}
+  .btn:active{transform:translateY(1px)}
+  .note{font-size:12px;color:var(--muted)}
+  canvas{background:#fff;border:1px solid var(--border);border-radius:12px; width:auto; height:auto; display:block}
+  .hide{display:none}
+  .subsec{margin-left:0}
+  .legend{display:flex;align-items:center;gap:8px;font-size:12px;color:#333;margin-top:6px;flex-wrap:wrap;max-width:565px}
+  .sw{width:14px;height:10px;border-radius:3px;border:1px solid #999}
+  .row2{display:grid;grid-template-columns:1fr;grid-auto-rows:auto;row-gap:4px;align-items:start}
+  .subtle{color:#666;font-size:12px;justify-self:end;text-align:right;white-space:normal;overflow-wrap:anywhere;word-break:break-word;hyphens:auto;max-width:100%;display:block}
+  .testbar{margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  pre#testsOut{background:#fafafa;border:1px solid #eee;border-radius:8px;padding:10px;max-height:260px;overflow:auto;font-size:12px}
+  .rangeRow{display:grid;grid-template-columns:minmax(0,1fr) 80px;gap:8px;align-items:center;width:100%;}
+  .rangeRow input[type="range"]{width:100%;min-width:0}
+  .rangeRow input[type="number"]{width:80px}
+  .actionBar{position:sticky;top:0;background:#fff;padding-bottom:10px;margin:-14px -14px 10px -14px;padding:10px 14px 10px 14px;border-bottom:1px solid #eee;display:flex;gap:8px;align-items:center;z-index:2}
+  .actionBar .btn{height:34px;padding:0 14px}
+  .actionBar small{color:#666}
+  .canvasWrap{position:relative}
+  .solveBadge{position:absolute;top:6px;left:6px;padding:4px 8px;border-radius:10px;font-size:12px;border:1px solid #ccc;background:#f5f5f5;color:#333}
+  .solveBadge.solving{background:#fff3cd;border-color:#ffe08a;color:#7a5d00}
+  .solveBadge.done{background:#e6ffed;border-color:#b7efc5;color:#0a6b2b}
+  .solveBadge.error{background:#fdecea;border-color:#facdcd;color:#b42318}
+  .hdr{font-weight:600;margin:8px 0 6px 2px}
 </style>
 </head>
-
 <body>
-  <h2>2D FRAME </h2>
-
-  <!-- TOP ROW -->
-  <div class="controls split" id="rowTop">
-    <button id="btnDraw"   class="primary">Draw Members</button>
-    <button id="btnSelect" class="ghost">Select/Edit</button>
-
-    <button id="viewGeom" class="ghost">Geometry</button>
-
-    <button id="btnUndo"  class="ghost">Undo</button>
-    <button id="btnClear" class="ghost">Clear</button>
-
-    <button id="btnExportJSON" class="ghost">Export JSON</button>
-    <button id="btnImportJSON" class="ghost">Import JSON</button>
-    <button id="btnExportCSV" class="ghost">Export CSV</button>
-    <input id="jsonFileInput" type="file" accept=".json,application/json" style="display:none;">
-
-
-
-
-
-    <span class="hint" style="margin-left:6px;">
-      Draw: drag to add a member. Select: drag a node to move; double-click to edit; Delete key removes.
-    </span>
-  </div>
-
+  <h2>Bonded Rubber Disk — Molding Shrinkage and Shear Strains</h2>
   <div class="row">
-    <div class="col">
-      <div id="wrap">
-        <canvas id="base"    width="700" height="560"></canvas>
-        <canvas id="overlay" width="700" height="560"></canvas>
+    <div class="panel" id="inputs">
+      <div class="actionBar">
+        <button class="btn" id="moldBtn">Shrinkage</button>
+        <small>Build FE model and solve cooling shrinkage</small>
       </div>
 
-      <!-- BOTTOM ROW -->
-      <div class="controls split" style="margin-top:10px; gap:12px;">
-        <button class="ghost labelbtn" disabled>Segment Divisions</button>
-        <input id="divCount"  type="number" min="1" max="50" value="10" style="width:80px;">
-
-        <button id="btnSolve" class="primary">Solve</button>
-        <button id="btnModes" class="ghost">Modes</button>
-        <button id="viewDef"  class="ghost">Deflections</button>
-        <button id="viewStressPanel" class="ghost">Stresses</button>
-
-        <button class="ghost labelbtn" disabled>Deflection Scale</button>
-        <input id="defScale"  type="number" step="any" value="1" style="width:80px;">
-
-        <!-- Mode selector -->
-        <label class="ghost labelbtn" disabled>Mode #</label>
-        <select id="modeSelect" style="width:70px;">
-          <option value="0">Static</option>
+      <div class="field">
+        <label id="unitsLabel" for="units">Units</label>
+        <select id="units" aria-labelledby="unitsLabel">
+          <option value="us" selected>lbs & inches & °F</option>
+          <option value="si">N & mm & °C</option>
         </select>
-
-        <!-- Animate -->
-
-<button id="btnAnimate" class="ghost">Animate</button>
-<label class="ghost labelbtn" style="margin-left:6px;" disabled>Freq (Hz)</label>
-<input id="freqScale" type="range" min="0.1" max="2.5" step="0.1" value="1" style="width:90px;">
-
-<input id="freqScaleNum" type="number" step="0.1" value="1" style="width:60px;">
-        <!-- Save/Load inputs -->
-        <button id="btnSaveInput" class="ghost">Save Input</button>
-        <button id="btnLoadInput" class="ghost">Load Input</button>
-        <input id="fileInput" type="file" accept=".json,application/json" style="display:none;">
-
-        <button id="btnExportCSV" class="ghost">Export Nodal CSV</button>
-        <button id="btnExportStressCSV" class="ghost">Export Stresses CSV</button>
-
-        <button id="btnResetView" class="ghost">Reset Results</button>
-      </div>
-    </div>
-
-    <div class="col panel stack">
-      <!-- Units block -->
-      <div>
-        <div><strong>Units (display only)</strong></div>
-        <div class="controls">
-          <button id="btnUS" class="ghost">US (in, lbs)</button>
-          <button id="btnSI" class="ghost">SI (m, N)</button>
-        </div>
-        <div class="hint">Solver is unit-agnostic; keep inputs consistent.</div>
       </div>
 
-      <!-- Nodes + Members side-by-side -->
-      <div class="panel-row">
-        <div class="panel-half">
-          <div style="display:flex;justify-content:space-between;align-items:center;">
-            <strong>Nodes (editable)</strong>
-            <span class="hint">Edit X/Y to move nodes</span>
+      <div class="group"></div>
+
+      <div class="field"><label for="G">Rubber Shear Modulus, G</label><input id="G" type="number" step="0.01" value="120"></div>
+      <div class="field"><label for="alpha">Thermal CTE (per °F or per °C)</label><input id="alpha" type="number" step="1e-6" value="0.000110"></div>
+
+      <div class="group"></div>
+
+      <div class="field g-cyl"><label for="OD">Mold Cavity OD</label><input id="OD" type="number" step="0.001" value="4"></div>
+      <div class="field g-cyl"><label for="ID">Mold Cavity ID</label><input id="ID" type="number" step="0.001" value="0.5"></div>
+      <div class="field"><label for="H">Mold Cavity Height</label><input id="H" type="number" step="0.001" value="0.5"></div>
+
+      <div class="field"><label id="geomSelLabel" for="geomSel">Geometry</label>
+        <select id="geomSel" aria-labelledby="geomSelLabel">
+          <option value="cyl" selected>Cylinder</option>
+          <option value="cone">Straight cone</option>
+          <option value="curved">Curved cone (two-k: k_out & k_in)</option>
+        </select>
+      </div>
+
+      <div id="coneFields" class="subsec hide">
+        <div class="field"><label for="OD0">OD @ z=0</label><input id="OD0" type="number" step="0.001" value="4"></div>
+        <div class="field"><label for="OD1">OD @ z=H</label><input id="OD1" type="number" step="0.001" value="4"></div>
+        <div class="field"><label for="ID0">ID @ z=0</label><input id="ID0" type="number" step="0.001" value="0.5"></div>
+        <div class="field"><label for="ID1">ID @ z=H</label><input id="ID1" type="number" step="0.001" value="0.5"></div>
+      </div>
+
+      <div id="curvFields" class="subsec hide">
+        <div class="field"><label for="kOutVal">Outer curvature k_out (− concave … + convex)</label>
+          <div class="rangeRow">
+            <input id="kOutSlider" type="range" min="-3" max="3" step="0.05" value="0">
+            <input id="kOutVal" type="number" step="0.05" value="0" min="-3" max="3">
           </div>
-          <div id="nodeList" class="list"></div>
         </div>
-
-        <div class="panel-half">
-          <div><strong>Members</strong></div>
-          <div id="memberList" class="list"></div>
-        </div>
-      </div>
-
-      <!-- Results + Stress Panel side-by-side -->
-      <div class="panel-row">
-        <div class="panel-half">
-          <div><strong>Results (primary nodes)</strong></div>
-          <div id="resultList" class="list"></div>
-        </div>
-
-        <div class="panel-half">
-          <div id="stressPanelBlock">
-<div class="controls" style="justify-content:space-between; align-items:center;">
-  <strong>Stress Panel</strong>
-  <div style="display:flex;align-items:center;gap:6px;">
-    <label class="ghost labelbtn" disabled>Plot</label>
-    <select id="stressPlotMode" style="height:26px;padding:0 6px;">
-      <option value="sigma">σ (top / bottom)</option>
-      <option value="N">N (axial)</option>
-      <option value="V">V (shear)</option>
-      <option value="M">M (moment)</option>
-    </select>
-    <button id="btnCloseStressPanel" class="ghost">Close</button>
-  </div>
-</div>
-            <canvas id="stressPanel"></canvas>
-
-
-            <div id="stressPanelHint" class="hint" style="margin-top:6px;">
-<div id="stressSummary" class="list" style="margin-top:6px;"></div>
-              Click a member (while this view is active) to plot σ<sub>L</sub> (red) & σ<sub>R</sub> (blue) vs length.
-            </div>
+        <div class="field"><label for="kInVal">Inner curvature k_in (− concave … + convex)</label>
+          <div class="rangeRow">
+            <input id="kInSlider" type="range" min="-3" max="3" step="0.05" value="0">
+            <input id="kInVal" type="number" step="0.05" value="0" min="-3" max="3">
           </div>
         </div>
       </div>
+
+      <div class="field"><label id="endsLabel" for="ends">End condition</label>
+        <select id="ends" aria-labelledby="endsLabel">
+          <option value="bonded" selected>Bonded ends (z=0 & z=H fixed)</option>
+          <option value="free">Free ends</option>
+        </select>
+      </div>
+
+      <div class="group"></div>
+      <div class="field">
+        <label for="Tm">Molding Temp</label><input id="Tm" type="number" step="0.1" value="305">
+      </div>
+      <div class="field">
+        <label for="Tr">Room Temp</label><input id="Tr" type="number" step="0.1" value="70">
+      </div>
+
+      <div class="group"></div>
+      <div class="field">
+        <label for="defScaleSlider">Deflection Scale (visual only)</label>
+        <div class="rangeRow">
+          <input id="defScaleSlider" type="range" min="0" max="5" step="0.1" value="1">
+          <input id="defScale" type="number" step="0.1" value="1">
+        </div>
+      </div>
+
+      <div class="group"></div>
+
+      <!-- EXPORT BUTTONS -->
+      <div class="testbar">
+        <button class="btn" id="btnJson">Export JSON</button>
+        <button class="btn" id="btnImportJson">Import JSON</button>
+        <button class="btn" id="btnCsv">Export CSV</button>
+        <input id="jsonFileInput" type="file" accept=".json,application/json" style="display:none;">
+        <small class="subtle">Exports original &amp; cooled outlines</small>
+      </div>
+
+
+
     </div>
 
+    <!-- Right results panel: width remains explicit so legends/plots fit -->
+    <div class="panel panel-right" style="flex:0 0 auto;min-width:0;width:calc(565px + 2*var(--pad));max-width:calc(565px + 2*var(--pad))">
+      <div class="hdr">Original geometry (live preview, full −r…+r)</div>
+      <div class="canvasWrap" style="margin-bottom:10px;width:565px">
+        <canvas id="cvPrev" width="565" height="240" aria-label="Original geometry preview"></canvas>
+      </div>
+
+      <div class="hdr">Solved overlay: BEFORE (blue) + AFTER (red) in r–z</div>
+      <div class="canvasWrap" style="width:565px">
+        <div id="solveBadge" class="solveBadge" aria-live="polite">Ready</div>
+        <canvas id="cv" width="565" height="380" aria-label="Solved after-shape with shear"></canvas>
+      </div>
+      <div class="legend">
+        <span class="sw" style="background:#2d6cdf"></span> Before outline
+        <span class="sw" style="background:#d43f3a"></span> After outline (FEM, deflection-scaled)
+        <span class="sw" style="background:linear-gradient(90deg,#0000ff,#00ffff,#00ff00,#ffff00,#ff7f00,#ff0000)"></span> Shear γ<sub>rz</sub> (low→high)
+      </div>
+
+      <div class="hdr">Resultant displacement |u| contours (r–z view)</div>
+      <div class="canvasWrap" style="width:565px">
+        <canvas id="cvDefl" width="565" height="380" aria-label="Deflection contours"></canvas>
+      </div>
+      <div class="legend">
+        <span class="sw" style="background:linear-gradient(90deg,#0000ff,#ff0000)"></span> |u| magnitude (blue → red)
+      </div>
+    </div>
   </div>
 
 <script>
-(() => {
-  // ===== Canvas & State =====
-  const base = document.getElementById('base');
-  const overlay = document.getElementById('overlay');
-  const stressCanvas = document.getElementById('stressPanel');
-  const stressBlock  = document.getElementById('stressPanelBlock');
-  const ctx = base.getContext('2d');
-  const ovr = overlay.getContext('2d');
-  const spx = stressCanvas.getContext('2d');
+(function(){
+  'use strict';
 
-  
+  const el = id => document.getElementById(id);
+  const unitsEl = el('units');
+  const GEl = el('G');
+  const aEl = el('alpha');
+  const geomEl = el('geomSel');
+  const coneBox = el('coneFields');
+  const curvBox = el('curvFields');
+  const OD0El = el('OD0');
+  const OD1El = el('OD1');
+  const ID0El = el('ID0');
+  const ID1El = el('ID1');
+  const kOutSlider = el('kOutSlider');
+  const kOutVal = el('kOutVal');
+  const kInSlider = el('kInSlider');
+  const kInVal = el('kInVal');
+  const ODEl = el('OD');
+  const IDEl = el('ID');
+  const HEl = el('H');
+  const endsEl = el('ends');
+  const TmEl = el('Tm');
+  const TrEl = el('Tr');
+  const defScaleEl = el('defScale');
+  const defScaleSlider = el('defScaleSlider');
+  let defScaleLbl = el('defScaleLbl');
+  const cvPrev = el('cvPrev');
+  const cv = el('cv');
+  const cvDefl = el('cvDefl');
+  let statusEl = el('status');
 
-const nodeList   = document.getElementById('nodeList');
-const memberList = document.getElementById('memberList');
-const resultList = document.getElementById('resultList');
-const stressSummary = document.getElementById('stressSummary');
-const stressPlotModeSelect = document.getElementById('stressPlotMode');
 
-if (stressPlotModeSelect){
-  stressPlotModeSelect.addEventListener('change', () => {
-    if (viewMode === 'stresspanel') {
-      plotStressPanel();
-    }
-  });
-}
-
-  const MAX_MEMBERS = 50;
-  let mode = 'draw';        // 'draw' | 'select'
-  let viewMode = 'geom';    // 'geom' | 'def' | 'stresspanel'
-  let units = 'US';         // display only
-
-  // Frame nodes: {id,x,y, bc, Fx,Fy,Mz, Kx,Ky,Kt, Wn}
-  let nodes = [];
-  // Members: {id,n1,n2,E,A,I,S,c,wd,qix,qjx,qiy,qjy,label}
-  let members = [];
-  let nextNodeId = 1, nextMemberId = 1;
-
-  let dragStart = null, hoverEndNodeId = null;
-  let lastSolution = null;
-  let selectedMemberId = null;
-  let selectedNodeId = null;
-  let selectedMemberForDelete = null;
-  let movingNodeId = null;
-  let moveOffset = {dx:0, dy:0};
-
-  // Animation state
-  let anim = { on:false, t0:0, raf:null, scaleOverride:null };
-
-  // Modal shapes
-  let modalData = { modes: [], dofMap: null };
-  let currentMode = 0; // 0 = static, 1..3 = mode #
-  
-  const modeSelect     = document.getElementById('modeSelect');
-  const freqScaleInput = document.getElementById('freqScale');
-  const freqScaleNum   = document.getElementById('freqScaleNum');
-
-  // Hover tooltip
-  let hoverInfo = null; // {x,y, lines:[...]} in screen coords
-
-  // ===== View / Camera State =====
-  const view = { scale: 1, offsetX: 0, offsetY: 0, userAdjusted: false };
-  const MIN_SCALE = 0.2;
-  const MAX_SCALE = 5;
-  let isPanning = false;
-  const panStart = { sx: 0, sy: 0, offsetX: 0, offsetY: 0 };
-
-  // ===== Helpers =====
-  const dist2 = (a,b,x,y) => (a-x)*(a-x)+(b-y)*(b-y);
-
-  function worldToScreen(wx, wy){
-    return {
-      x: wx * view.scale + view.offsetX,
-      y: wy * view.scale + view.offsetY
-    };
-  }
-  function screenToWorld(sx, sy){
-    return {
-      x: (sx - view.offsetX) / view.scale,
-      y: (sy - view.offsetY) / view.scale
-    };
-  }
-
-  function autoFitView(){
-    if (nodes.length === 0){
-      view.scale = 1;
-      view.offsetX = 0;
-      view.offsetY = 0;
-      return;
-    }
-    const bbox = modelBounds();
-    const w = bbox.w;
-    const h = bbox.h;
-    if (!(w > 0) || !(h > 0)){
-      view.scale = 1;
-      view.offsetX = 0;
-      view.offsetY = 0;
-      return;
-    }
-    const sx = (base.width  * 0.8) / w;
-    const sy = (base.height * 0.8) / h;
-    let s = Math.min(sx, sy);
-    s = Math.max(MIN_SCALE, Math.min(MAX_SCALE, s));
-    view.scale = s;
-
-    const cx = bbox.x0 + w/2;
-    const cy = bbox.y0 + h/2;
-    view.offsetX = base.width /2 - cx * view.scale;
-    view.offsetY = base.height/2 - cy * view.scale;
-  }
-  function autoFitIfNeeded(){
-    if (!view.userAdjusted){
-      autoFitView();
-    }
-  }
-
-  const nearNodeId = (x,y, tolPx=9) => {
-    const tolWorld = tolPx / view.scale;
-    let best=null, dmin=tolWorld*tolWorld;
-    for (const n of nodes) {
-      const d = dist2(n.x, n.y, x, y);
-      if (d <= dmin){ best=n; dmin=d; }
-    }
-    return best ? best.id : null;
-  };
-
-  const nodeById   = id => nodes.find(n=>n.id===id);
-  const memberById = id => members.find(m=>m.id===id);
-
-  const pointToSegmentProjectionT = (P, A, B) => {
-    const ABx=B.x-A.x, ABy=B.y-A.y, APx=P.x-A.x, APy=P.y-A.y;
-    const ab2 = ABx*ABx + ABy*ABy || 1e-9;
-    let t = (APx*ABx + APy*ABy)/ab2; return Math.max(0,Math.min(1,t));
-  };
-  const pointToSegmentDistance = (P, A, B) => {
-    const t = pointToSegmentProjectionT(P,A,B);
-    const Cx=A.x+t*(B.x-A.x), Cy=A.y+t*(B.y-A.y);
-    return Math.hypot(P.x-Cx, P.y-Cy);
-  };
-  const nearMemberId = (x,y, tolPx=6) => {
-    const tolWorld = tolPx / view.scale;
-    let bestId=null, best=tolWorld;
-    for (const m of members){
-      const a=nodeById(m.n1), b=nodeById(m.n2);
-      const d=pointToSegmentDistance({x,y},a,b);
-      if (d<best){best=d; bestId=m.id;}
-    }
-    return bestId;
-  };
-
-  function addNode(x,y){
-    const id=nextNodeId++;
-    nodes.push({
-      id,x,y,
-      bc:'free',
-      Fx:0,Fy:0,Mz:0,
-      Kx:0,Ky:0,Kt:0,
-      Wn:0
-    });
-    refreshLists();
-    return id;
-  }
-
-  function addMember(n1,n2){
-    if (members.length>=MAX_MEMBERS){
-      Swal.fire('Limit reached','Max members reached for now.','info');
-      return null;
-    }
-    const id=nextMemberId++;
-    // carry forward last props
-    let E=0,A=0,I=0,S=0,c=0,wd=0,qix=0,qjx=0,qiy=0,qjy=0,label=`M${id}`;
-    if (members.length>=1){
-      const t = members[members.length-1];
-      ({E,A,I,S,c,wd,qix,qjx,qiy,qjy} = t);
-    }
-    members.push({ id,n1,n2,E,A,I,S,c,wd,qix,qjx,qiy,qjy,label });
-    refreshLists();
-    return id;
-  }
-  function deleteMember(id){
-    const idx = members.findIndex(m=>m.id===id);
-    if (idx<0) return;
-    members.splice(idx,1);
-    lastSolution = null;
-    if (selectedMemberId===id) selectedMemberId=null;
-    if (selectedMemberForDelete===id) selectedMemberForDelete=null;
-    refreshLists();
-    autoFitIfNeeded();
-    draw();
-  }
-  function deleteNodeWithMembers(nodeId){
-    const nidx = nodes.findIndex(n=>n.id===nodeId);
-    if (nidx<0) return;
-    members = members.filter(m => m.n1!==nodeId && m.n2!==nodeId);
-    nodes.splice(nidx,1);
-    lastSolution = null;
-    if (selectedNodeId===nodeId) selectedNodeId=null;
-    refreshLists();
-    autoFitIfNeeded();
-    draw();
-  }
-
-  const yUp     = yCanvas => base.height - yCanvas;
-  const yCanvas = yUpVal  => base.height - yUpVal;
-
-  // ===== Active button helpers =====
-  const modeBtns = ['btnDraw','btnSelect'];
-  const viewBtns = ['viewGeom','viewDef','viewStressPanel'];
-  function setActiveGroup(ids, activeId){
-    ids.forEach(id => {
-      const el = document.getElementById(id);
-      el.classList.toggle('active', id===activeId);
-    });
-  }
-
-  // ===== UI Buttons =====
-  document.getElementById('btnDraw').onclick   = () => {
-    mode='draw';
-    overlay.style.cursor='crosshair';
-    setActiveGroup(modeBtns,'btnDraw');
-    draw();
-  };
-  document.getElementById('btnSelect').onclick = () => {
-    mode='select';
-    overlay.style.cursor='pointer';
-    setActiveGroup(modeBtns,'btnSelect');
-    draw();
-  };
-
-  document.getElementById('viewGeom').onclick = ()=>{
-    stopAnim();
-    viewMode='geom';
-    toggleStressPanel(false);
-    setActiveGroup(viewBtns,'viewGeom');
-    draw();
-  };
-  document.getElementById('viewDef').onclick  = ()=>{
-    stopAnim();
-    viewMode='def';
-    toggleStressPanel(false);
-    setActiveGroup(viewBtns,'viewDef');
-    draw();
-  };
-  document.getElementById('viewStressPanel').onclick = ()=>{
-    stopAnim();
-    viewMode='stresspanel';
-    toggleStressPanel(true);
-    setActiveGroup(viewBtns,'viewStressPanel');
-    draw();
-  };
-  document.getElementById('btnCloseStressPanel').onclick = ()=>{
-    stopAnim();
-    viewMode='geom';
-    toggleStressPanel(false);
-    setActiveGroup(viewBtns,'viewGeom');
-    draw();
-  };
-
-  document.getElementById('btnUndo').onclick = () => {
-    stopAnim(); lastSolution=null;
-    if (dragStart){
-      dragStart=null; hoverEndNodeId=null; draw(); return;
-    }
-    if (members.length){
-      members.pop();
-      refreshLists();
-      autoFitIfNeeded();
-      draw();
-      return;
-    }
-    if (nodes.length){
-      nodes.pop();
-      refreshLists();
-      autoFitIfNeeded();
-      draw();
-      return;
-    }
-  };
-  document.getElementById('btnClear').onclick = () => {
-    stopAnim();
-    nodes=[]; members=[]; nextNodeId=1; nextMemberId=1; lastSolution=null;
-    selectedNodeId=null; selectedMemberForDelete=null; selectedMemberId=null;
-    viewMode='geom'; toggleStressPanel(false);
-    setActiveGroup(modeBtns,'btnDraw'); setActiveGroup(viewBtns,'viewGeom');
-    view.userAdjusted = false;
-    autoFitView();
-    refreshLists();
-    draw();
-  };
+  const badge = el('solveBadge');
+  const btnJson = el('btnJson');
+  const btnImportJson = el('btnImportJson');
+  const btnCsv  = el('btnCsv');
+  const jsonFileInput = el('jsonFileInput');
 
 
 
-  // Save / Load Inputs
-  document.getElementById('btnSaveInput').onclick = () => {
-    const data={units,nodes,members};
-    const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');
-    a.href=url; a.download='frame_input.json'; a.click();
-    URL.revokeObjectURL(url);
-  };
-  const fileInput = document.getElementById('fileInput');
-  document.getElementById('btnLoadInput').onclick = () => fileInput.click();
-  fileInput.addEventListener('change', (e)=>{
-    const f = e.target.files[0]; if (!f) return;
-    const rd = new FileReader();
-    rd.onload = () => {
-      try{
-        const obj = JSON.parse(rd.result);
-        if (!obj.nodes || !obj.members) throw new Error('Missing nodes/members arrays');
 
-        nodes = obj.nodes.map(n=>({
-          id:n.id,
-          x:n.x, y:n.y,
-          bc:n.bc||'free',
-          Fx:n.Fx||0,
-          Fy:n.Fy||0,
-          Mz:n.Mz||0,
-          Kx:n.Kx||0,
-          Ky:n.Ky||0,
-          Kt:n.Kt||0,
-          Wn:n.Wn||0
-        }));       
+  function fitCanvases(){ /* fixed size */ }
 
-        members = obj.members.map(m=>({
-          id:m.id, n1:m.n1, n2:m.n2,
-          E:m.E||0, A:m.A||0,
-          I:m.I||0, S:m.S||0, c:m.c||0,
-          wd:m.wd||0,
-          qix:m.qix||0, qjx:m.qjx||0,
-          qiy:m.qiy||0, qjy:m.qjy||0,
-          label:m.label||`M${m.id}`
-        }));
-        nextNodeId = (nodes.reduce((a,n)=>Math.max(a,n.id),0) || 0) + 1;
-        nextMemberId = (members.reduce((a,m)=>Math.max(a,m.id),0) || 0) + 1;
-        lastSolution=null; selectedNodeId=null; selectedMemberId=null; selectedMemberForDelete=null;
-        view.userAdjusted = false;
-        autoFitView();
-        refreshLists(); draw();
-        Swal.fire('Loaded','Input model loaded. Click Solve to run.','success');
-      }catch(err){
-        console.error(err);
-        Swal.fire('Load failed','Could not parse this JSON input.','error');
-      }
-      fileInput.value='';
-    };
-    rd.readAsText(f);
-  });
+  function ensureStatusElements(){ /* status removed */ }
+  function setStatus(txt){ /* status removed */ }
+  function setStatusHTML(html){ /* status removed */ }
+  function safeSetDefScaleLabel(text){ /* status removed */ }
 
-  // Export JSON
-  document.getElementById('btnExportJSON').onclick = () => {
-    const now = new Date();
-    const data = {
-      timestamp: now.toISOString(),
-      date: now.toLocaleDateString(),
-      time: now.toLocaleTimeString(),
-      units: units,
-      nodes: nodes,
-      members: members
-    };
-    const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `frame_model_${now.getTime()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
+  let ctxPrev = null, ctx = null, ctxDefl = null;
+  try{ ctxPrev = cvPrev.getContext('2d'); ctx = cv.getContext('2d'); }catch(err){ console.error('Canvas context error:', err); }
+  try{ ctxDefl = cvDefl.getContext('2d'); }catch(err){ console.error('Deflection canvas context error:', err); }
 
+  let lastFE = null;
 
-  // Import JSON
-  const jsonFileInput = document.getElementById('jsonFileInput');
-  document.getElementById('btnImportJSON').onclick = () => jsonFileInput.click();
-  
-  jsonFileInput.addEventListener('change', (e) => {
-    const f = e.target.files[0];
-    if (!f) return;
-    
-    const rd = new FileReader();
-    rd.onload = () => {
-      try {
-        const obj = JSON.parse(rd.result);
-        if (!obj.nodes || !obj.members) {
-          throw new Error('Invalid JSON structure');
-        }
-        
-        // Restore nodes
-        nodes = obj.nodes.map(n => ({
-          id: n.id,
-          x: n.x,
-          y: n.y,
-          bc: n.bc || 'free',
-          Fx: n.Fx || 0,
-          Fy: n.Fy || 0,
-          Mz: n.Mz || 0,
-          Kx: n.Kx || 0,
-          Ky: n.Ky || 0,
-          Kt: n.Kt || 0,
-          Wn: n.Wn || 0
-        }));
-        
-        // Restore members
-        members = obj.members.map(m => ({
-          id: m.id,
-          n1: m.n1,
-          n2: m.n2,
-          E: m.E || 0,
-          A: m.A || 0,
-          I: m.I || 0,
-          S: m.S || 0,
-          c: m.c || 0,
-          wd: m.wd || 0,
-          qix: m.qix || 0,
-          qjx: m.qjx || 0,
-          qiy: m.qiy || 0,
-          qjy: m.qjy || 0,
-          label: m.label || `M${m.id}`
-        }));
-        
-        // Restore units if present
-        if (obj.units) units = obj.units;
-        
-        // Update ID counters
-        nextNodeId = (nodes.reduce((a, n) => Math.max(a, n.id), 0) || 0) + 1;
-        nextMemberId = (members.reduce((a, m) => Math.max(a, m.id), 0) || 0) + 1;
-        
-        // Reset state
-        lastSolution = null;
-        selectedNodeId = null;
-        selectedMemberId = null;
-        selectedMemberForDelete = null;
-        view.userAdjusted = false;
-        
-        // Update display
-        autoFitView();
-        refreshLists();
-        draw();
-        
-        Swal.fire('Loaded', 'Model imported successfully. Ready to solve.', 'success');
-        
-      } catch (err) {
-        console.error(err);
-        Swal.fire('Error', 'Failed to parse JSON file: ' + err.message, 'error');
-      }
-      jsonFileInput.value = '';
-    };
-    rd.readAsText(f);
-  });
-
-
-  // Export CSV (Results)
-  document.getElementById('btnExportCSV').onclick = () => {
-    const now = new Date();
-    const dateStr = now.toLocaleDateString();
-    const timeStr = now.toLocaleTimeString();
-    
-    let csv = `Frame Analysis Results\n`;
-    csv += `Date,${dateStr}\n`;
-    csv += `Time,${timeStr}\n`;
-    csv += `Units,${units}\n\n`;
-    
-    // Model geometry
-    csv += "MODEL GEOMETRY\n";
-    csv += "Nodes\n";
-    csv += "ID,X,Y,BC,Fx,Fy,Mz,Kx,Ky,Kt,Wn\n";
-    nodes.forEach(n => {
-      csv += `${n.id},${n.x},${n.y},${n.bc},${n.Fx},${n.Fy},${n.Mz || 0},${n.Kx},${n.Ky},${n.Kt || 0},${n.Wn || 0}\n`;
-    });
-    
-    csv += "\nMembers\n";
-    csv += "ID,Label,N1,N2,E,A,I,S,wd\n";
-    members.forEach(m => {
-      csv += `${m.id},${m.label || ''},${m.n1},${m.n2},${m.E},${m.A},${m.I},${m.S},${m.wd}\n`;
-    });
-    
-    // Results (if available)
-    if (lastSolution && lastSolution.primaryRes) {
-      csv += "\nNODAL RESULTS\n";
-      csv += "Node ID,Ux (displacement),Uy (displacement),Theta (rotation),Reaction X,Reaction Y,Reaction Mz\n";
-      lastSolution.primaryRes.forEach(r => {
-        const rxn = lastSolution.reactionsByNode[r.id] || {Rx: 0, Ry: 0, Mz: 0};
-        csv += `${r.id},${r.ux},${r.uy},${r.rz},${rxn.Rx.toFixed(6)},${rxn.Ry.toFixed(6)},${rxn.Mz.toFixed(6)}\n`;
-      });
-      
-      // Member stress summary
-      if (lastSolution.stressSummary) {
-        csv += "\nMEMBER STRESS SUMMARY\n";
-        csv += "Member ID,Sigma Min,Sigma Max,N Max,V Max,M Max\n";
-        for (const memId of Object.keys(lastSolution.stressSummary)) {
-          const s = lastSolution.stressSummary[memId];
-          csv += `${memId},${s.sigmaMin.toFixed(6)},${s.sigmaMax.toFixed(6)},${s.NabsMax.toFixed(6)},${s.VabsMax.toFixed(6)},${s.MabsMax.toFixed(6)}\n`;
-        }
-      }
-      
-      // Detailed member stresses (optional - can be large)
-      if (lastSolution.stress) {
-        csv += "\nDETAILED MEMBER STRESSES\n";
-        csv += "Member ID,Sample Point,X Along Member,Sigma Top,Sigma Bottom,N (Axial),V (Shear),M (Moment)\n";
-        for (const memId of Object.keys(lastSolution.stress)) {
-          const st = lastSolution.stress[memId];
-          if (!st || !st.x) continue;
-          
-          for (let k = 0; k < st.x.length; k++) {
-            csv += `${memId},${k},${st.x[k].toFixed(4)},`;
-            csv += `${(st.sigmaTop[k] || 0).toFixed(6)},${(st.sigmaBot[k] || 0).toFixed(6)},`;
-            csv += `${(st.N[k] || 0).toFixed(6)},${(st.V[k] || 0).toFixed(6)},${(st.M[k] || 0).toFixed(6)}\n`;
+  function scrubEscapedLabelArtifacts(){
+    try{
+      document.querySelectorAll('.field').forEach(f=>{
+        [...f.childNodes].forEach(n=>{
+          if(n && n.nodeType===Node.TEXT_NODE){
+            const t=(n.textContent||'').trim();
+            if(t.includes('</label>') || t.includes('<\/label>') || t.includes('\/label>')){ n.remove(); }
           }
-        }
-      }
+        });
+      });
+    }catch(err){ /* no-op */ }
+  }
+
+  function clamp(x,a,b){ return Math.max(a, Math.min(b, x)); }
+  function valueRange(arr){
+    if(!arr || !arr.length) return {min:NaN, max:NaN};
+    let mn=Infinity, mx=-Infinity, any=false;
+    for(let v of arr){ if(Number.isFinite(v)){ any=true; if(v<mn) mn=v; if(v>mx) mx=v; } }
+    return any ? {min:mn, max:mx} : {min:NaN, max:NaN};
+  }
+  function normalize(values){
+    const r = valueRange(values||[]);
+    if(!Number.isFinite(r.min) || !Number.isFinite(r.max) || (r.max-r.min) <= 1e-30){
+      return (values||[]).map(_=> 0.5);
+    }
+    const span = r.max - r.min; return values.map(v => (v - r.min)/span);
+  }
+  function fmt(x){ if(!Number.isFinite(x)) return '—'; const ax=Math.abs(x); if(ax>=1e-2 && ax<1e3) return x.toFixed(4).replace(/0+$/,'').replace(/\.$/,''); return x.toExponential(2).replace('+',''); }
+  function ramp(t){ t = clamp(t,0,1); const segs = 5; const s = t*segs; const i = Math.floor(s); const f = s - i; function col(r,g,b){ return `rgb(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)})`; } switch(i){ case 0: return col(0,255*f,255); case 1: return col(0,255,255*(1-f)); case 2: return col(255*f,255,0); case 3: return col(255,255*(1-f),0); default:return col(255,0,0);} }
+  function rampBlueRed(t){ t = clamp(t,0,1); const r=Math.round(255*t), g=0, b=Math.round(255*(1-t)); return `rgb(${r},${g},${b})`; }
+
+  window.addEventListener('error', (e) => { const msg = e && e.message ? e.message : 'Unknown script error'; setStatus('Global JS error: ' + msg); setSolveState('error', msg); });
+
+  function updateDefScaleLabel(){ const s = Number(defScaleEl && defScaleEl.value)||1; safeSetDefScaleLabel(s.toFixed(2).replace(/\.00$/, '') + '×'); }
+  function syncRangePair(rangeEl, numEl, onChange){ const sync = (src, dst) => () => { if(dst) dst.value = src.value; onChange && onChange(); }; if(rangeEl&&numEl){ rangeEl.addEventListener('input', sync(rangeEl, numEl)); numEl.addEventListener('input', sync(numEl, rangeEl)); } }
+
+  if(unitsEl){
+    unitsEl.addEventListener('change', () => {
+      const u = unitsEl.value; const a = Number(aEl.value); if(!Number.isFinite(a)) return;
+      if(u==='si') aEl.value = (a * 9/5).toFixed(9); else aEl.value = (a * 5/9).toFixed(9);
+      drawPreview();
+    });
+  }
+
+  const moldBtnEl = el('moldBtn');
+  if(moldBtnEl) moldBtnEl.addEventListener('click', computeAndDraw);
+
+  function updateGeomUI(){
+    const g=geomEl.value;
+    document.querySelectorAll('.g-cyl').forEach(n=> n.style.display=(g==='cyl')?'grid':'none');
+    if(coneBox) coneBox.style.display=(g==='cone'||g==='curved')?'block':'none';
+    if(curvBox) curvBox.style.display=(g==='curved')?'block':'none';
+  }
+  geomEl.addEventListener('change', ()=>{ updateGeomUI(); scrubEscapedLabelArtifacts(); drawPreview(); });
+  updateGeomUI();
+
+  syncRangePair(defScaleSlider, defScaleEl, () => { updateDefScaleLabel(); redrawResults(); });
+  syncRangePair(kOutSlider, kOutVal, () => drawPreview());
+  syncRangePair(kInSlider,  kInVal,  () => drawPreview());
+  ;[ODEl, IDEl, HEl, OD0El, OD1El, ID0El, ID1El].forEach(inp => { if(inp) inp.addEventListener('input', drawPreview); });
+
+  function setSolveState(state, note){
+    if(!badge) return;
+    badge.classList.remove('solving','done','error');
+    if(state==='solving'){ badge.textContent = 'Solving…'; badge.classList.add('solving'); }
+    else if(state==='done'){ badge.textContent = 'Solved'; badge.classList.add('done'); }
+    else if(state==='error'){ badge.textContent = 'Error'; badge.classList.add('error'); if(note) badge.title = note; }
+    else { badge.textContent = 'Ready'; }
+  }
+  window._test_setSolveState = setSolveState;
+
+  function readGeom(){
+    const H = Number(HEl.value)||0.5; const geom = geomEl.value;
+    let OD=Number(ODEl.value)||4, ID=Number(IDEl.value)||0.5;
+    let OD0=OD, OD1=OD, ID0=ID, ID1=ID;
+    let roAt, riAt;
+    if(geom==='cyl'){
+      roAt = z => OD/2; riAt = z => ID/2;
+    } else if(geom==='cone'){
+      OD0 = Number(OD0El.value)||OD; OD1 = Number(OD1El.value)||OD; ID0 = Number(ID0El.value)||ID; ID1 = Number(ID1El.value)||ID;
+      roAt = z => { const t=z/Math.max(1e-12,H); return (1-t)*(OD0/2) + t*(OD1/2); };
+      riAt = z => { const t=z/Math.max(1e-12,H); return (1-t)*(ID0/2) + t*(ID1/2); };
     } else {
-      csv += "\nNO RESULTS\n";
-      csv += "Model has not been solved yet. Run Solve to generate results.\n";
+      OD0 = Number(OD0El.value)||OD; OD1 = Number(OD1El.value)||OD; ID0 = Number(ID0El.value)||ID; ID1 = Number(ID1El.value)||ID;
+      let kOut = Number(kOutVal ? kOutVal.value : 0); if(!Number.isFinite(kOut)) kOut=0; kOut=Math.max(-3, Math.min(3, kOut));
+      let kIn  = Number(kInVal  ? kInVal.value  : 0); if(!Number.isFinite(kIn))  kIn=0;  kIn =Math.max(-3, Math.min(3, kIn ));
+      const ro0=OD0/2, ro1=OD1/2, ri0=ID0/2, ri1=ID1/2;
+      const rlin_o = t => (1-t)*ro0 + t*ro1; const rlin_i = t => (1-t)*ri0 + t*ri1;
+      const bump = t => { const b=t*t*(1-t)*(1-t); return b/0.0625; };
+      const gamma = 0.15;
+      roAt = z => { const t=z/Math.max(1e-12,H); return rlin_o(t) * (1 + kOut*gamma*bump(t)); };
+      riAt = z => { const t=z/Math.max(1e-12,H); return rlin_i(t) * (1 + kIn*gamma*bump(t)); };
     }
-    
-    const blob = new Blob([csv], {type: 'text/csv'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `frame_results_${now.getTime()}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-
-
-
-  // Results export
-  document.getElementById('btnExportCSV').onclick = () => {
-    if (!lastSolution || !lastSolution.primaryRes){
-      Swal.fire('Note','Solve first to export results.','info'); return;
-    }
-    const rows=[['node','ux','uy','theta']];
-    lastSolution.primaryRes.forEach(r =>
-      rows.push([r.id,r.ux,r.uy,r.rz])
-    );
-    const csv = rows.map(r=>r.join(',')).join('\n');
-    const blob = new Blob([csv], {type:'text/csv'});
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'frame_nodal_results.csv';
-    a.click();
-    URL.revokeObjectURL(a.href);
-  };
-
-  // Export Stresses CSV
-
-document.getElementById('btnExportStressCSV').onclick = () => {
-  if (!lastSolution || !lastSolution.stress){
-    Swal.fire('Note','Solve first, then export stresses.','info'); 
-    return;
-  }
-  const stress = lastSolution.stress;
-  const rows = [['member','sample','x_along','sigma_top','sigma_bottom','N','V','M']];
-
-  for (const memId of Object.keys(stress)) {
-    const st = stress[memId];
-    if (!st || !st.x || st.x.length === 0) continue;
-
-    const xs   = st.x;
-    const sigT = st.sigmaTop || [];
-    const sigB = st.sigmaBot || [];
-    const Ns   = st.N || [];
-    const Vs   = st.V || [];
-    const Ms   = st.M || [];
-
-    for (let k = 0; k < xs.length; k++){
-      rows.push([
-        memId,
-        k,
-        xs[k],
-        sigT[k] ?? '',
-        sigB[k] ?? '',
-        Ns[k]   ?? '',
-        Vs[k]   ?? '',
-        Ms[k]   ?? ''
-      ]);
-    }
+    return {H, geom, roAt, riAt, OD, ID, OD0, OD1, ID0, ID1};
   }
 
-  const csv = rows.map(r=>r.join(',')).join('\n');
-  const blob = new Blob([csv], {type:'text/csv'});
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'frame_member_stresses.csv';
-  a.click();
-  URL.revokeObjectURL(a.href);
-};
-
-
-  document.getElementById('btnUS').onclick = () => { units='US'; Swal.fire('Units set','US (in, lbs)','success'); };
-  document.getElementById('btnSI').onclick = () => { units='SI'; Swal.fire('Units set','SI (m, N)','success'); };
-
-  document.getElementById('btnSolve').onclick = () => { stopAnim(); solveFrame(); };
-  document.getElementById('btnModes').onclick = () => { stopAnim(); computeModes(); };
-  document.getElementById('btnResetView').onclick = () => { stopAnim(); lastSolution=null; selectedMemberId=null; draw(); };
-
-  // Animate controls
-  document.getElementById('btnAnimate').onclick = () => {
-    if (anim.on) stopAnim(); else startAnim();
-  };
-
-  modeSelect.addEventListener('change', () => {
-    currentMode = parseInt(modeSelect.value, 10) || 0;
-    anim.scaleOverride = null;   // reset animation envelope
-    draw();
-  });
-
-  // Frequency scale controls (slider <-> numeric)
-  if (freqScaleInput && freqScaleNum) {
-    freqScaleInput.addEventListener('input', () => {
-      const v = parseFloat(freqScaleInput.value) || 1;
-      freqScaleNum.value = v.toFixed(1);
-    });
-    freqScaleNum.addEventListener('input', () => {
-      let v = parseFloat(freqScaleNum.value);
-      if (!isFinite(v)) v = 1;
-      v = Math.max(0.1, Math.min(2.5, v));
-      freqScaleNum.value = v.toFixed(1);
-      freqScaleInput.value = v;
-    });
+  function drawPreview(){
+    if(!ctxPrev) return;
+    const g = readGeom();
+    const pad=28; ctxPrev.clearRect(0,0,cvPrev.width,cvPrev.height); ctxPrev.save(); ctxPrev.translate(pad,pad);
+    const viewW=cvPrev.width-2*pad, viewH=cvPrev.height-2*pad; const H=g.H; const Rmax = Math.max(sampleMax(g.roAt,H), g.OD/2);
+    const scale = Math.min((viewW)/(2*Rmax*1.25), (viewH)/(H*1.25));
+    const originX = Math.round(viewW/2), originY = 10;
+    const X = r => originX + r*scale, Y = z => originY + z*scale;
+    ctxPrev.strokeStyle='#bbb'; ctxPrev.lineWidth=1; ctxPrev.beginPath(); ctxPrev.moveTo(originX, originY); ctxPrev.lineTo(originX, originY + H*scale); ctxPrev.stroke();
+    ctxPrev.fillStyle='#666'; ctxPrev.fillText('z', originX - 12, originY + H*scale + 12);
+    ctxPrev.fillText('−r', originX - (Rmax*scale) - 16, originY - 4); ctxPrev.fillText('+r', originX + (Rmax*scale) + 8, originY - 4);
+    drawOutlineSymGenericPrev(ctxPrev, {H}, '#2d6cdf', X, Y, g.roAt, g.riAt);
+    ctxPrev.restore();
   }
 
+  function sampleMax(fn, H){ let mx=0; const N=240, dz=H/N; for(let i=0;i<=N;i++){ const r=fn(i*dz); if(r>mx) mx=r; } return mx; }
 
-  function startAnim(){
-    if (anim.on) return;
-    anim.on = true; anim.t0 = 0;
-    const btn = document.getElementById('btnAnimate');
-    btn.textContent = 'Stop';
-    btn.classList.add('active'); // gray while active
-    const tick = (ts)=>{
-      if (!anim.on){ anim.raf=null; return; }
-      if (!anim.t0) anim.t0 = ts;
-      const t = (ts - anim.t0) / 1000;
-      // Use selected mode frequency if available, else 1 Hz
-      
-      let f = 1;
-      if (currentMode > 0 && modalData.modes[currentMode-1]) {
-        f = modalData.modes[currentMode-1].freq || 1;
-      }
-
-      // Apply user frequency scaling
-      let fScale = 1;
-      if (freqScaleInput) {
-        const val = parseFloat(freqScaleInput.value);
-        if (isFinite(val) && val > 0) fScale = val;
-      }
-      f *= fScale;
-
-      const base = parseFloat(document.getElementById('defScale').value) || 1;
-      const amp  = 0.5 * (1 - Math.cos(2 * Math.PI * f * t));
-
-anim.scaleOverride = base * amp;
-      if (viewMode === 'def') draw();
-      anim.raf = requestAnimationFrame(tick);
-    };
-    anim.raf = requestAnimationFrame(tick);
-  }
-  function stopAnim(){
-    if (!anim.on) return;
-    anim.on = false; anim.scaleOverride = null;
-    if (anim.raf){ cancelAnimationFrame(anim.raf); anim.raf=null; }
-    if (viewMode === 'def') draw();
-    const btn = document.getElementById('btnAnimate');
-    btn.textContent = 'Animate';
-    btn.classList.remove('active');
+  function drawOutlineSymGenericPrev(ctxX, shape, color, X, Y, roFunc, riFunc){
+    const H = shape.H; ctxX.save(); ctxX.strokeStyle=color; ctxX.lineWidth=2; ctxX.beginPath();
+    for(let i=0;i<=240;i++){ const z = H*(i/240); const r = roFunc(z); const x=X(r), y=Y(z); if(i===0) ctxX.moveTo(x,y); else ctxX.lineTo(x,y); }
+    for(let i=240;i>=0;i--){ const z = H*(i/240); const r = roFunc(z); const x=X(-r), y=Y(z); ctxX.lineTo(x,y); }
+    ctxX.closePath(); ctxX.stroke();
+    if(riFunc){ ctxX.beginPath(); for(let i=0;i<=240;i++){ const z = H*(i/240); const r = riFunc(z); const x=X(r), y=Y(z); if(i===0) ctxX.moveTo(x,y); else ctxX.lineTo(x,y); } for(let i=240;i>=0;i--){ const z = H*(i/240); const r = riFunc(z); const x=X(-r), y=Y(z); ctxX.lineTo(x,y); } ctxX.stroke(); }
+    ctxX.restore();
   }
 
-  // ===== Overlay Events =====
-  overlay.addEventListener('contextmenu', e => e.preventDefault());
-
-  overlay.addEventListener('mousedown', (e)=>{
-    hoverInfo = null;
-
-    // Right button -> start pan
-    if (e.button === 2){
-      isPanning = true;
-      panStart.sx = e.clientX;
-      panStart.sy = e.clientY;
-      panStart.offsetX = view.offsetX;
-      panStart.offsetY = view.offsetY;
-      view.userAdjusted = true;
-      overlay.style.cursor = 'grab';
-      e.preventDefault();
-      return;
-    }
-
-    const {x,y}=mousePos(e);
-
-    if (mode==='draw'){
-      const nid=nearNodeId(x,y);
-      let startNode, created=false, existing=false;
-      if (nid){ startNode=nodeById(nid); existing=true; }
-      else { const id=addNode(x,y); startNode=nodeById(id); created=true; }
-      dragStart={x:startNode.x, y:startNode.y, nodeId:startNode.id, createdStart:created, existingStart:existing};
-      hoverEndNodeId=null;
-    } else if (mode==='select'){
-      const nid = nearNodeId(x,y,8);
-      if (nid){
-        const n = nodeById(nid);
-        movingNodeId = nid;
-        moveOffset.dx = x - n.x;
-        moveOffset.dy = y - n.y;
-        selectedNodeId = nid;
-        selectedMemberForDelete = null;
-        overlay.style.cursor='grabbing';
-      } else {
-        movingNodeId = null;
-      }
-      dragStart={x,y,nodeId:null,createdStart:false}; hoverEndNodeId=null;
-    }
-    draw();
-  });
-
-  overlay.addEventListener('mousemove', (e)=>{
-    const {x,y,sx,sy}=mousePos(e);
-    hoverInfo = null;
-
-    // Pan in progress
-    if (isPanning){
-      const dx = e.clientX - panStart.sx;
-      const dy = e.clientY - panStart.sy;
-      view.offsetX = panStart.offsetX + dx;
-      view.offsetY = panStart.offsetY + dy;
-      view.userAdjusted = true;
-      draw();
-      return;
-    }
-
-    if (mode==='draw' && dragStart){
-      hoverEndNodeId = nearNodeId(x,y);
-      draw();
-
-      // live segment
-      const p0 = worldToScreen(dragStart.x, dragStart.y);
-      const p1 = worldToScreen(x, y);
-      ovr.save();
-      ovr.lineWidth=2; ovr.setLineDash([6,4]); ovr.strokeStyle='#3a86ff';
-      ovr.beginPath(); ovr.moveTo(p0.x,p0.y); ovr.lineTo(p1.x,p1.y); ovr.stroke();
-      if (dragStart.existingStart) highlightNode(ovr, nodeById(dragStart.nodeId));
-      if (hoverEndNodeId)        highlightNode(ovr, nodeById(hoverEndNodeId));
-
-
-      // live coordinate tag
-      drawCoordTag(ovr, sx, sy, `(${x.toFixed(1)}, ${y.toFixed(1)})`);
-      ovr.restore();
-      return;
-    }
-
-    draw(); // clears overlay
-
-    // Selection + hover info
-    const mid=nearMemberId(x,y,6);
-    const nid=nearNodeId(x,y,8);
-
-    if (mode==='select'){
-      if (movingNodeId!==null){
-        const n = nodeById(movingNodeId);
-        n.x = x - moveOffset.dx;
-        n.y = y - moveOffset.dy;
-        lastSolution = null;
-        draw();
-        return;
-      }
-      if (mid){
-        const m=memberById(mid), a=nodeById(m.n1), b=nodeById(m.n2);
-        const A = worldToScreen(a.x,a.y);
-        const B = worldToScreen(b.x,b.y);
-        ovr.save(); ovr.lineWidth=4; ovr.strokeStyle='#ff006e';
-        ovr.beginPath(); ovr.moveTo(A.x,A.y); ovr.lineTo(B.x,B.y); ovr.stroke(); ovr.restore();
-        overlay.style.cursor='pointer';
-      } else if (nid){
-        const n=nodeById(nid);
-        const p = worldToScreen(n.x,n.y);
-        ovr.save(); ovr.fillStyle='rgba(16,185,129,0.22)';
-        ovr.beginPath(); ovr.arc(p.x,p.y,10,0,Math.PI*2); ovr.fill(); ovr.restore();
-        overlay.style.cursor='pointer';
-
-        // Show node coordinate tag on hover (screen coords)
-        drawCoordTag(ovr, p.x+12, p.y-12, `(${n.x.toFixed(1)}, ${n.y.toFixed(1)})`);
-      } else {
-        overlay.style.cursor='pointer';
-      }
-    }
-  });
-
-  overlay.addEventListener('mouseup', (e)=>{
-    // End pan on right button up
-    if (isPanning && e.button === 2){
-      isPanning = false;
-      overlay.style.cursor = (mode === 'draw') ? 'crosshair' : 'pointer';
-      return;
-    }
-
-    const {x,y}=mousePos(e);
-    hoverInfo = null;
-
-    if (mode==='draw' && dragStart){
-      let nid=nearNodeId(x,y);
-      let endNode;
-      if (nid){ endNode=nodeById(nid); }
-      else { const id=addNode(x,y); endNode=nodeById(id); }
-      if (endNode.id===dragStart.nodeId){
-        if (dragStart.createdStart){ nodes.pop(); }
-        dragStart=null; hoverEndNodeId=null; refreshLists(); draw(); return;
-      }
-      const mid=addMember(dragStart.nodeId, endNode.id);
-      dragStart=null; hoverEndNodeId=null; refreshLists();
-      autoFitIfNeeded();
-      draw();
-      if (mid) editMember(memberById(mid));
-      return;
-    }
-    if (mode==='select'){
-      const mid=nearMemberId(x,y,6);
-      const nid=nearNodeId(x,y,8);
-
-      if (movingNodeId!==null){
-        movingNodeId = null;
-        overlay.style.cursor='pointer';
-        draw();
-        return;
-      }
-
-      if (viewMode==='stresspanel' && mid){
-        selectedMemberId = mid;
-        plotStressPanel();
-        return;
-      }
-
-      if (nid){
-        selectedNodeId = nid;
-        selectedMemberForDelete = null;
-        draw();
-        return;
-      }
-      if (mid){
-        selectedMemberForDelete = mid;
-        selectedNodeId = null;
-        draw();
-        return;
-      }
-
-      selectedNodeId = null;
-      selectedMemberForDelete = null;
-      draw();
-    }
-  });
-
-  overlay.addEventListener('dblclick', (e)=>{
-    if (mode!=='select') return;
-    const {x,y}=mousePos(e);
-    const nid=nearNodeId(x,y,8);
-    const mid=nearMemberId(x,y,6);
-    if (nid){ editNode(nodeById(nid)); draw(); return; }
-    if (mid){ editMember(memberById(mid)); draw(); return; }
-  });
-
-  // Mouse wheel zoom (around cursor)
-  overlay.addEventListener('wheel', (e)=>{
-    e.preventDefault();
-    if (nodes.length === 0) return;
-    const rect = overlay.getBoundingClientRect();
-    const sx = e.clientX - rect.left;
-    const sy = e.clientY - rect.top;
-    const world = screenToWorld(sx,sy);
-
-    const delta = e.deltaY < 0 ? 1.1 : 0.9;
-    let newScale = view.scale * delta;
-    newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, newScale));
-
-    view.scale = newScale;
-    view.offsetX = sx - world.x * view.scale;
-    view.offsetY = sy - world.y * view.scale;
-    view.userAdjusted = true;
-    draw();
-  }, { passive:false });
-
-  document.addEventListener('keydown', (e)=>{
-    if (mode!=='select') return;
-    if (e.key==='Delete' || e.key==='Backspace'){
-      if (selectedNodeId){
-        deleteNodeWithMembers(selectedNodeId);
-        selectedNodeId = null;
-        e.preventDefault();
-      } else if (selectedMemberForDelete){
-        deleteMember(selectedMemberForDelete);
-        selectedMemberForDelete = null;
-        e.preventDefault();
-      }
-    }
-  });
-
-  function mousePos(e){
-    const r=overlay.getBoundingClientRect();
-    const sx = e.clientX - r.left;
-    const sy = e.clientY - r.top;
-    const w = screenToWorld(sx,sy);
-    return { x:w.x, y:w.y, sx, sy };
+  function computeAndDraw(){
+    try{
+      const inp = readInputs();
+      setSolveState('solving');
+      setStatus('Solving… (clicks/edits won\'t re-solve)');
+      setTimeout(() => {
+        try{
+          const approx = analyticShrink(inp);
+          const fe = solveFENeoHookean(inp);
+          const res = Object.assign({}, fe, { dT:approx.dT, s_r:approx.s_r, s_z:approx.s_z });
+          lastFE = res;
+          drawResults(res);
+          const rng = valueRange(res.shearValsRZ||[]);
+          setStatusHTML(`ΔT=${fmt(approx.dT)}°, s_r≈${fmt(approx.s_r)}, s_z≈${fmt(approx.s_z)}<br>Strain range: ${isFinite(rng.min)?fmt(rng.min):'—'} … ${isFinite(rng.max)?fmt(rng.max):'—'} • Defl scale: <span id="defScaleLbl">${(+inp.defScale).toFixed(2).replace(/\.00$/, '')}×</span>`);
+          setSolveState('done');
+        }catch(err){ console.error(err); setStatus('Error: ' + (err && err.message ? err.message : err)); setSolveState('error', err && err.message); }
+      }, 0);
+    }catch(e){ console.error(e); setStatus('Error: ' + (e && e.message ? e.message : e)); setSolveState('error', e && e.message); }
   }
 
-  // ===== Editors =====
+  function redrawResults(){ if(lastFE){ const sNow = Number(defScaleEl.value)||1; if(lastFE.params) lastFE.params.defScale = sNow; drawResults(lastFE); } }
 
-  function editNode(node){
-    const bcOptions = [
-      {value:'free',     text:'Free (no restraints)'},
-      {value:'simple',   text:'Pinned: ux=0, uy=0, θ free'},
-      {value:'fixed',    text:'Fixed: ux=0, uy=0, θ=0'},
-      {value:'rollerX',  text:'Roller-X: ux=0, uy free, θ free'},
-      {value:'rollerY',  text:'Roller-Y: uy=0, ux free, θ free'},
-    ];
-    const html = `
-      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
-        <label style="grid-column:1/3; font-weight:600;">Boundary Condition</label>
-        <select id="bc" class="swal2-select" style="grid-column:1/3;">
-          ${bcOptions.map(o=>`<option value="${o.value}" ${node.bc===o.value?'selected':''}>${o.text}</option>`).join('')}
-        </select>
+  function readInputs(){
+    const u = unitsEl.value; const G = Number(GEl.value); const alpha = Number(aEl.value);
+    const H = Number(HEl.value); const ends = String(endsEl.value); const Tm = Number(TmEl.value); const Tr = Number(TrEl.value);
+    const defScale = Math.max(0, Number(defScaleEl.value)||1);
+    if(!(H>0) || !(Tm>Tr)) throw new Error('Check Height and that molding temp > room temp.');
+    if(!(alpha>=0)) throw new Error('CTE must be ≥ 0.');
 
-        <div style="grid-column:1/3; display:flex; gap:10px; align-items:center;">
-          <canvas id="bcGlyph" width="200" height="70" style="border:1px dashed #ddd; border-radius:6px;"></canvas>
-          <span class="hint">Global axes; θ is out-of-plane.</span>
-        </div>
+    const geom = geomEl.value;
+    let OD=Number(ODEl.value), ID=Number(IDEl.value);
+    let roAt, riAt, OD0=OD, OD1=OD, ID0=ID, ID1=ID;
 
-        <label style="grid-column:1/3; font-weight:600; margin-top:6px;">Nodal Loads</label>
-        <label>Fx</label><input id="Fx" class="swal2-input" type="number" step="any" value="${node.Fx}">
-        <label>Fy</label><input id="Fy" class="swal2-input" type="number" step="any" value="${node.Fy}">
-        <label>Mz</label><input id="Mz" class="swal2-input" type="number" step="any" value="${node.Mz || 0}">
-
-        <label style="grid-column:1/3; font-weight:600; margin-top:6px;">Springs</label>
-        <label>Kx</label><input id="Kx" class="swal2-input" type="number" step="any" value="${node.Kx}">
-        <label>Ky</label><input id="Ky" class="swal2-input" type="number" step="any" value="${node.Ky}">
-        <label>Kθ</label><input id="Kt" class="swal2-input" type="number" step="any" value="${node.Kt || 0}">
-
-        <label style="grid-column:1/3; font-weight:600; margin-top:6px;">Node Weight</label>
-        <label>Wn</label>
-        <input id="Wn" class="swal2-input" type="number" step="any" value="${node.Wn || 0}">
-      </div>`;
-    Swal.fire({
-      title:`Node ${node.id}`,
-      html,
-      showCancelButton:true,
-      confirmButtonText:'Save',
-      didOpen:()=>{
-        const g=document.getElementById('bcGlyph').getContext('2d');
-        const sel=document.getElementById('bc');
-        drawBCGlyph(g, sel.value);
-        sel.addEventListener('change', ev => drawBCGlyph(g, ev.target.value));
-      },
-      preConfirm:()=>{
-        const v = id => parseFloat(document.getElementById(id).value)||0;
-        return {
-          bc: document.getElementById('bc').value,
-          Fx: v('Fx'),
-          Fy: v('Fy'),
-          Mz: v('Mz'),
-          Kx: v('Kx'),
-          Ky: v('Ky'),
-          Kt: v('Kt'),
-          Wn: v('Wn')
-        };
-      }
-    }).then(res=>{
-      if (res.isConfirmed){
-        Object.assign(node,res.value);
-        lastSolution = null;
-        refreshLists();
-        draw();
-      }
-    });
-  }
-
-  function editMember(m){
-    const html = `
-      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; align-items:center;">
-        <label>Label</label>
-        <input id="label" class="swal2-input" type="text" value="${m.label||''}">
-
-        <div style="grid-column:1/3; height:1px; background:#ececec; margin:6px 0;"></div>
-
-        <label>E</label>
-        <input id="E" class="swal2-input" type="number" step="any" value="${m.E}">
-
-        <label>A</label>
-        <input id="A" class="swal2-input" type="number" step="any" value="${m.A}">
-
-        <label>I</label>
-        <input id="I" class="swal2-input" type="number" step="any" value="${m.I}">
-
-        <label>S (section modulus)</label>
-        <input id="S" class="swal2-input" type="number" step="any" value="${m.S}">
-
-        <label>wd (weight density)</label>
-        <input id="wd" class="swal2-input" type="number" step="any" value="${m.wd}">
-
-        <div class="hint" style="grid-column:1/3;">
-          For now, distributed loads are not directly editable; self-weight uses wd × A.
-        </div>
-      </div>`;
-
-    Swal.fire({
-      title:`Member ${m.id}`,
-      html,
-      showCancelButton:true,
-      confirmButtonText:'Save',
-      preConfirm:()=>{
-        const v = id => parseFloat(document.getElementById(id)?.value) || 0;
-        const s = id => document.getElementById(id)?.value || '';
-        return {
-          label: s('label').trim(),
-          E:  v('E'),
-          A:  v('A'),
-          I:  v('I'),
-          S:  v('S'),
-          wd: v('wd'),
-          qix: 0, qjx: 0, qiy: 0, qjy: 0 // inactive
-        };
-      }
-    }).then(res=>{
-      if (res.isConfirmed){
-        Object.assign(m, res.value);
-        lastSolution = null;
-        refreshLists();
-        draw();
-      }
-    });
-  }
-
-  // === Support glyphs (canvas + editor) ===
-  function drawBCGlyph(g, bc){
-    g.clearRect(0,0,g.canvas.width,g.canvas.height);
-    g.save();
-    g.translate(30, g.canvas.height-20);
-    g.strokeStyle='#aaa'; g.lineWidth=1;
-    g.beginPath(); g.moveTo(-10,0); g.lineTo(140,0); g.stroke();
-
-    // Node
-    g.fillStyle='#000';
-    g.beginPath(); g.arc(0,0,4,0,Math.PI*2); g.fill();
-
-    if (bc==='fixed'){
-      g.lineWidth=6; g.strokeStyle='#222';
-      g.beginPath(); g.moveTo(-16, -20); g.lineTo(-16, 20); g.stroke();
-      g.lineWidth=1; g.strokeStyle='#666';
-      for (let k=-14; k<=14; k+=7){
-        g.beginPath(); g.moveTo(-16, k); g.lineTo(-24, k-6); g.stroke();
-      }
-    } else if (bc==='simple'){
-      g.beginPath(); g.moveTo(0, 6); g.lineTo(-12, 20); g.lineTo(12, 20); g.closePath(); g.fill();
-      g.fillRect(-16,20,32,3);
-    } else if (bc==='rollerX'){
-      g.beginPath(); g.moveTo(-6,0); g.lineTo(6,0); g.stroke();
-      g.fillRect(10, 2, 26, 3);
-    } else if (bc==='rollerY'){
-      g.beginPath(); g.moveTo(0,-6); g.lineTo(0,6); g.stroke();
-      g.fillRect(-18, 12, 3, 26);
+    if(geom==='cyl'){
+      if(ID<0 || ID>=OD) throw new Error('ID must be ≥ 0 and < OD.');
+      roAt = z => OD/2; riAt = z => ID/2;
+    } else if(geom==='cone') {
+      OD0 = Number(OD0El.value); OD1 = Number(OD1El.value); ID0 = Number(ID0El.value); ID1 = Number(ID1El.value);
+      if(!(OD0>0) || !(OD1>0)) throw new Error('OD@ends must be > 0');
+      if(ID0<0 || ID1<0) throw new Error('ID@ends must be ≥ 0');
+      roAt = z => { const t=z/H; return (1-t)*(OD0/2) + t*(OD1/2); };
+      riAt = z => { const t=z/H; return (1-t)*(ID0/2) + t*(ID1/2); };
+      for(let k=0;k<=20;k++){ const zz=k*H/20; if(roAt(zz) - riAt(zz) <= 0) throw new Error('Cone creates negative wall at z='+zz.toFixed(3)); }
+      const zMid=0.5*H; OD = 2*roAt(zMid); ID = 2*riAt(zMid);
+    } else if(geom==='curved') {
+      OD0 = Number(OD0El.value); OD1 = Number(OD1El.value); ID0 = Number(ID0El.value); ID1 = Number(ID1El.value);
+      if(!(OD0>0) || !(OD1>0)) throw new Error('OD@ends must be > 0');
+      if(ID0<0 || ID1<0) throw new Error('ID@ends must be ≥ 0');
+      let kOut = Number(kOutVal ? kOutVal.value : 0); if(!Number.isFinite(kOut)) kOut=0; kOut=Math.max(-3, Math.min(3, kOut));
+      let kIn  = Number(kInVal  ? kInVal.value  : 0); if(!Number.isFinite(kIn))  kIn=0;  kIn =Math.max(-3, Math.min(3, kIn ));
+      const ro0=OD0/2, ro1=OD1/2, ri0=ID0/2, ri1=ID1/2;
+      const rlin_o = t => (1-t)*ro0 + t*ro1; const rlin_i = t => (1-t)*ri0 + t*ri1;
+      const bump = t => { const b = t*t*(1-t)*(1-t); return b/0.0625; };
+      const gamma = 0.15;
+      roAt = z => { const t=z/H; return rlin_o(t) * (1 + kOut*gamma*bump(t)); };
+      riAt = z => { const t=z/H; return rlin_i(t) * (1 + kIn*gamma*bump(t)); };
+      for(let k=0;k<=40;k++){ const zz=k*H/40; if(roAt(zz) - riAt(zz) <= 1e-9) throw new Error('Curved cone creates non-positive wall at z='+zz.toFixed(3)); }
+      const zMid=0.5*H; OD = 2*roAt(zMid); ID = 2*riAt(zMid);
     }
-    g.restore();
+
+    return {u,G,alpha,OD,ID,H,ends,Tm,Tr,defScale,geom,roAt,riAt,OD0,OD1,ID0,ID1};
   }
 
-  // ===== Draw =====
-  function draw(){
-    ctx.clearRect(0,0,base.width,base.height);
-    ovr.clearRect(0,0,overlay.width,overlay.height);
-    drawGrid(ctx);
+  function analyticShrink(p){
+    const dT = p.Tm - p.Tr; const s_r = p.alpha * dT; const s_z = (p.ends==='free') ? (p.alpha * dT) : 0;
+    const before = {OD:p.OD, ID:p.ID, H:p.H};
+    const after  = {OD:p.OD*(1-s_r), ID:p.ID*(1-s_r), H:p.H*(1-s_z)};
+    const mesh = buildRZMesh(after.ID/2, after.OD/2, after.H, 6, 6);
+    const shearValsRZ = mesh.cells.map(_=> Math.abs(s_r-s_z));
+    return {dT, s_r, s_z, before, after, meshRZ:mesh, shearValsRZ, params:p};
+  }
 
-    ctx.save();
-    ctx.lineWidth=2; ctx.strokeStyle='#222';
-    ctx.font='12px system-ui'; ctx.fillStyle='#000';
+  function buildRZMesh(ri, ro, H, nr=60, nz=60){
+    const dr = (ro - ri)/Math.max(1, nr); const dz = (H)/Math.max(1, nz);
+    const cells = []; for(let i=0;i<nr;i++){ for(let j=0;j<nz;j++){ const r0 = ri + i*dr, r1 = r0 + dr; const z0 = 0 + j*dz, z1 = z0 + dz; cells.push({r0,r1,z0,z1}); }}
+    return {ri,ro,H,nr,nz,cells};
+  }
 
-    // Members
-    for (const m of members){
-      const a=nodeById(m.n1), b=nodeById(m.n2);
-      const A = worldToScreen(a.x,a.y);
-      const B = worldToScreen(b.x,b.y);
-      ctx.beginPath(); ctx.moveTo(A.x,A.y); ctx.lineTo(B.x,B.y); ctx.stroke();
+  function drawResults(res){
+    if(!ctx){ return; }
+    updateDefScaleLabel();
+    ctx.clearRect(0,0,cv.width,cv.height);
+    ctx.save(); const pad = 24; ctx.translate(pad,pad);
+    const viewW = cv.width - 2*pad, viewH = cv.height - 2*pad;
+    if(!res){ ctx.fillStyle='#777'; ctx.fillText('Click MOLD IT to compute & draw.', 40, 24); ctx.restore(); return; }
 
-      const mx=(a.x+b.x)/2, my=(a.y+b.y)/2;
-      const M = worldToScreen(mx,my);
-      ctx.fillText(m.label||`M${m.id}`, M.x+4, M.y-6);
+    const before = res.before; const p = res.params||{}; const s = p.defScale||1;
+    const roBefore = (z)=> (p.roAt? p.roAt(z) : (before.OD||0)/2);
+    const riBefore = (z)=> (p.riAt? p.riAt(z) : (before.ID||0)/2);
+
+    const zRows = res.boundary.z, zCur = res.boundary.zCur; const rIn = res.boundary.rInner, rOut = res.boundary.rOuter;
+    const H0 = before.H; const Hcur = (zCur[zCur.length-1]-zCur[0]); const Hviz = H0 + s*(Hcur - H0);
+    const ro0 = before.OD/2, ri0 = before.ID/2;
+    const roViz = (z) => { const rc = interp1(zRows, rOut, (z/Hviz)*H0); return ro0 + s*(rc - ro0); };
+    const riViz = (z) => { const rc = interp1(zRows, rIn,  (z/Hviz)*H0); return ri0 + s*(rc - ri0); };
+
+    const Rmax = Math.max(ro0, sampleMax(roViz, Hviz)); const Hmax = Math.max(H0, Hviz);
+    const cbW = 20, cbGap = 40, cbTotal = cbW + cbGap + 40;
+    const scale = Math.min( (viewW - cbTotal)/(2*Rmax*1.1), (viewH-40)/(Hmax*1.1) );
+    const originX = 60 + ( (viewW - cbTotal)/2 ); const originY = 8;
+    const X = r => originX + r*scale, Y = z => originY + z*scale;
+
+    ctx.strokeStyle = '#bbb'; ctx.fillStyle = '#666'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(originX, originY); ctx.lineTo(originX, originY + Hmax*scale); ctx.stroke();
+    ctx.fillText('z', originX - 12, originY + Hmax*scale + 12);
+    ctx.fillText('−r', originX - (Rmax*scale) - 16, originY - 4); ctx.fillText('+r', originX + (Rmax*scale) + 8, originY - 4);
+
+    if(res.meshRZ && res.shearValsRZ){
+      const valsN = normalize(res.shearValsRZ); const mesh = res.meshRZ; const HA = mesh.H; const riA = mesh.ri, roA = mesh.ro;
+      for(let k=0;k<mesh.cells.length;k++){
+        const c = mesh.cells[k]; const z0 = c.z0, z1 = c.z1; const zMidV = mapZLinear(0.5*(z0+z1), 0, HA, 0, Hviz);
+        const ri = riViz(zMidV), ro = roViz(zMidV);
+        const x0p = X( mapRLinear(c.r0, riA, roA, ri, ro) ); const x1p = X( mapRLinear(c.r1, riA, roA, ri, ro) );
+        const y0 = Y( mapZLinear(z0, 0, HA, 0, Hviz) ); const y1 = Y( mapZLinear(z1, 0, HA, 0, Hviz) );
+        ctx.fillStyle = ramp(valsN[k]); ctx.fillRect(x0p, y0, Math.max(0, x1p-x0p), Math.max(0, y1-y0));
+        const x0m = X( -mapRLinear(c.r1, riA, roA, ri, ro) ); const x1m = X( -mapRLinear(c.r0, riA, roA, ri, ro) );
+        ctx.fillRect(x0m, y0, Math.max(0, x1m-x0m), Math.max(0, y1-y0));
+      }
     }
+
+    drawOutlineSymGenericRes(ctx, {H:H0}, '#2d6cdf', X, Y, roBefore, riBefore);
+    drawOutlineSymGenericRes(ctx, {H:Hviz}, '#d43f3a', X, Y, roViz, riViz);
+
+    if(res.shearValsRZ){ drawColorbar(ctx, originX + Rmax*scale + 12, originY, 20, Math.max(140, Hmax*scale*0.6), res.shearValsRZ, 'shear γ_rz'); }
+
     ctx.restore();
 
-    // Nodes (supports, loads, springs, weights)
-    for (const n of nodes){
-      drawNodeBC(ctx, n);
-      drawNodeLoadsAndSprings(ctx, n);
+    // Deflection |u| contours
+    if(ctxDefl && res.meshRZ && res.deflValsRZ){
+      ctxDefl.clearRect(0,0,cvDefl.width,cvDefl.height);
+      ctxDefl.save(); const pad2=24; ctxDefl.translate(pad2,pad2);
+      const vW = cvDefl.width-2*pad2, vH = cvDefl.height-2*pad2;
+      const Hviz2 = Hviz, Rmax2 = Rmax;
+      const cbW2 = 20, cbGap2 = 40, cbTotal2 = cbW2 + cbGap2 + 40;
+      const scale2 = Math.min( (vW - cbTotal2)/(2*Rmax2*1.1), (vH-40)/(Hviz2*1.1) );
+      const originX2 = 60 + ( (vW - cbTotal2)/2 ), originY2 = 8;
+      const X2 = r => originX2 + r*scale2, Y2 = z => originY2 + z*scale2;
 
-      const p = worldToScreen(n.x, n.y);
+      ctxDefl.strokeStyle='#bbb'; ctxDefl.fillStyle='#666'; ctxDefl.lineWidth=1;
+      ctxDefl.beginPath(); ctxDefl.moveTo(originX2, originY2); ctxDefl.lineTo(originX2, originY2 + Hviz2*scale2); ctxDefl.stroke();
+      ctxDefl.fillText('z', originX2 - 12, originY2 + Hviz2*scale2 + 12);
+      ctxDefl.fillText('−r', originX2 - (Rmax2*scale2) - 16, originY2 - 4); ctxDefl.fillText('+r', originX2 + (Rmax2*scale2) + 8, originY2 - 4);
 
-      // main node dot (blue)
-      ctx.save();
-      ctx.fillStyle = '#1d4ed8';
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-
-      // extra marker: black dot for explicit nodal weight (not from self-weight)
-      if (n.Wn && Math.abs(n.Wn) > 0){
-        ctx.save();
-        ctx.fillStyle = '#000';
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 20, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
+      const mesh = res.meshRZ; const HA = mesh.H; const riA = mesh.ri, roA = mesh.ro;
+      const valsN = normalize(res.deflValsRZ);
+      for(let k=0;k<mesh.cells.length;k++){
+        const c = mesh.cells[k]; const z0 = c.z0, z1 = c.z1; const zMidV = mapZLinear(0.5*(z0+z1), 0, HA, 0, Hviz2);
+        const ri = riViz(zMidV), ro = roViz(zMidV);
+        const x0p = X2( mapRLinear(c.r0, riA, roA, ri, ro) ); const x1p = X2( mapRLinear(c.r1, riA, roA, ri, ro) );
+        const y0 = Y2( mapZLinear(z0, 0, HA, 0, Hviz2) ); const y1 = Y2( mapZLinear(z1, 0, HA, 0, Hviz2) );
+        ctxDefl.fillStyle = rampBlueRed(valsN[k]); ctxDefl.fillRect(x0p, y0, Math.max(0, x1p-x0p), Math.max(0, y1-y0));
+        const x0m = X2( -mapRLinear(c.r1, riA, roA, ri, ro) ); const x1m = X2( -mapRLinear(c.r0, riA, roA, ri, ro) );
+        ctxDefl.fillRect(x0m, y0, Math.max(0, x1m-x0m), Math.max(0, y1-y0));
       }
+      drawColorbar(ctxDefl, originX2 + Rmax2*scale2 + 12, originY2, 20, Math.max(140, Hviz2*scale2*0.6), res.deflValsRZ, '|u|');
+      ctxDefl.restore();
+    }
+  }
 
-      // coordinate tag next to node (screen coords)
-      drawCoordTag(ctx, p.x + 10, p.y - 12,
-                   `(${n.x.toFixed(1)}, ${n.y.toFixed(1)})`);
+  function mapRLinear(r, riA, roA, riV, roV){ const t = (r - riA) / Math.max(1e-12, (roA - riA)); return riV + t * (roV - riV); }
+  function mapZLinear(z, z0A, z1A, z0V, z1V){ const t = (z - z0A) / Math.max(1e-12, (z1A - z0A)); return z0V + t * (z1V - z0V); }
+
+  function drawOutlineSymGenericRes(ctxX, shape, color, X, Y, roFunc, riFunc){
+    const H = shape.H; ctxX.save(); ctxX.strokeStyle = color; ctxX.lineWidth = 2; ctxX.beginPath();
+    for(let i=0;i<=240;i++){ const z = H * (i/240); const r = roFunc ? roFunc(z) : 0; const x = X(r), y = Y(z); if(i===0) ctxX.moveTo(x,y); else ctxX.lineTo(x,y); }
+    for(let i=240;i>=0;i--){ const z = H * (i/240); const r = roFunc ? roFunc(z) : 0; const x = X(-r), y = Y(z); ctxX.lineTo(x,y); }
+    ctxX.closePath(); ctxX.stroke();
+    if(riFunc){ ctxX.beginPath(); for(let i=0;i<=240;i++){ const z = H * (i/240); const r = riFunc(z); const x = X(r), y = Y(z); if(i===0) ctxX.moveTo(x,y); else ctxX.lineTo(x,y); } for(let i=240;i>=0;i--){ const z = H * (i/240); const r = riFunc(z); const x = X(-r), y = Y(z); ctxX.lineTo(x,y); } ctxX.stroke(); }
+    ctxX.restore();
+  }
+
+  function drawColorbar(ctxX, x, y, w, h, values, label){
+    const rng = valueRange(values||[]); const n = Math.max(64, Math.floor(h));
+    for(let i=0;i<n;i++){ const t = i/(n-1); ctxX.fillStyle = (label==='|u|') ? rampBlueRed(t) : ramp(t); ctxX.fillRect(x, y + i*(h/n), w, (h/n)+0.5); }
+    ctxX.strokeStyle = '#666'; ctxX.strokeRect(x, y, w, h);
+    ctxX.fillStyle = '#333'; ctxX.font = '12px Inter';
+    if(isFinite(rng.max)) ctxX.fillText(fmt(rng.max), x + w + 8, y + 10);
+    if(isFinite(rng.min) && isFinite(rng.max)) ctxX.fillText(fmt((rng.min + rng.max)/2), x + w + 8, y + h/2 + 4);
+    if(isFinite(rng.min)) ctxX.fillText(fmt(rng.min), x + w + 8, y + h - 2);
+    ctxX.fillText(label || 'shear γ_rz', x + w + 8, y - 6);
+  }
+
+  function readInputsFrom(over){ const base = {u:'us',G:120,alpha:0.00011,OD:4,ID:0.5,H:0.5,ends:'bonded',Tm:305,Tr:70}; const p = {...base, ...over}; if(!(p.OD>0) || !(p.H>0) || !(p.Tm>p.Tr)) throw new Error('Check OD, Height, and that molding temp > room temp.'); if(!(p.alpha>=0)) throw new Error('CTE must be ≥ 0.'); if(p.ID<0 || p.ID>=p.OD) throw new Error('ID must be ≥ 0 and < OD.'); return p; }
+
+  // FEM SOLVER
+  function solveFENeoHookean(p, opts={}){
+    const nr = opts.nr || 24, nz = opts.nz || 36;
+    const H = (p.H||1);
+    const nR = nr+1, nZ = nz+1; const dZ = H/nz;
+    const G = p.G; const nu = 0.49; const lam = (2*G*nu)/(1-2*nu); const mu = G;
+    const alpha = p.alpha; const dT = p.Tm - p.Tr; const eps_th = alpha*dT;
+
+    const idx = (i,j)=> j*nR + i; const nd = 2*nR*nZ;
+    const Rnod = new Float64Array(nR*nZ); const Znod = new Float64Array(nR*nZ);
+    const roAt = (typeof p.roAt==='function') ? p.roAt : (z)=> (p.OD||1)/2;
+    const riAt = (typeof p.riAt==='function') ? p.riAt : (z)=> (p.ID||0)/2;
+    for(let j=0;j<nZ;j++){
+      const z = j*dZ; const ri_line = riAt(z), ro_line = roAt(z);
+      for(let i=0;i<nR;i++){ const s = i/nr; const k=idx(i,j); Rnod[k] = ri_line + s*(ro_line - ri_line); Znod[k] = z; }
     }
 
-    // Support reactions (if available)
-    if (lastSolution && lastSolution.reactionsByNode){
-      drawReactions(ctx, lastSolution.reactionsByNode);
+    const N = nd; const K = new Float64Array(N*N); const f = new Float64Array(N);
+
+    const gp = [-1/Math.sqrt(3), +1/Math.sqrt(3)], w=[1,1];
+    function shape(xi,eta){
+      const N=[0.25*(1-xi)*(1-eta), 0.25*(1+xi)*(1-eta), 0.25*(1+xi)*(1+eta), 0.25*(1-xi)*(1+eta)];
+      const dN_dxi=[ -0.25*(1-eta), 0.25*(1-eta), 0.25*(1+eta), -0.25*(1+eta) ];
+      const dN_deta=[ -0.25*(1-xi), -0.25*(1+xi), 0.25*(1+xi), 0.25*(1-xi) ];
+      return {N, dN_dxi, dN_deta};
     }
 
-    // Deformed shape view (static or modal)
-    if (viewMode === 'def') {
-      let scale = parseFloat(document.getElementById('defScale').value) || 1;
-      if (anim.scaleOverride != null) scale = anim.scaleOverride;
+    const D = new Float64Array(16);
+    D[0*4+0]=lam+2*mu; D[0*4+1]=lam;       D[0*4+2]=lam;       D[0*4+3]=0;
+    D[1*4+0]=lam;       D[1*4+1]=lam+2*mu; D[1*4+2]=lam;       D[1*4+3]=0;
+    D[2*4+0]=lam;       D[2*4+1]=lam;       D[2*4+2]=lam+2*mu; D[2*4+3]=0;
+    D[3*4+0]=0;         D[3*4+1]=0;         D[3*4+2]=0;         D[3*4+3]=mu;
 
-      // Choose which set of polylines to draw
-      let sublines = null;
-      if (currentMode > 0 && modalData.modes[currentMode - 1]) {
-        sublines = modalData.modes[currentMode - 1].sublines;
-      } else if (lastSolution && lastSolution.sublines) {
-        sublines = lastSolution.sublines;
-      }
-
-      if (sublines) {
-        ctx.save();
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = '#e11d48';
-
-        for (const poly of sublines) {
-          ctx.beginPath();
-          for (let k = 0; k < poly.length; k++) {
-            const p = poly[k];
-            const xWorld = p.x_up + scale * p.u;
-            const yWorld = yCanvas(p.y_up + scale * p.v);
-            const S = worldToScreen(xWorld, yWorld);
-            if (k === 0) ctx.moveTo(S.x, S.y); else ctx.lineTo(S.x, S.y);
-          }
-          ctx.stroke();
+    function addKe(i,j){
+      const nids=[idx(i,j), idx(i+1,j), idx(i+1,j+1), idx(i,j+1)];
+      const Ru = nids.map(k=>Rnod[k]); const Zu = nids.map(k=>Znod[k]);
+      const ke = new Float64Array(64); const fe = new Float64Array(8);
+      for(let a=0;a<2;a++) for(let b=0;b<2;b++){
+        const xi=gp[a], eta=gp[b]; const {N:Ni, dN_dxi, dN_deta}=shape(xi,eta);
+        let R_xi=0,R_eta=0,Z_xi=0,Z_eta=0, Rgp=0; for(let m=0;m<4;m++){ R_xi+=dN_dxi[m]*Ru[m]; R_eta+=dN_deta[m]*Ru[m]; Z_xi+=dN_dxi[m]*Zu[m]; Z_eta+=dN_deta[m]*Zu[m]; Rgp+=Ni[m]*Ru[m]; }
+        const detJ = R_xi*Z_eta - R_eta*Z_xi; if(Math.abs(detJ)<1e-14) return;
+        const invJ00 =  Z_eta/detJ, invJ01 = -R_eta/detJ;
+        const invJ10 = -Z_xi/detJ, invJ11 =  R_xi/detJ;
+        const dN_dR = new Array(4), dN_dZ = new Array(4); for(let m=0;m<4;m++){ dN_dR[m]=dN_dxi[m]*invJ00 + dN_deta[m]*invJ10; dN_dZ[m]=dN_dxi[m]*invJ01 + dN_deta[m]*invJ11; }
+        const vol = 2*Math.PI*Math.max(1e-9,Rgp) * detJ * w[a]*w[b];
+        const B = new Float64Array(32);
+        for(let m=0;m<4;m++){
+          const dR_m=dN_dR[m], dZ_m=dN_dZ[m], N_m=Ni[m]; const c = 2*m;
+          B[0*8 + c + 0] += dR_m;      // ε_rr
+          B[1*8 + c + 1] += dZ_m;      // ε_zz
+          B[2*8 + c + 0] += N_m / Math.max(1e-9,Rgp); // ε_tt
+          B[3*8 + c + 0] += dZ_m;      // γ_rz
+          B[3*8 + c + 1] += dR_m;
         }
-        ctx.restore();
+        const t = new Float64Array(32);
+        for(let r=0;r<4;r++) for(let c=0;c<8;c++){ let s=0; for(let k=0;k<4;k++) s += D[r*4+k]*B[k*8+c]; t[r*8+c]=s; }
+        for(let r=0;r<8;r++) for(let c=0;c<8;c++){ let s=0; for(let k=0;k<4;k++) s += B[k*8+r]*t[k*8+c]; ke[r*8+c]+=s*vol; }
+        const eth = [eps_th, eps_th, eps_th, 0];
+        const De = [ D[0]*eth[0]+D[1]*eth[1]+D[2]*eth[2]+D[3]*eth[3],
+                     D[4]*eth[0]+D[5]*eth[1]+D[6]*eth[2]+D[7]*eth[3],
+                     D[8]*eth[0]+D[9]*eth[1]+D[10]*eth[2]+D[11]*eth[3],
+                     D[12]*eth[0]+D[13]*eth[1]+D[14]*eth[2]+D[15]*eth[3] ];
+        for(let c=0;c<8;c++){ let s=0; for(let k=0;k<4;k++) s += B[k*8+c]*De[k]; fe[c] -= s*vol; }
       }
-    }
-}
-
-  function drawReactions(g, reactionsByNode){
-    g.save();
-    g.strokeStyle='#059669'; g.fillStyle='#059669'; g.lineWidth=2;
-    g.font='12px system-ui';
-    for (const nidStr of Object.keys(reactionsByNode)){
-      const nid = parseInt(nidStr,10);
-      const n = nodeById(nid); if (!n) continue;
-      const {Rx, Ry, Mz} = reactionsByNode[nid];
-      const p = worldToScreen(n.x,n.y);
-
-      if (Math.abs(Rx) > 1e-12){
-        const dir = Math.sign(Rx) || 1;
-        const len = 20;
-        drawArrow(g, p.x, p.y, p.x + dir*len, p.y);
-        g.fillText(`Rx=${round6(Rx)}`, p.x + dir*(len+6), p.y - 6);
-      }
-      if (Math.abs(Ry) > 1e-12){
-        const up = Ry>0; const len = 20;
-        drawArrow(g, p.x, p.y, p.x, p.y + (up ? -len : +len));
-        g.fillText(`Ry=${round6(Ry)}`, p.x + 6, p.y + (up ? -len-6 : len+14));
-      }
-      if (Math.abs(Mz) > 1e-12){
-        const r = 14;
-        g.beginPath();
-        g.arc(p.x - 18, p.y - 18, r, 0.8, 2.8*(Mz>0?1:-1));
-        g.stroke();
-        g.fillText(`Mz=${round6(Mz)}`, p.x - 40, p.y - 24);
-      }
-    }
-    g.restore();
-  }
-
-  function drawNodeBC(g, node){
-    const {x,y,bc}=node;
-    const p = worldToScreen(x,y);
-    const X = p.x, Y = p.y;
-
-    g.save(); g.strokeStyle='#000'; g.fillStyle='#000';
-    if (bc==='fixed'){
-      g.lineWidth=6; g.beginPath(); g.moveTo(X-10, Y-16); g.lineTo(X-10, Y+16); g.stroke();
-      g.lineWidth=1; g.strokeStyle='#666';
-      for (let k=-14; k<=14; k+=7){ g.beginPath(); g.moveTo(X-10, Y+k); g.lineTo(X-18, Y+k-6); g.stroke(); }
-    } else if (bc==='simple'){
-      g.beginPath(); g.moveTo(X, Y+8); g.lineTo(X-10, Y+18); g.lineTo(X+10, Y+18); g.closePath(); g.fill();
-      g.fillRect(X-14, Y+18, 28, 3);
-    } else if (bc==='rollerX'){
-      g.beginPath(); g.moveTo(X-6,Y); g.lineTo(X+6,Y); g.stroke();
-      g.fillRect(X+10, Y+2, 26, 3);
-    } else if (bc==='rollerY'){
-      g.beginPath(); g.moveTo(X,Y-6); g.lineTo(X,Y+6); g.stroke();
-      g.fillRect(X-18, Y+12, 3, 26);
-    }
-    g.restore();
-  }
-
-  function drawNodeLoadsAndSprings(g, node){
-    if (viewMode==='stresspanel') return;
-    const {x,y,Fx,Fy,Mz,Kx,Ky,Kt}=node;
-    const p = worldToScreen(x,y);
-    const X = p.x, Y = p.y;
-
-    g.save();
-
-    // Loads
-    g.strokeStyle='#db2777'; g.fillStyle='#db2777'; g.lineWidth=2;
-    if (Fx!==0){
-      const sign=Fx>0?1:-1, L=26*sign;
-      drawArrow(g,X,Y,X+L,Y);
-      g.fillText('Fx', X+L+(sign>0?6:-18), Y-6);
-    }
-    if (Fy!==0){
-      const sign=Fy>0?-1:1, L=26*sign;
-      drawArrow(g,X,Y,X,Y+L);
-      g.fillText('Fy', X+6, Y+L+(sign<0?-8:14));
-    }
-    if (Mz!==0){
-      const r = 16, cw = Mz<0;
-      g.beginPath();
-      g.arc(X-18, Y-18, r, cw?1.2:4.5, cw?5.3:2.0, cw);
-      g.stroke();
-      g.beginPath();
-      const ang = cw?5.3:2.0;
-      g.moveTo(X-18 + r*Math.cos(ang), Y-18 + r*Math.sin(ang));
-      g.lineTo(X-18 + (r+6)*Math.cos(ang+0.4), Y-18 + (r+6)*Math.sin(ang+0.4));
-      g.lineTo(X-18 + (r+6)*Math.cos(ang-0.4), Y-18 + (r+6)*Math.sin(ang-0.4));
-      g.closePath(); g.fill();
-      g.fillText('Mz', X-24, Y-26);
-    }
-
-    // Springs
-    g.strokeStyle='#0f766e'; g.fillStyle='#0f766e'; g.lineWidth=2;
-    if (Kx>0){ drawSpringX(g, X+16, Y, 18, 6); g.fillText('Kx', X+40, Y-6); }
-    if (Ky>0){ drawSpringY(g, X, Y+16, 18, 6); g.fillText('Ky', X+6, Y+42); }
-
-    // Rotational spring Kθ – larger, prominent arc
-    if (Kt > 0){
-      const r  = 20;
-      const cx = X - 25;
-      const cy = Y + 30;
-
-      g.lineWidth = 3;
-      g.beginPath();
-      g.arc(cx, cy, r, 0.8, 2.35);
-      g.stroke();
-
-      const coilSize = 6;
-      g.beginPath();
-      g.moveTo(cx + r * Math.cos(2.35), cy + r * Math.sin(2.35));
-      g.lineTo(cx + r * Math.cos(2.35) + coilSize, cy + r * Math.sin(2.35) - coilSize/2);
-      g.lineTo(cx + r * Math.cos(2.35) + coilSize, cy + r * Math.sin(2.35) + coilSize/2);
-      g.stroke();
-
-      g.fillText('Kθ', cx - 6, cy + r + 18);
-    }
-
-    g.restore();
-  }
-
-  function drawSelection(){
-    if (selectedNodeId){
-      const n = nodeById(selectedNodeId);
-      if (n){
-        const p = worldToScreen(n.x,n.y);
-        ovr.save();
-        ovr.lineWidth=3; ovr.strokeStyle='#10b981';
-        ovr.beginPath(); ovr.arc(p.x,p.y,12,0,Math.PI*2); ovr.stroke();
-        ovr.restore();
-      }
-    }
-    if (selectedMemberForDelete){
-      const m = memberById(selectedMemberForDelete);
-      if (m){
-        const a=nodeById(m.n1), b=nodeById(m.n2);
-        const A = worldToScreen(a.x,a.y);
-        const B = worldToScreen(b.x,b.y);
-        ovr.save(); ovr.lineWidth=4; ovr.strokeStyle='#f59e0b';
-        ovr.beginPath(); ovr.moveTo(A.x,A.y); ovr.lineTo(B.x,B.y); ovr.stroke();
-        ovr.restore();
-      }
-    }
-  }
-
-  function drawGrid(g){
-    g.save();
-    g.lineWidth=1; g.strokeStyle='#eee'; g.fillStyle='#999';
-
-    if (nodes.length === 0){
-      const step=40;
-      for (let x=0; x<=base.width; x+=step){ g.beginPath(); g.moveTo(x,0); g.lineTo(x,base.height); g.stroke(); }
-      for (let y=0; y<=base.height; y+=step){ g.beginPath(); g.moveTo(0,y); g.lineTo(base.width,y); g.stroke(); }
-      g.restore();
-      return;
-    }
-
-    const bbox = modelBounds();
-    const nx = 10, ny = 10;
-    const stepX = bbox.w / nx || 1;
-    const stepY = bbox.h / ny || 1;
-
-    const startX = Math.floor(bbox.x0/stepX)*stepX;
-    const endX   = Math.ceil((bbox.x0 + bbox.w)/stepX)*stepX;
-    const startY = Math.floor(bbox.y0/stepY)*stepY;
-    const endY   = Math.ceil((bbox.y0 + bbox.h)/stepY)*stepY;
-
-    for (let x = startX; x <= endX + 1e-9; x += stepX){
-      const p1 = worldToScreen(x, startY);
-      const p2 = worldToScreen(x, endY);
-      g.beginPath(); g.moveTo(p1.x,p1.y); g.lineTo(p2.x,p2.y); g.stroke();
-    }
-    for (let y = startY; y <= endY + 1e-9; y += stepY){
-      const p1 = worldToScreen(startX, y);
-      const p2 = worldToScreen(endX, y);
-      g.beginPath(); g.moveTo(p1.x,p1.y); g.lineTo(p2.x,p2.y); g.stroke();
-    }
-
-    g.restore();
-  }
-
-// ---- Compute local internal end forces for each frame member ----
-// Returns: internal[memId] = { Ni, Vi, Mi, Nj, Vj, Mj } in local axes
-
-function computeInternalEndForces(build, U){
-  const { dofMap, geom } = build;
-  const internal = {};
-
-  // geom is keyed by member id: geom[memId] = { i, j, L, c, s, T, ... }
-  for (const memIdStr of Object.keys(geom)){
-    const memId = parseInt(memIdStr, 10);
-    const gEl   = geom[memId];
-    if (!gEl) continue;
-
-    // Find the corresponding member to get E, A, I, wd, etc.
-    const m = memberById(memId);
-    if (!m) continue;
-
-    const E = m.E || 0;
-    const A = m.A || 0;
-    const I = m.I || 0;
-    if (!(E > 0 && A > 0 && I > 0)) continue; // skip invalid members
-
-    const bi = dofMap.analysis[gEl.i];
-    const bj = dofMap.analysis[gEl.j];
-    if (bi === undefined || bj === undefined) continue;
-
-    // Global element displacement vector [u_i, v_i, θ_i, u_j, v_j, θ_j]
-    const ue = [
-      U[bi + 0], U[bi + 1], U[bi + 2],
-      U[bj + 0], U[bj + 1], U[bj + 2]
-    ];
-
-    // Transform to local coordinates: u_loc = T * u_global
-    const u_loc = mulMatVec(gEl.T, ue);
-
-    // Local stiffness matrix k_loc (6×6)
-    const kLoc = frameLocalStiffness(E, A, I, gEl.L);
-
-    // Basic internal end forces from stiffness
-    const f_loc = mulMatVec(kLoc, u_loc);  // [N_i, V_i, M_i, N_j, V_j, M_j]
-
-    // Optional: subtract fixed-end forces from uniform self-weight (if present)
-    const Aseg = m.A  || 0;
-    const wd   = m.wd || 0;
-    if (Aseg > 0 && wd > 0){
-      const w = Aseg * wd;    // weight per unit length (positive magnitude)
-
-      const wxg = 0;
-      const wyg = -w;         // downward in global y
-
-      const c = gEl.c;
-      const s = gEl.s;
-
-      // Components in local axes
-      const wx_loc =  c * wxg + s * wyg;    // along local x
-      const wy_loc = -s * wxg + c * wyg;    // along local y
-
-      const feq = [0,0,0,0,0,0];
-
-      // Axial part
-      if (Math.abs(wx_loc) > 1e-12){
-        const Fax = wx_loc * gEl.L / 2;
-        feq[0] += Fax;
-        feq[3] += Fax;
-      }
-
-      // Transverse part (shear + end moments)
-      if (Math.abs(wy_loc) > 1e-12){
-        const Ft = wy_loc * gEl.L / 2;
-        const Mt = wy_loc * gEl.L * gEl.L / 12;
-
-        // DOFs: [u_i, v_i, θ_i, u_j, v_j, θ_j]
-        feq[1] += Ft;
-        feq[2] += Mt;
-        feq[4] += Ft;
-        feq[5] -= Mt;
-      }
-
-      // Net internal forces = k*u − fixed-end forces from distributed load
-      for (let k = 0; k < 6; k++){
-        f_loc[k] -= feq[k];
+      for(let a=0;a<4;a++){
+        const ka = nids[a]; const a_r = 2*ka, a_z = 2*ka+1;
+        for(let b=0;b<4;b++){
+          const kb = nids[b]; const b_r = 2*kb, b_z = 2*kb+1;
+          K[(a_r)*N + (b_r)] += ke[(2*a+0)*8 + (2*b+0)];
+          K[(a_r)*N + (b_z)] += ke[(2*a+0)*8 + (2*b+1)];
+          K[(a_z)*N + (b_r)] += ke[(2*a+1)*8 + (2*b+0)];
+          K[(a_z)*N + (b_z)] += ke[(2*a+1)*8 + (2*b+1)];
+        }
+        f[a_r] += fe[2*a+0]; f[a_z] += fe[2*a+1];
       }
     }
 
-    internal[memId] = {
-      Ni: f_loc[0],
-      Vi: f_loc[1],
-      Mi: f_loc[2],
-      Nj: f_loc[3],
-      Vj: f_loc[4],
-      Mj: f_loc[5]
+    for(let j=0;j<nz;j++) for(let i=0;i<nr;i++) addKe(i,j);
+
+    function fix(gid){ for(let c=0;c<N;c++){ K[gid*N + c] = 0; } for(let r=0;r<N;r++){ K[r*N + gid] = 0; } K[gid*N + gid] = 1; f[gid] = 0; }
+    if(p.ends==='bonded'){ for(let i=0;i<nR;i++){ const k0=idx(i,0), k1=idx(i,nZ-1); fix(2*k0+0); fix(2*k0+1); fix(2*k1+0); fix(2*k1+1); } }
+    else { const k0=idx(0,0); fix(2*k0+1); }
+
+    function matvec(out, x){ for(let r=0;r<N;r++){ let s=0; const rowOff=r*N; for(let c=0;c<N;c++) s+=K[rowOff+c]*x[c]; out[r]=s; } }
+    const u = new Float64Array(N); const r = new Float64Array(N); const z = new Float64Array(N); const pvec = new Float64Array(N); const Ap = new Float64Array(N); const M = new Float64Array(N);
+    for(let i=0;i<N;i++){ M[i] = K[i*N + i] || 1; }
+    matvec(r,u);
+    for(let i=0;i<N;i++){ r[i] = f[i] - r[i]; z[i] = r[i]/M[i]; pvec[i] = z[i]; }
+    let rz_old = 0; for(let i=0;i<N;i++) rz_old += r[i]*z[i];
+    const normF = (()=>{ let s=0; for(let i=0;i<N;i++) s += f[i]*f[i]; return Math.sqrt(s); })();
+    const tol = 1e-10 * Math.max(1, normF); const maxIt = opts.maxIter || 2000;
+    for(let it=0; it<maxIt && rz_old>tol; it++){
+      matvec(Ap, pvec);
+      let pAp=0; for(let i=0;i<N;i++) pAp += pvec[i]*Ap[i];
+      const alpha_pcg = rz_old/(pAp||1e-30);
+      for(let i=0;i<N;i++){ u[i] += alpha_pcg*pvec[i]; r[i] -= alpha_pcg*Ap[i]; z[i] = r[i]/M[i]; }
+      let rz_new=0; for(let i=0;i<N;i++) rz_new += r[i]*z[i];
+      if(Math.sqrt(rz_new) < 1e-9) break;
+      const beta = rz_new/(rz_old||1e-30);
+      for(let i=0;i<N;i++) pvec[i] = z[i] + beta*pvec[i];
+      rz_old = rz_new;
+    }
+
+    const ur = new Float64Array(nR*nZ); const uz = new Float64Array(nR*nZ);
+    for(let k=0;k<nR*nZ;k++){ ur[k]=u[2*k+0]; uz[k]=u[2*k+1]; }
+
+    const zRows=[], rInner=[], rOuter=[], zCur=[];
+    for(let j=0;j<nZ;j++){
+      const kI = idx(0,j), kO = idx(nR-1,j); zRows.push(Znod[kI]);
+      rInner.push(Rnod[kI] + ur[kI]); rOuter.push(Rnod[kO] + ur[kO]);
+      zCur.push( Znod[kI] + uz[kI] );
+    }
+
+    const cells=[]; const shearVals=[]; const deflVals=[]; const dS = 1/nr;
+    const gp0 = 0;
+    function shape0(){ return {
+      N:[0.25*(1-gp0)*(1-gp0),0.25*(1+gp0)*(1-gp0),0.25*(1+gp0)*(1+gp0),0.25*(1-gp0)*(1+gp0)],
+      dN_dxi:[ -0.25*(1-gp0), 0.25*(1-gp0), 0.25*(1+gp0), -0.25*(1+gp0) ],
+      dN_deta:[ -0.25*(1-gp0), -0.25*(1+gp0), 0.25*(1+gp0), 0.25*(1-gp0) ]
+    }; }
+    const {N:Ni0, dN_dxi, dN_deta} = shape0();
+
+    for(let j=0;j<nz;j++){
+      const z0 = j*dZ, z1 = (j+1)*dZ;
+      for(let i=0;i<nr;i++){
+        const nids=[idx(i,j), idx(i+1,j), idx(i+1,j+1), idx(i,j+1)];
+        let R_xi=0,R_eta=0,Z_xi=0,Z_eta=0; for(let m=0;m<4;m++){ const k=nids[m]; R_xi+=dN_dxi[m]*Rnod[k]; R_eta+=dN_deta[m]*Rnod[k]; Z_xi+=dN_dxi[m]*Znod[k]; Z_eta+=dN_deta[m]*Znod[k]; }
+        const detJ = R_xi*Z_eta - R_eta*Z_xi; const invJ00 =  Z_eta/detJ, invJ01 = -R_eta/detJ; const invJ10 = -Z_xi/detJ, invJ11 =  R_xi/detJ;
+        const dNr = new Array(4), dNz = new Array(4); for(let m=0;m<4;m++){ dNr[m]=dN_dxi[m]*invJ00 + dN_deta[m]*invJ10; dNz[m]=dN_dxi[m]*invJ01 + dN_deta[m]*invJ11; }
+        let ur_R=0, ur_Z=0, uz_R=0, uz_Z=0, ur_c=0, uz_c=0;
+        for(let m=0;m<4;m++){ const k=nids[m]; ur_R+=dNr[m]*u[2*k+0]; ur_Z+=dNz[m]*u[2*k+0]; uz_R+=dNr[m]*u[2*k+1]; uz_Z+=dNz[m]*u[2*k+1]; ur_c+=Ni0[m]*u[2*k+0]; uz_c+=Ni0[m]*u[2*k+1]; }
+        const gamma = Math.abs(ur_Z + uz_R);
+        const mag = Math.hypot(ur_c, uz_c);
+        const s0=i*dS, s1=s0+dS; cells.push({r0:s0,r1:s1,z0:z0,z1:z1}); shearVals.push(gamma); deflVals.push(mag);
+      }
+    }
+
+    return {
+      before:{OD:p.OD,ID:p.ID,H:p.H},
+      meshRZ:{ri:0,ro:1,H:H,cells},
+      shearValsRZ:shearVals,
+      deflValsRZ:deflVals,
+      boundary:{z:zRows,rInner,rOuter,zCur},
+      ur:Array.from(ur), uz:Array.from(uz),
+      params:p
     };
   }
 
-  return internal;
-}
-
-// ---- Sample N, V, M and extreme-fiber stresses along each member ----
-
-  // ===== SOLVER (2D FRAME, static) =====
-function solveFrame(){
-  const DIV = Math.max(1, Math.min(50, (parseInt(document.getElementById('divCount').value) || 10)));
-
-  try{
-    const build = buildAnalysisModelFrame();
-    const { N, dofMap, anodes, K, F, elems, geom } = build;
-
-    // --- Node springs (Kx, Ky, Kt) ---
-    for (const n of nodes){
-      const base = dofMap.primary[n.id];
-      if (base === undefined) continue;
-      if (n.Kx > 0) K[base+0][base+0] += n.Kx;
-      if (n.Ky > 0) K[base+1][base+1] += n.Ky;
-      if (n.Kt > 0) K[base+2][base+2] += n.Kt;
-    }
-
-    // --- External nodal loads (Fx, Fy, Mz) ---
-    for (const n of nodes){
-      const base = dofMap.primary[n.id];
-      if (base === undefined) continue;
-      F[base+0] += n.Fx || 0;
-      F[base+1] += n.Fy || 0;
-      F[base+2] += n.Mz || 0;
-    }
-
-    // --- Self-weight as consistent frame loads (including end moments) ---
-    for (const m of members){
-      const gEl = geom[m.id];
-      if (!gEl) continue;
-
-      const A  = m.A  || 0;
-      const wd = m.wd || 0;
-      if (!(A > 0 && wd > 0)) continue;
-
-      const L = gEl.L;
-      const c = gEl.c;
-      const s = gEl.s;
-
-      // Weight per unit length (positive magnitude)
-      const w = wd * A;      // e.g., lb/in or N/m
-
-      // Global distributed load vector: vertical downward only
-      const wxg = 0;
-      const wyg = -w;
-
-      // Components in local axes (+x along member, +y normal)
-      const wx_loc =  c * wxg + s * wyg;     // along local x
-      const wy_loc = -s * wxg + c * wyg;     // along local y
-
-      const fe_loc = [0, 0, 0, 0, 0, 0];
-
-      // Axial part: equal nodal forces along local x
-      if (Math.abs(wx_loc) > 1e-12){
-        const Fax = wx_loc * L / 2;
-        fe_loc[0] += Fax;   // u_i
-        fe_loc[3] += Fax;   // u_j
-      }
-
-      // Transverse part: shears + end moments in local y
-      if (Math.abs(wy_loc) > 1e-12){
-        const Ft = wy_loc * L / 2;
-        const Mt = wy_loc * L * L / 12;
-
-        // DOF order: [u_i, v_i, θ_i, u_j, v_j, θ_j]
-        fe_loc[1] += Ft;    // v_i
-        fe_loc[2] += Mt;    // θ_i
-        fe_loc[4] += Ft;    // v_j
-        fe_loc[5] -= Mt;    // θ_j (opposite sign)
-      }
-
-      // If nothing accumulated, skip
-      if (!fe_loc.some(v => Math.abs(v) > 1e-14)) continue;
-
-      // Transform to global DOFs: fe_glob = T^T * fe_loc
-      const T       = gEl.T;
-      const TT      = transpose6(T);
-      const fe_glob = mulMatVec(TT, fe_loc);
-
-      const bi = dofMap.analysis[gEl.i];
-      const bj = dofMap.analysis[gEl.j];
-
-      F[bi + 0] += fe_glob[0];
-      F[bi + 1] += fe_glob[1];
-      F[bi + 2] += fe_glob[2];
-      F[bj + 0] += fe_glob[3];
-      F[bj + 1] += fe_glob[4];
-      F[bj + 2] += fe_glob[5];
-    }
-
-    // --- Boundary conditions ---
-    const constrained = new Set();
-    let supportCount = 0;
-    for (const n of nodes){
-      const base = dofMap.primary[n.id];
-      if (base === undefined) continue;
-
-      if (n.bc === 'fixed'){
-        constrained.add(base+0);
-        constrained.add(base+1);
-        constrained.add(base+2);
-        supportCount++;
-      } else if (n.bc === 'simple'){
-        constrained.add(base+0);
-        constrained.add(base+1);
-        supportCount++;
-      } else if (n.bc === 'rollerX'){
-        constrained.add(base+0);
-        supportCount++;
-      } else if (n.bc === 'rollerY'){
-        constrained.add(base+1);
-        supportCount++;
-      }
-    }
-
-    if (supportCount === 0){
-      Swal.fire('No supports','Add at least one support (simple/roller/fixed).','error');
-      return;
-    }
-
-    const allIdx  = [...Array(N).keys()];
-    const freeIdx = allIdx.filter(i => !constrained.has(i));
-    if (freeIdx.length === 0){
-      Swal.fire('No free DOFs','All DOFs are restrained.','error');
-      return;
-    }
-
-    const Kff = matPick(K, freeIdx, freeIdx);
-    const Ff  = vecPick(F, freeIdx);
-
-    let Uf;
-    try {
-      Uf = numeric.solve(Kff, Ff);
-    } catch {
-      throw new Error('singular');
-    }
-    if (Uf.some(v => !isFinite(v))) throw new Error('singular');
-
-    const U = Array(N).fill(0);
-    freeIdx.forEach((gi, k) => { U[gi] = Uf[k]; });
-
-    const KU = numeric.dot(K, U);
-    const R  = KU.map((v,i) => v - F[i]);
-
-    // Map reactions to nodes
-    const reactionsByNode = {};
-    for (const n of nodes){
-      const base = dofMap.primary[n.id];
-      if (base === undefined) continue;
-
-      let Rx = 0, Ry = 0, Mz = 0;
-      if (constrained.has(base+0)) Rx = R[base+0];
-      if (constrained.has(base+1)) Ry = R[base+1];
-      if (constrained.has(base+2)) Mz = R[base+2];
-      reactionsByNode[n.id] = { Rx, Ry, Mz };
-    }
-
-    // --- Internal end forces (local N/V/M) ---
-    const internal = computeInternalEndForces(build, U);
-
-    // --- Build per-member N, V, M, σ_top, σ_bottom vs x ---
-    const stress = {};
-    const stressSummary = {};
-    const NSAMP = 40;
-
-    for (const m of members){
-      const gEl = geom[m.id];
-      const int = internal[m.id];
-      if (!gEl || !int) continue;
-
-      const L = gEl.L;
-      if (!(L > 0)) continue;
-
-      const A = m.A || 0;
-      const S = m.S || 0;  // section modulus for bending
-
-      const xs = [];
-      const Ns = [];
-      const Vs = [];
-      const Ms = [];
-      const sigTop = [];
-      const sigBot = [];
-
-      let sigmaMin = +Infinity, sigmaMax = -Infinity;
-      let NabsMax = 0, VabsMax = 0, MabsMax = 0;
-
-      for (let k = 0; k <= NSAMP; k++){
-        const t  = k / NSAMP;
-        const x  = L * t;
-
-        // Simple linear variation between end forces for now
-        const N = int.Ni*(1 - t) + int.Nj*t;
-        const V = int.Vi*(1 - t) + int.Vj*t;
-        const M = int.Mi*(1 - t) + int.Mj*t;
-
-        xs.push(x);
-        Ns.push(N);
-        Vs.push(V);
-        Ms.push(M);
-
-        NabsMax = Math.max(NabsMax, Math.abs(N));
-        VabsMax = Math.max(VabsMax, Math.abs(V));
-        MabsMax = Math.max(MabsMax, Math.abs(M));
-
-        let sTop = 0, sBot = 0;
-        if (A > 0){
-          const sAx = N / A;
-          let sB = 0;
-          if (S > 0){
-            sB = M / S;   // + at "top", − at "bottom"
-          }
-          sTop = sAx + sB;
-          sBot = sAx - sB;
-        }
-
-        sigTop.push(sTop);
-        sigBot.push(sBot);
-
-        sigmaMin = Math.min(sigmaMin, sTop, sBot);
-        sigmaMax = Math.max(sigmaMax, sTop, sBot);
-      }
-
-      stress[m.id] = {
-        L,
-        x: xs,
-        N: Ns,
-        V: Vs,
-        M: Ms,
-        sigmaTop: sigTop,
-        sigmaBot: sigBot
-      };
-
-      if (sigmaMin === +Infinity){ sigmaMin = 0; sigmaMax = 0; }
-
-      stressSummary[m.id] = {
-        sigmaMin,
-        sigmaMax,
-        NabsMax,
-        VabsMax,
-        MabsMax
-      };
-    }
-
-
-    // --- Sampled polylines for deflected shape (linear interpolation) ---
-      const sublines = buildDeflectionPolylines(U, dofMap);  
-
-//const sublines = [];
-   // for (const m of members){
-     // const ni = nodeById(m.n1), nj = nodeById(m.n2);
-    //  if (!ni || !nj) continue;
-
-   //   const bi = dofMap.primary[m.n1];
-  //    const bj = dofMap.primary[m.n2];
- //     if (bi === undefined || bj === undefined) continue;
-
-//      const ui = { u: U[bi+0], v: U[bi+1] };
-//      const uj = { u: U[bj+0], v: U[bj+1] };
-
-//      const S  = DIV;
- //     const poly = [];
-//      const pi = { x_up: ni.x, y_up: yUp(ni.y) };
-//      const pj = { x_up: nj.x, y_up: yUp(nj.y) };
-
-//      for (let k = 0; k <= S+1; k++){
-//        const t = k / (S+1);
-//        const x_up = pi.x_up + t*(pj.x_up - pi.x_up);
-//        const y_up = pi.y_up + t*(pj.y_up - pi.y_up);
-//        const u = ui.u*(1-t) + uj.u*t;
-//        const v = ui.v*(1-t) + uj.v*t;
-//        poly.push({ memId:m.id, subIndex:k, x_up, y_up, u, v });
-//      }
-//      sublines.push(poly);
-//    }
-
-    lastSolution = {
-      Ufull: U,
-      dofMap,
-      anodes,
-      sublines,
-      reactions: R,
-      reactionsByNode,
-      geom,
-      internal,
-      stress,
-      stressSummary
-    };
-
-    
-
-    lastSolution.primaryRes = nodes.map(n => {
-      const base = dofMap.primary[n.id];
-      return {
-        id: n.id,
-        ux: round6(U[base+0]),
-        uy: round6(U[base+1]),
-        rz: round6(U[base+2])
-      };
-    });
-    showResults(lastSolution.primaryRes);
-
-
-    summarizeMemberStresses();
-
-    // auto deflection scale
-    const bbox = modelBounds();
-    const Lref = Math.max(bbox.w, bbox.h) || 1;
-    let maxDisp = 0;
-    for (const v of U){
-      maxDisp = Math.max(maxDisp, Math.abs(v));
-    }
-    const defScaleAuto = (maxDisp > 0) ? (0.20 * Lref / maxDisp) : 1;
-    document.getElementById('defScale').value = +defScaleAuto.toFixed(4);
-
-    if (viewMode === 'stresspanel') plotStressPanel();
-    draw();
-
-  } catch (err){
-    console.error(err);
-    Swal.fire({
-      icon:'error',
-      title:'Solve failed',
-      html:`<div style="text-align:left">
-        <div><b>Likely causes</b></div>
-        <ul style="margin:6px 0 0 18px;">
-          <li>Under-constrained frame (need enough supports).</li>
-          <li>Member has zero length or missing E/A/I.</li>
-        </ul>
-      </div>`
-    });
-  }
-}
-
-  // Build polylines for deflected shape given a DOF vector U
-  function buildDeflectionPolylines(U, dofMap) {
-    const DIV = Math.max(
-      1,
-      Math.min(50, parseInt(document.getElementById('divCount').value) || 10)
-    );
-
-    const sublines = [];
-    for (const m of members) {
-      const ni = nodeById(m.n1), nj = nodeById(m.n2);
-      if (!ni || !nj) continue;
-
-      const bi = dofMap.primary[m.n1];
-      const bj = dofMap.primary[m.n2];
-      if (bi === undefined || bj === undefined) continue;
-
-      const ui = { u: U[bi + 0], v: U[bi + 1] };
-      const uj = { u: U[bj + 0], v: U[bj + 1] };
-
-      const S = DIV;
-      const poly = [];
-      const pi = { x_up: ni.x, y_up: yUp(ni.y) };
-      const pj = { x_up: nj.x, y_up: yUp(nj.y) };
-
-      for (let k = 0; k <= S + 1; k++) {
-        const t = k / (S + 1);
-        const x_up = pi.x_up + t * (pj.x_up - pi.x_up);
-        const y_up = pi.y_up + t * (pj.y_up - pi.y_up);
-        const u = ui.u * (1 - t) + uj.u * t;
-        const v = ui.v * (1 - t) + uj.v * t;
-        poly.push({ memId: m.id, subIndex: k, x_up, y_up, u, v });
-      }
-      sublines.push(poly);
-    }
-    return sublines;
-  }
-
-// ---- Lumped mass matrix for the frame (diagonal) ----
-
-// xx
-function buildMassMatrixFrame(build) {
-  const { N, dofMap, geom } = build;
-  const M = zeros(N, N);
-
-  // Accumulate scalar mass at each node
-  const nodeMass = {};
-
-  // Member self-mass from wd * A * L
-  for (const m of members) {
-    const gEl = geom[m.id];
-    if (!gEl) continue;
-
-    const A  = m.A  || 0;
-    const wd = m.wd || 0;   // treat as mass/length or weight/length with g=1
-    if (!(A > 0 && wd > 0)) continue;
-
-    const L     = gEl.L;
-    const mTot  = wd * A * L;   // "mass" in consistent units
-    const mNode = 0.5 * mTot;
-
-    nodeMass[m.n1] = (nodeMass[m.n1] || 0) + mNode;
-    nodeMass[m.n2] = (nodeMass[m.n2] || 0) + mNode;
-  }
-
-  // Explicit nodal weight Wn → extra mass
-  for (const n of nodes) {
-    if (!n.Wn) continue;
-    nodeMass[n.id] = (nodeMass[n.id] || 0) + Math.max(0, n.Wn);
-  }
-
-  // Put masses on translational DOFs; crude rotational inertia on θ
-  for (const [nidStr, mnode] of Object.entries(nodeMass)) {
-    const nid  = parseInt(nidStr, 10);
-    const base = dofMap.primary[nid];
-    if (base === undefined) continue;
-
-    const mVal = mnode;
-    M[base + 0][base + 0] += mVal;        // ux
-    M[base + 1][base + 1] += mVal;        // uy
-    M[base + 2][base + 2] += 0.05 * mVal; // θ (very rough)
-  }
-
-  return M;
-}
-  // ==== MODES (stub for now) ====
-
-// ==== MODES (generalized eigenproblem Kφ = ω² M φ) ====
-
-  // ==== MODES (global frame modes) ====
-  function computeModes() {
-    try {
-      if (nodes.length === 0 || members.length === 0) {
-        Swal.fire('No model', 'Add nodes and members first.', 'info');
-        return;
-      }
-
-      const build = buildAnalysisModelFrame();
-      const { N, dofMap, K } = build;
-
-      // Add node springs (same as static solve)
-      for (const n of nodes) {
-        const base = dofMap.primary[n.id];
-        if (base === undefined) continue;
-        if (n.Kx > 0) K[base + 0][base + 0] += n.Kx;
-        if (n.Ky > 0) K[base + 1][base + 1] += n.Ky;
-        if (n.Kt > 0) K[base + 2][base + 2] += n.Kt;
-      }
-
-      // Build mass matrix
-      const M = buildMassMatrixFrame(build);
-
-      // Supports → constrained DOFs (same pattern as static solve)
-      const constrained = new Set();
-      let supportCount = 0;
-      for (const n of nodes) {
-        const base = dofMap.primary[n.id];
-        if (base === undefined) continue;
-
-        if (n.bc === 'fixed') {
-          constrained.add(base + 0);
-          constrained.add(base + 1);
-          constrained.add(base + 2);
-          supportCount++;
-        } else if (n.bc === 'simple') {
-          constrained.add(base + 0);
-          constrained.add(base + 1);
-          supportCount++;
-        } else if (n.bc === 'rollerX') {
-          constrained.add(base + 0);
-          supportCount++;
-        } else if (n.bc === 'rollerY') {
-          constrained.add(base + 1);
-          supportCount++;
-        }
-      }
-
-      if (supportCount === 0) {
-        Swal.fire('No supports', 'Add at least one support before modal solve.', 'error');
-        return;
-      }
-
-      const allIdx  = [...Array(N).keys()];
-      const freeIdx = allIdx.filter(i => !constrained.has(i));
-      if (freeIdx.length === 0) {
-        Swal.fire('No free DOFs', 'All DOFs are restrained.', 'error');
-        return;
-      }
-
-      const Kff = matPick(K, freeIdx, freeIdx);
-      const Mff = matPick(M, freeIdx, freeIdx);
-
-      const nFree = Mff.length;
-      const invSqrtM = new Array(nFree);
-
-      // Mff is diagonal; build M^{-1/2} directly
-      for (let i = 0; i < nFree; i++) {
-        let mii = Mff[i][i];
-        if (!isFinite(mii) || mii <= 0) mii = 1e-6;   // tiny positive
-        invSqrtM[i] = 1 / Math.sqrt(mii);
-      }
-
-      // B = D * Kff * D, where D = diag(invSqrtM) = M^{-1/2}
-      const B = zeros(nFree, nFree);
-      for (let i = 0; i < nFree; i++) {
-        for (let j = 0; j < nFree; j++) {
-          B[i][j] = invSqrtM[i] * Kff[i][j] * invSqrtM[j];
-        }
-      }
-
-
-      const eig = numeric.eig(B);
-      const lambdas = eig.lambda.x;
-      const Vcols   = eig.E.x;   // eigenvectors as columns
-
-      const modes = [];
-      const twoPi = 2 * Math.PI;
-
-      for (let i = 0; i < lambdas.length; i++) {
-        const lam = lambdas[i];
-        if (!isFinite(lam) || lam <= 0) continue;
-
-        const omega = Math.sqrt(lam);
-        const freq  = omega / twoPi;
-
-        // Extract eigenvector column i → y
-        const y = [];
-        for (let r = 0; r < Vcols.length; r++) {
-          y.push(Vcols[r][i]);
-        }
-
-        // Back-transform to original coordinates: φ_free = Ltinv * y
-
-        // Back-transform to original coordinates: φ_free = M^{-1/2} * y
-        let phi_free = new Array(nFree);
-        for (let k = 0; k < nFree; k++) {
-          phi_free[k] = invSqrtM[k] * y[k];
-        }
-
-        // Normalize so max displacement = 1
-        let maxAbs = 0;
-        for (const v of phi_free) maxAbs = Math.max(maxAbs, Math.abs(v));
-        if (maxAbs > 0) phi_free = phi_free.map(v => v / maxAbs);
-
-        // Embed into full DOF vector
-        const Ufull = Array(N).fill(0);
-        freeIdx.forEach((gi, k) => { Ufull[gi] = phi_free[k]; });
-
-        // Build polylines for this mode
-        const sublines = buildDeflectionPolylines(Ufull, dofMap);
-
-        modes.push({ freq, Ufull, sublines });
-      }
-
-      if (modes.length === 0) {
-        Swal.fire('Modal solve failed',
-          'No valid modes were found (all eigenvalues non-positive).',
-          'error');
-        return;
-      }
-
-      // --- sort by frequency and keep only lowest 3 ---
-      modes.sort((a, b) => a.freq - b.freq);
-      const MAX_MODES = 3;
-      const modesTrim = modes.slice(0, MAX_MODES);
-
-      // Store for drawing / animation
-      modalData = { modes: modesTrim, dofMap };
-
-      // Populate the mode selector
-      modeSelect.innerHTML = '<option value="0">Static</option>';
-      modesTrim.forEach((m, idx) => {
-        const opt = document.createElement('option');
-        opt.value = String(idx + 1);
-        opt.textContent = `Mode ${idx + 1} — ${m.freq.toFixed(3)} Hz`;
-        modeSelect.appendChild(opt);
-      });
-
-
-      currentMode = 1;
-      modeSelect.value = '1';
-
-      // Auto deflection scale based on first mode
-      const U0 = modes[0].Ufull;
-      let maxDisp = 0;
-      for (const v of U0) maxDisp = Math.max(maxDisp, Math.abs(v));
-      const bbox = modelBounds();
-      const Lref = Math.max(bbox.w, bbox.h) || 1;
-      const defScaleAuto = (maxDisp > 0) ? (0.20 * Lref / maxDisp) : 1;
-      document.getElementById('defScale').value = +defScaleAuto.toFixed(4);
-
-      // Switch to deflection view
-      viewMode = 'def';
-      setActiveGroup(viewBtns, 'viewDef');
-      draw();
-
-    } catch (err) {
-      console.error('Modal solve error', err);
-      Swal.fire('Modal solve failed',
-        'An unexpected error occurred while computing modes.',
-        'error');
-    }
-  }
-
- 
-
-
-// ===== Build model (2D FRAME) – 3 DOF/node =====
-function buildAnalysisModelFrame(){
-  const anodes = {};                    // analysis-node id -> { x_up, y_up, primary }
-  const dofMap = { primary:{}, analysis:{} };
-  let aNextId = 1;
-
-  // analysis nodes == primary nodes (3 DOF/node: ux, uy, θz)
-  for (const n of nodes){
-    const id = aNextId++;
-    anodes[id] = { x_up: n.x, y_up: yUp(n.y), primary: n.id };
-    const base = (id - 1) * 3;
-    dofMap.primary[n.id] = base;
-    dofMap.analysis[id]  = base;
-  }
-
-  const nA = Object.keys(anodes).length;
-  const N  = nA * 3;          // total DOFs
-  const K  = zeros(N, N);     // global stiffness
-  const F  = zeros(N);        // global load vector
-
-  // geometry store for each member (for self-weight, internals, etc)
-  const geom = {};            // geom[memId] = { i, j, L, c, s, T }
-
-  // ----- assemble frame elements -----
-  for (const m of members){
-    const ni = getAnalysisIdForPrimary(m.n1, anodes);
-    const nj = getAnalysisIdForPrimary(m.n2, anodes);
-    if (!ni || !nj) continue;
-
-    const pi = anodes[ni];
-    const pj = anodes[nj];
-
-    const dx = pj.x_up - pi.x_up;
-    const dy = pj.y_up - pi.y_up;
-    const L  = Math.hypot(dx, dy);
-    if (L < 1e-9) continue;
-
-    const c = dx / L;
-    const s = dy / L;
-
-    const E = m.E || 0;
-    const A = m.A || 0;
-    const I = m.I || 0;
-    if (!(E > 0 && A > 0 && I > 0)) continue;   // skip invalid members
-
-    const kLoc = frameLocalStiffness(E, A, I, L);
-    const T    = frameT(c, s);
-    const kG   = matMul6TKT(kLoc, T);
-
-    const baseI = dofMap.analysis[ni];
-    const baseJ = dofMap.analysis[nj];
-    const map   = [baseI, baseI+1, baseI+2, baseJ, baseJ+1, baseJ+2];
-
-    addToGlobalVar(K, kG, map);
-
-    // store geometry / transform for later use
-    geom[m.id] = { i: ni, j: nj, L, c, s, T };
-  }
-
-  return { N, dofMap, anodes, K, F, geom };
-}
-
-  // ===== Frame element helpers =====
-  function frameLocalStiffness(E,A,I,L){
-    const EA = E*A/L;
-    const EI = E*I;
-    const L2 = L*L, L3 = L2*L;
-
-    const a = EA;
-    const b = 12*EI/L3;
-    const c = 6*EI/L2;
-    const d = 4*EI/L;
-    const e = 2*EI/L;
-
-    // [u1, v1, θ1, u2, v2, θ2]
-    return [
-      [ a,   0,    0,  -a,    0,    0 ],
-      [ 0,   b,    c,   0,   -b,    c ],
-      [ 0,   c,    d,   0,   -c,    e ],
-      [ -a,  0,    0,   a,    0,    0 ],
-      [ 0,  -b,   -c,   0,    b,   -c ],
-      [ 0,   c,    e,   0,   -c,    d ]
-    ];
-  }
-
-function frameT(c, s){
-  // local [u1, v1, θ1, u2, v2, θ2] =
-  //   T * global [ux1, uy1, θ1, ux2, uy2, θ2]
-  return [
-    [  c,  s, 0,   0,  0, 0 ],   // u1
-    [ -s,  c, 0,   0,  0, 0 ],   // v1
-    [  0,  0, 1,   0,  0, 0 ],   // θ1
-    [  0,  0, 0,   c,  s, 0 ],   // u2
-    [  0,  0, 0,  -s,  c, 0 ],   // v2
-    [  0,  0, 0,   0,  0, 1 ]    // θ2
-  ];
-}
-
-  function matMul6(A,B){
-    const out = Array(6).fill(null).map(()=>Array(6).fill(0));
-    for (let i=0;i<6;i++){
-      for (let j=0;j<6;j++){
-        let s=0;
-        for (let k=0;k<6;k++) s += A[i][k]*B[k][j];
-        out[i][j]=s;
-      }
-    }
+  function interp1(xs, ys, x){ const n=xs.length; if(n===0) return NaN; if(x<=xs[0]) return ys[0]; if(x>=xs[n-1]) return ys[n-1]; let i=1; while(i<n && x>xs[i]) i++; const x0=xs[i-1], x1=xs[i], y0=ys[i-1], y1=ys[i]; const t=(x-x0)/(x1-x0); return y0 + t*(y1-y0); }
+
+  function runSanityTests(){
+    const out=[];
+    try{ updateDefScaleLabel(); out.push('defScale label OK'); }catch(e){ out.push('defScale label FAIL:'+e.message); }
+    try{ const g=readGeom(); if(g && g.H>0) out.push('readGeom OK'); else out.push('readGeom FAIL'); }catch(e){ out.push('readGeom EXC:'+e.message); }
     return out;
   }
-
-  function matMul6TKT(Kloc, T){
-    // Kglob = Tᵀ * Kloc * T
-    const KT = matMul6(Kloc, T);
-    const TT = transpose6(T);
-    return matMul6(TT, KT);
+  if(/(^|[?&])autotest=1(&|$)/.test(location.search)){
+    console.log('[sanity]', runSanityTests());
   }
 
-function mulMatVec(M, v){
-  const n = M.length;
-  const out = new Array(n).fill(0);
-  for (let i = 0; i < n; i++){
-    let sum = 0;
-    const row = M[i];
-    for (let j = 0; j < row.length; j++){
-      sum += row[j] * v[j];
-    }
-    out[i] = sum;
+  // -------- EXPORTS --------
+  function downloadBlob(filename, text, type='application/octet-stream'){
+    const blob = new Blob([text], {type});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    URL.revokeObjectURL(a.href);
+    a.remove();
   }
-  return out;
-}
 
+  function buildExportPayload(res){
+    if(!res || !res.params || !res.boundary) throw new Error('No solution to export. Click “Shrinkage” first.');
+    const p = res.params;
 
+    const zBefore = res.boundary.z;        // original z
+    const zAfter  = res.boundary.zCur;     // cooled z
+    const rInA    = res.boundary.rInner;   // cooled inner
+    const rOutA   = res.boundary.rOuter;   // cooled outer
 
-function transpose6(T){
-  const out = new Array(6);
-  for (let i = 0; i < 6; i++){
-    out[i] = new Array(6);
-    for (let j = 0; j < 6; j++){
-      out[i][j] = T[j][i];
-    }
-  }
-  return out;
-}
+    const ro0Fn = (typeof p.roAt==='function') ? p.roAt : (z)=> (p.OD||0)/2;
+    const ri0Fn = (typeof p.riAt==='function') ? p.riAt : (z)=> (p.ID||0)/2;
 
-// ===== Stress Panel (σ vs length) =====
+    const original = zBefore.map(z => ({ z, ri: ri0Fn(z), ro: ro0Fn(z) }));
+    const shrunken = zAfter.map((z_after, j) => ({ z_after, ri_after: rInA[j], ro_after: rOutA[j] }));
 
-  function plotStressPanel(){
-    resizeStressCanvas();
-    spx.clearRect(0,0,stressCanvas.width,stressCanvas.height);
-
-    if (!lastSolution || !lastSolution.stress || members.length === 0){
-      spx.save();
-      spx.fillStyle = '#666';
-      spx.font = '13px system-ui';
-      spx.fillText('Solve first, then click a member while this view is active.', 10, 24);
-      spx.restore();
-      return;
-    }
-
-    // Choose member to plot
-    let memId = selectedMemberId;
-    if (!memId || !lastSolution.stress[memId]){
-      memId = members[0].id;
-    }
-    const mData = lastSolution.stress[memId];
-    if (!mData){
-      return;
-    }
-
-    const mode = (stressPlotModeSelect && stressPlotModeSelect.value) || 'sigma';
-
-    const xs = mData.x;
-    const L  = mData.L || (xs[xs.length-1] || 1);
-
-    let ys1 = null, ys2 = null;
-    let titleSuffix = '';
-    let yLabel = '';
-
-    if (mode === 'sigma'){
-      ys1 = mData.sigmaTop;
-      ys2 = mData.sigmaBot;
-      titleSuffix = ' — bending stress';
-      yLabel = 'σ (same units as N/A, M/S)';
-    } else if (mode === 'N'){
-      ys1 = mData.N;
-      titleSuffix = ' — axial force N(x)';
-      yLabel = 'N';
-    } else if (mode === 'V'){
-      ys1 = mData.V;
-      titleSuffix = ' — shear force V(x)';
-      yLabel = 'V';
-    } else if (mode === 'M'){
-      ys1 = mData.M;
-      titleSuffix = ' — bending moment M(x)';
-      yLabel = 'M';
-    }
-
-    // Compute y-range
-    let ymin = +Infinity, ymax = -Infinity;
-    function accumulate(arr){
-      if (!arr) return;
-      for (let i = 0; i < arr.length; i++){
-        const v = arr[i];
-        if (!isFinite(v)) continue;
-        if (v < ymin) ymin = v;
-        if (v > ymax) ymax = v;
-      }
-    }
-    accumulate(ys1);
-    accumulate(ys2);
-
-    if (!isFinite(ymin) || !isFinite(ymax)){
-      ymin = -1; ymax = 1;
-    }
-    if (ymin === ymax){
-      const d = Math.max(1e-6, Math.abs(ymax));
-      ymin -= d;
-      ymax += d;
-    }
-
-    const pad = 0.08 * (ymax - ymin);
-    ymin -= pad;
-    ymax += pad;
-
-    // Formatting
-    const padLeft   = 50;
-    const padRight  = 10;
-    const padTop    = 26;
-    const padBottom = 30;
-
-    const W = stressCanvas.width  - padLeft - padRight;
-    const H = stressCanvas.height - padTop  - padBottom;
-
-    function sx(x){
-      return padLeft + (x / L) * W;
-    }
-    function sy(y){
-      return padTop + (1 - (y - ymin) / (ymax - ymin)) * H;
-    }
-
-    const fmtY = v => {
-      if (v === 0) return '0';
-      const a = Math.abs(v);
-      if (a >= 1e4 || a < 1e-2) return v.toExponential(2);
-      return v.toFixed(3);
+    const payload = {
+      units: p.u,
+      inputs: {
+        G: p.G, alpha: p.alpha, Tm: p.Tm, Tr: p.Tr, ends: p.ends, geom: p.geom,
+        OD: p.OD, ID: p.ID, H: p.H, OD0: p.OD0, OD1: p.OD1, ID0: p.ID0, ID1: p.ID1
+      },
+      original,   // [{z, ri, ro}]
+      shrunken,   // [{z_after, ri_after, ro_after}]
+      notes: "Axisymmetric r–z; radii/lengths in selected units; rows align by FE z-row index."
     };
 
-    spx.save();
-    spx.font = '13px system-ui';
-    spx.fillStyle = '#111';
-    spx.textAlign = 'center';
-    spx.fillText(`Member ${memId}${titleSuffix}`, padLeft + W/2, 16);
-
-    // Axes
-    spx.strokeStyle = '#111';
-    spx.lineWidth = 1.2;
-    spx.beginPath();
-    spx.moveTo(padLeft, padTop);
-    spx.lineTo(padLeft, padTop + H);
-    spx.lineTo(padLeft + W, padTop + H);
-    spx.stroke();
-
-    // y labels (top & bottom)
-    spx.textAlign = 'left';
-    spx.fillText(fmtY(ymax), 4, padTop + 10);
-    spx.fillText(fmtY(ymin), 4, padTop + H);
-    spx.save();
-    spx.translate(12, padTop + H/2);
-    spx.rotate(-Math.PI/2);
-    spx.textAlign = 'center';
-    spx.fillText(yLabel, 0, 0);
-    spx.restore();
-
-    // x label
-    spx.textAlign = 'center';
-    spx.fillText('x along member', padLeft + W/2, padTop + H + 22);
-
-    // Optional zero line
-    if (ymin < 0 && ymax > 0){
-      const y0 = sy(0);
-      spx.strokeStyle = 'rgba(148,163,184,0.7)';
-      spx.setLineDash([4,4]);
-      spx.beginPath();
-      spx.moveTo(padLeft, y0);
-      spx.lineTo(padLeft + W, y0);
-      spx.stroke();
-      spx.setLineDash([]);
+    const rows = ['z_before,ri_before,ro_before,z_after,ri_after,ro_after'];
+    const n = Math.min(original.length, shrunken.length);
+    for(let j=0;j<n;j++){
+      const o = original[j], a = shrunken[j];
+      rows.push([o.z, o.ri, o.ro, a.z_after, a.ri_after, a.ro_after].map(v => (Number.isFinite(v)?v:'')).join(','));
     }
+    const csv = rows.join('\n');
 
-    // Plot curves
-    function plotLine(arr, color){
-      if (!arr) return;
-      spx.strokeStyle = color;
-      spx.lineWidth = 1.6;
-      spx.beginPath();
-      for (let i = 0; i < arr.length; i++){
-        const X = sx(xs[i]);
-        const Y = sy(arr[i]);
-        if (i === 0) spx.moveTo(X, Y); else spx.lineTo(X, Y);
-      }
-      spx.stroke();
-    }
-
-    if (mode === 'sigma'){
-      plotLine(ys1, '#ef4444'); // σ_top
-      plotLine(ys2, '#1d4ed8'); // σ_bottom
-
-      // legend
-      spx.textAlign = 'left';
-      spx.fillStyle = '#000';
-      spx.fillRect(padLeft + W - 120, padTop + 4, 8, 2);
-      spx.fillText('σ_top', padLeft + W - 106, padTop + 8);
-      spx.fillRect(padLeft + W - 120, padTop + 18, 8, 2);
-      spx.fillText('σ_bottom', padLeft + W - 106, padTop + 22);
-    } else {
-      // single curve for N, V or M
-      plotLine(ys1, '#111827');
-    }
-
-    spx.restore();
+    return { json: JSON.stringify(payload, null, 2), csv };
   }
 
-// ===== Member stress summary (uses lastSolution.stress) =====
-  function summarizeMemberStresses(){
-    if (!lastSolution || !lastSolution.stressSummary) return;
-
-    // Start with whatever showResults wrote
-    let html = resultList.innerHTML;
-
-    const lines = [];
-    lines.push(
-      '<div style="margin-top:6px;border-top:1px solid #e5e7eb;padding-top:4px;font-weight:600;">' +
-      'Member Stress Summary' +
-      '</div>'
-    );
-
-    for (const m of members){
-      const s = lastSolution.stressSummary[m.id];
-      if (!s) continue;
-      lines.push(
-        `<div>Member ${m.id}: ` +
-        `σmin=${round6(s.sigmaMin)}, σmax=${round6(s.sigmaMax)}, ` +
-        `|N|max=${round6(s.NabsMax)}, |V|max=${round6(s.VabsMax)}, |M|max=${round6(s.MabsMax)}` +
-        `</div>`
-      );
-    }
-
-    html += lines.join('');
-    resultList.innerHTML = html;
+  function exportJSON(){
+    try{
+      const now = new Date();
+      const { json } = buildExportPayload(lastFE);
+      
+      // Parse and add timestamp to the JSON object
+      const payload = JSON.parse(json);
+      payload.timestamp = {
+        date: now.toLocaleDateString(),
+        time: now.toLocaleTimeString(),
+        iso: now.toISOString()
+      };
+      
+      const jsonWithTimestamp = JSON.stringify(payload, null, 2);
+      const ts = now.toISOString().replace(/[:.]/g,'-');
+      downloadBlob(`rubber_shrinkage_${ts}.json`, jsonWithTimestamp, 'application/json');
+    }catch(err){ alert(err.message || String(err)); }
   }
 
-  // ===== Lists & Results =====
-  function refreshLists(){
-    // Nodes
-    nodeList.innerHTML = nodes.map(n =>
-      `<div class="node-row">
-         <span class="badge">Node ${n.id}</span>
-         <input type="number" class="nedit" data-id="${n.id}" data-field="x" step="any" value="${n.x}">
-         <input type="number" class="nedit" data-id="${n.id}" data-field="y" step="any" value="${n.y}">
-         <button class="ghost" data-del-node="${n.id}" title="Delete node">✖</button>
-       </div>`
-    ).join('') || '<div class="hint">No nodes yet.</div>';
 
-    // Members
-    memberList.innerHTML = members.map(m =>
-      `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-         <span>Member ${m.id} [${m.label||''}]: n${m.n1}–n${m.n2} | E=${fmt(m.E)} A=${fmt(m.A)} I=${fmt(m.I)} S=${fmt(m.S)} wd=${fmt(m.wd)}</span>
-         <button class="ghost" data-del-member="${m.id}" title="Delete member">✖</button>
-       </div>`
-    ).join('') || '<div class="hint">No members yet.</div>';
-  }
-  const fmt = v => (v===0 || isNaN(v)) ? '0' : String(v);
 
-  // Node panel: delete
-  nodeList.addEventListener('click', (e)=>{
-    const btn = e.target.closest('[data-del-node]');
-    if (!btn) return;
-    const id = parseInt(btn.getAttribute('data-del-node'),10);
-    deleteNodeWithMembers(id);
-  });
-
-  // Node panel: live-edit X/Y
-  nodeList.addEventListener('input', (e)=>{
-    const inp = e.target.closest('.nedit');
-    if (!inp) return;
-    const id = parseInt(inp.dataset.id,10);
-    const field = inp.dataset.field;
-    const n = nodeById(id); if (!n) return;
-    const val = parseFloat(inp.value);
-    if (!isFinite(val)) return;
-    n[field] = val;
-    lastSolution = null;
-    draw();
-  });
-  nodeList.addEventListener('change', (e)=>{
-    const inp = e.target.closest('.nedit');
-    if (!inp) return;
-    refreshLists();
-    autoFitIfNeeded();
-    draw();
-  });
-
-  // Member panel: delete
-  memberList.addEventListener('click', (e)=>{
-    const btn = e.target.closest('[data-del-member]');
-    if (!btn) return;
-    const id = parseInt(btn.getAttribute('data-del-member'),10);
-    deleteMember(id);
-  });
-
-function showResults(primaryRes){
-  resultList.innerHTML = primaryRes.map(r =>
-    `<div>Node ${r.id}: ux=${r.ux}, uy=${r.uy}, θ=${r.rz}</div>`
-  ).join('') || '<div class="hint">Solve to see displacements.</div>';
-}
-
-function resizeStressCanvas(){
-  stressCanvas.style.width = '100%';
-  const w = Math.max(200, stressCanvas.parentElement.clientWidth);
-  const h = 260;
-  stressCanvas.width = w;
-  stressCanvas.height = h;
-}
-
-function toggleStressPanel(show){
-  stressBlock.style.display = show ? 'block' : 'none';
-  document.getElementById('stressPanelHint').style.display = show ? 'block' : 'none';
-  if (show) resizeStressCanvas();
-}
-
- 
-
-  // ===== Math helpers =====
-  function addToGlobalVar(K, ke, map){
-    for (let r=0;r<map.length;r++){
-      const R=map[r];
-      for (let c=0;c<map.length;c++){
-        const C=map[c];
-        K[R][C] += ke[r][c];
-      }
-    }
-  }
-  function matPick(A, rows, cols){
-    const M=rows.length,N=cols.length,out=new Array(M);
-    for(let i=0;i<M;i++){
-      out[i]=new Array(N);
-      for (let j=0;j<N;j++) out[i][j]=A[rows[i]][cols[j]];
-    }
-    return out;
-  }
-  function vecPick(v, rows){ return rows.map(i=>v[i]); }
-  function getAnalysisIdForPrimary(pid, anodes){
-    for (const [aid,obj] of Object.entries(anodes)){
-      if (obj.primary===pid) return parseInt(aid,10);
-    }
-    return null;
-  }
-  function zeros(n,m){
-    if (m===undefined){
-      const v=new Array(n); for (let i=0;i<n;i++) v[i]=0; return v;
-    }
-    const A=new Array(n);
-    for (let i=0;i<n;i++){
-      A[i]=new Array(m);
-      for (let j=0;j<m;j++) A[i][j]=0;
-    }
-    return A;
-  }
-  const round6 = x => Math.abs(x)<1e-12 ? 0 : Math.round(x*1e6)/1e6;
-
-const round3 = x => Math.abs(x) < 1e-12 ? 0 : Math.round(x * 1e3) / 1e3;
-
-  function modelBounds(){
-    if (nodes.length===0) return {x0:0,y0:0,w:1,h:1};
-    let minx=+Infinity, miny=+Infinity, maxx=-Infinity, maxy=-Infinity;
-    for (const n of nodes){
-      minx=Math.min(minx,n.x); maxx=Math.max(maxx,n.x);
-      miny=Math.min(miny,n.y); maxy=Math.max(maxy,n.y);
-    }
-    return {x0:minx, y0:miny, w:(maxx-minx)||1, h:(maxy-miny)||1};
+  function exportCSV(){
+    try{
+      const now = new Date();
+      const { csv } = buildExportPayload(lastFE);
+      
+      // Add timestamp header to CSV
+      const csvWithTimestamp = `Export Date,${now.toLocaleDateString()}\n` +
+                               `Export Time,${now.toLocaleTimeString()}\n\n` +
+                               csv;
+      
+      const ts = now.toISOString().replace(/[:.]/g,'-');
+      downloadBlob(`rubber_shrinkage_${ts}.csv`, csvWithTimestamp, 'text/csv');
+    }catch(err){ alert(err.message || String(err)); }
   }
 
-  function drawArrow(g, x1,y1, x2,y2){
-    g.beginPath(); g.moveTo(x1,y1); g.lineTo(x2,y2); g.stroke();
-    const ang=Math.atan2(y2-y1, x2-x1), ah=7;
-    g.beginPath();
-    g.moveTo(x2,y2);
-    g.lineTo(x2 - ah*Math.cos(ang - Math.PI/6), y2 - ah*Math.sin(ang - Math.PI/6));
-    g.lineTo(x2 - ah*Math.cos(ang + Math.PI/6), y2 - ah*Math.sin(ang + Math.PI/6));
-    g.closePath(); g.fill();
-  }
-  function drawSpringX(g, x,y, len=20, amp=5){
-    const n=5, dx=len/(n*2);
-    g.beginPath(); g.moveTo(x,y);
-    for (let i=0;i<n;i++){
-      g.lineTo(x+dx*(2*i+1), y-amp);
-      g.lineTo(x+dx*(2*i+2), y+amp);
-    }
-    g.stroke();
-  }
-  function drawSpringY(g, x,y, len=20, amp=5){
-    const n=5, dy=len/(n*2);
-    g.beginPath(); g.moveTo(x,y);
-    for (let i=0;i<n;i++){
-      g.lineTo(x-amp, y+dy*(2*i+1));
-      g.lineTo(x+amp, y+dy*(2*i+2));
-    }
-    g.stroke();
-  }
-  function highlightNode(g, n){
-    if (!n) return;
-    const p = worldToScreen(n.x,n.y);
-    g.save();
-    g.lineWidth=3; g.strokeStyle='#10b981';
-    g.beginPath(); g.arc(p.x,p.y,10,0,Math.PI*2); g.stroke();
-    g.restore();
+
+
+
+  if(btnJson) btnJson.addEventListener('click', exportJSON);
+  if(btnCsv)  btnCsv.addEventListener('click', exportCSV);
+
+  function importJSON(){
+    if(!jsonFileInput) return;
+    jsonFileInput.click();
   }
 
-  function drawCoordTag(g, x, y, text){
-    const padX = 6, padY = 4;
-    g.save();
-    g.font='11px system-ui';
-    const w = g.measureText(text).width + 2*padX;
-    const h = 18;
-    const xx = Math.min(Math.max(4, x), g.canvas.width - w - 4);
-    const yy = Math.min(Math.max(4, y - h), g.canvas.height - h - 4);
-    g.fillStyle='rgba(17,24,39,0.82)';
-    g.strokeStyle='rgba(255,255,255,0.15)';
-    g.lineWidth=1;
-    g.beginPath(); g.rect(xx, yy, w, h); g.fill(); g.stroke();
-    g.fillStyle='#fff';
-    g.fillText(text, xx + padX, yy + 12);
-    g.restore();
+  if(jsonFileInput){
+    jsonFileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if(!file) return;
+      
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        try{
+          const data = JSON.parse(evt.target.result);
+          
+          // Validate structure
+          if(!data.inputs){
+            throw new Error('Invalid JSON: missing inputs section');
+          }
+          
+          const inp = data.inputs;
+          
+          // Set units first
+          if(inp.u && unitsEl){
+            unitsEl.value = inp.u;
+          }
+          
+          // Set basic material properties
+          if(inp.G !== undefined && GEl) GEl.value = inp.G;
+          if(inp.alpha !== undefined && aEl) aEl.value = inp.alpha;
+          if(inp.Tm !== undefined && TmEl) TmEl.value = inp.Tm;
+          if(inp.Tr !== undefined && TrEl) TrEl.value = inp.Tr;
+          
+          // Set geometry type
+          if(inp.geom && geomEl){
+            geomEl.value = inp.geom;
+            updateGeomUI();
+          }
+          
+          // Set dimensions based on geometry type
+          if(inp.geom === 'cyl'){
+            if(inp.OD !== undefined && ODEl) ODEl.value = inp.OD;
+            if(inp.ID !== undefined && IDEl) IDEl.value = inp.ID;
+            if(inp.H !== undefined && HEl) HEl.value = inp.H;
+          } else if(inp.geom === 'cone' || inp.geom === 'curved'){
+            if(inp.H !== undefined && HEl) HEl.value = inp.H;
+            if(inp.OD0 !== undefined && OD0El) OD0El.value = inp.OD0;
+            if(inp.OD1 !== undefined && OD1El) OD1El.value = inp.OD1;
+            if(inp.ID0 !== undefined && ID0El) ID0El.value = inp.ID0;
+            if(inp.ID1 !== undefined && ID1El) ID1El.value = inp.ID1;
+          }
+          
+          // Set end condition
+          if(inp.ends && endsEl){
+            endsEl.value = inp.ends;
+          }
+          
+          // Clear last solution
+          lastFE = null;
+          setSolveState('ready');
+          
+          // Update preview
+          drawPreview();
+          
+          // Show success message
+          const timestamp = data.timestamp ? 
+            ` (from ${data.timestamp.date} ${data.timestamp.time})` : '';
+          alert(`Model imported successfully${timestamp}\n\nClick "Shrinkage" to solve.`);
+          
+        }catch(err){
+          console.error(err);
+          alert('Failed to import JSON: ' + (err.message || String(err)));
+        }
+        
+        // Clear the file input so the same file can be re-imported if needed
+        jsonFileInput.value = '';
+      };
+      
+      reader.readAsText(file);
+    });
   }
 
-  // ===== Kickoff =====
-  setActiveGroup(modeBtns,'btnDraw');
-  setActiveGroup(viewBtns,'viewGeom');
-  refreshLists();
-  draw();
+  if(btnImportJson) btnImportJson.addEventListener('click', importJSON);
+
+
+
+
+
+
+  // ---- boot
+  scrubEscapedLabelArtifacts();
+  updateDefScaleLabel();
+  setSolveState('ready');
+  fitCanvases();
+  drawPreview();
+  redrawResults();
 })();
 </script>
 </body>
 </html>
+
 
 
