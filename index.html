@@ -101,6 +101,7 @@ button.secondary{background:#fff;color:#0b73c8}
           </div>
         </div>
       </div>
+
 <!-- Export/Import panel -->
       <div class="card panel" id="exportPanel" aria-labelledby="exportTitle">
         <h2 id="exportTitle" style="margin:0 0 8px">Data Management</h2>
@@ -108,23 +109,12 @@ button.secondary{background:#fff;color:#0b73c8}
           <button id="exportJsonBtn" type="button" class="secondary">Export JSON</button>
           <button id="importJsonBtn" type="button" class="secondary">Import JSON</button>
           <button id="exportCsvBtn" type="button" class="secondary">Export CSV</button>
-          <button id="exportImagesBtn" type="button" class="secondary">Export Images</button>
-        <button id="exportPackageBtn" type="button" class="secondary">Export Package (ZIP)</button>
-
-</div>
+          <button id="exportPackageBtn" type="button" class="secondary">Export Package (ZIP)</button>
+        </div>
         <input type="file" id="jsonFileInput" accept=".json" style="display:none;" />
       </div>
 
-
     </div>
-
-
-
-
-
-
-
-
 
 
 
@@ -701,12 +691,6 @@ function exportJSON(){
     results: {
       staticStiffness: $('staticK').value,
       dynamicStiffness: $('dynK').value
-    },
-    images: {
-      geometry: $('rz').toDataURL('image/png'),
-      deformedShape: $('rzPost').toDataURL('image/png'),
-      deflection: $('rzDeflect').toDataURL('image/png'),
-      cure: $('cureCanvas').toDataURL('image/png')
     }
   };
   
@@ -718,6 +702,7 @@ function exportJSON(){
   a.click();
   URL.revokeObjectURL(url);
 }
+
 
 function importJSON(file){
   const reader = new FileReader();
@@ -821,27 +806,6 @@ function exportCSV(){
   URL.revokeObjectURL(url);
 }
 
-function exportImages(){
-  const timestamp = getTimestamp();
-  const canvases = [
-    {id: 'rz', name: 'geometry'},
-    {id: 'rzPost', name: 'deformed-shape'},
-    {id: 'rzDeflect', name: 'deflection'},
-    {id: 'cureCanvas', name: 'cure'}
-  ];
-  
-  canvases.forEach(({id, name}) => {
-    const canvas = $(id);
-    canvas.toBlob((blob) => {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `rubber-tubeform-${name}-${timestamp}.png`;
-      a.click();
-      URL.revokeObjectURL(url);
-    });
-  });
-}
 
 async function exportPackage(){
   const timestamp = getTimestamp();
@@ -927,13 +891,13 @@ $('jsonFileInput').addEventListener('change', (e) => {
   }
 });
 $('exportCsvBtn').addEventListener('click', exportCSV);
-$('exportImagesBtn').addEventListener('click', exportImages);
 $('exportPackageBtn').addEventListener('click', exportPackage);
 </script>
 
 
 </body>
 </html>
+
 
 
 
