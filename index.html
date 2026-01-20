@@ -32,9 +32,8 @@ button.secondary{background:#fff;color:#0b73c8}
   opacity:0;transition:opacity .2s;z-index:1; /* ensure it sits above canvas */
 }
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 </head>
 <body>
   <div class="wrap">
@@ -376,7 +375,7 @@ function solveCombined(){
 
   const nN = nodes.length, nD = 2*nN;
   const rI = p.ID * 0.5, rO = p.OD * 0.5;
-  const delZ = -0.20 * 0.5 * (p.tID + p.tOD);   // 20% downward at ID
+  const delZ = -0.20 * 0.5 * (p.tID + p.tOD);
 
   const Kbc = K.map(row => Float64Array.from(row));
   const Fbc = Float64Array.from(F);
@@ -427,7 +426,6 @@ function shearByElement(nodes,conn,u){
   return out;
 }
 
-// bounds incl. deformation
 function computeBounds(nodes, conn, u, scale){
   let rMin=Infinity,rMax=-Infinity,zMin=Infinity,zMax=-Infinity;
   for(const [r,z] of nodes){ rMin=Math.min(rMin,r); rMax=Math.max(rMax,r); zMin=Math.min(zMin,z); zMax=Math.max(zMax,z); }
@@ -499,11 +497,9 @@ function drawDeflection(res){
   const forceUnit = read().units==='imperial' ? 'lbf' : 'N';
   $('deflectStats').textContent=`Δz(ID)=${delZ.toFixed(3)}, Fz(ID)=${Fz.toFixed(3)} ${forceUnit}`;
 
-  // push value into Static / Dynamic stiffness panel
-  setStaticK(Fz / delZ); // as requested: Fz/Δz
+  setStaticK(Fz / delZ);
 }
 
-// ---------- Thermal + Cure ----------
 const Rgas=8.314; const toKelvin=(T,u)=> u==='imperial'? (T-32)*5/9+273.15 : T+273.15; const fromKelvin=(TK,u)=> u==='imperial'? (TK-273.15)*9/5+32 : TK-273.15; const colAlpha=(a)=>{ const r=Math.round(255*Math.max(0,Math.min(1,a))); return `rgb(${r},0,${255-r})`; };
 
 function assembleThermal(NR=24,NZ=16){
@@ -602,7 +598,6 @@ function drawCure(state){
 
 function drawCureAt(idx){ idx=Math.max(0,Math.min(idx,cureTimeline.length-1)); $('timeVal').textContent=(cureTimeline[idx].t).toFixed(1); drawCure(cureTimeline[idx]); }
 
-// ---------- Wire UI ----------
 $('solveCureBtn').addEventListener('click', async ()=>{
   const ov=$('cureOverlay');
   try{
@@ -658,21 +653,16 @@ $('deflectBtn').addEventListener('click', async ()=>{
 
 ['units','G','cte','od','id','tOD','tID','offset','Tmold','Trt','kTop','kBot','kSTop','kSBot'].forEach(id=>{ const el=$(id); if(el) el.addEventListener('input', draw); });
 
-// tanδ live update
 $('tanDel').addEventListener('input', updateDynamicStiffness);
 
-// initial
 window.addEventListener('load', ()=>{ draw(); updateDynamicStiffness(); });
 document.addEventListener('DOMContentLoaded', draw);
 
-
-
-// ---------- Export/Import JSON ----------
+// ---------- Export/Import Functions ----------
 function getTimestamp(){
   const now = new Date();
   return now.toISOString().replace(/[:.]/g, '-').slice(0, 19);
 }
-
 
 function exportJSON(){
   const p = read();
@@ -720,40 +710,6 @@ function exportJSON(){
     }
   };
   
-function exportImages(){
-  const timestamp = getTimestamp();
-  const canvases = [
-    {id: 'rz', name: 'geometry'},
-    {id: 'rzPost', name: 'deformed-shape'},
-    {id: 'rzDeflect', name: 'deflection'},
-    {id: 'cureCanvas', name: 'cure'}
-  ];
-  
-  canvases.forEach(({id, name}) => {
-    const canvas = $(id);
-    canvas.toBlob((blob) => {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `rubber-tubeform-${name}-${timestamp}.png`;
-      a.click();
-      URL.revokeObjectURL(url);
-    });
-  });
-}
-
-
-  const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `rubber-tubeform-${getTimestamp()}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-
-  
   const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -770,7 +726,6 @@ function importJSON(file){
       const data = JSON.parse(e.target.result);
       const inp = data.inputs;
       
-      // Populate all input fields
       $('units').value = inp.units || 'imperial';
       $('G').value = inp.G;
       $('cte').value = inp.cte;
@@ -799,7 +754,6 @@ function importJSON(file){
       if(inp.bcMode) $('bcMode').value = inp.bcMode;
       if(inp.dalphaMax) $('dalphaMax').value = inp.dalphaMax;
       
-      // Redraw and update
       draw();
       updateDynamicStiffness();
       
@@ -867,11 +821,32 @@ function exportCSV(){
   URL.revokeObjectURL(url);
 }
 
+function exportImages(){
+  const timestamp = getTimestamp();
+  const canvases = [
+    {id: 'rz', name: 'geometry'},
+    {id: 'rzPost', name: 'deformed-shape'},
+    {id: 'rzDeflect', name: 'deflection'},
+    {id: 'cureCanvas', name: 'cure'}
+  ];
+  
+  canvases.forEach(({id, name}) => {
+    const canvas = $(id);
+    canvas.toBlob((blob) => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `rubber-tubeform-${name}-${timestamp}.png`;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+  });
+}
+
 async function exportPackage(){
   const timestamp = getTimestamp();
   const zip = new JSZip();
   
-  // Add CSV
   const p = read();
   const staticK = $('staticK').value;
   const dynK = $('dynK').value;
@@ -920,7 +895,6 @@ async function exportPackage(){
   
   zip.file('results.csv', csvContent);
   
-  // Add images
   const canvases = [
     {id: 'rz', name: 'geometry.png'},
     {id: 'rzPost', name: 'deformed-shape.png'},
@@ -935,7 +909,6 @@ async function exportPackage(){
     zip.file(name, base64Data, {base64: true});
   }
   
-  // Generate and download
   const blob = await zip.generateAsync({type: 'blob'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -945,25 +918,23 @@ async function exportPackage(){
   URL.revokeObjectURL(url);
 }
 
-
-// Wire up the buttons
 $('exportJsonBtn').addEventListener('click', exportJSON);
 $('importJsonBtn').addEventListener('click', () => $('jsonFileInput').click());
 $('jsonFileInput').addEventListener('change', (e) => {
   if(e.target.files.length > 0){
     importJSON(e.target.files[0]);
-    e.target.value = ''; // Reset file input
+    e.target.value = '';
   }
 });
 $('exportCsvBtn').addEventListener('click', exportCSV);
-
 $('exportImagesBtn').addEventListener('click', exportImages);
-
 $('exportPackageBtn').addEventListener('click', exportPackage);
-
 </script>
+
+
 </body>
 </html>
+
 
 
 
