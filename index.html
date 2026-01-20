@@ -31,6 +31,9 @@ button.secondary{background:#fff;color:#0b73c8}
   font-size:12px;padding:2px 8px;border-radius:999px;pointer-events:none;
   opacity:0;transition:opacity .2s;z-index:1; /* ensure it sits above canvas */
 }
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
 </style>
 </head>
 <body>
@@ -99,17 +102,21 @@ button.secondary{background:#fff;color:#0b73c8}
           </div>
         </div>
       </div>
-
-      <!-- Export/Import panel -->
+<!-- Export/Import panel -->
       <div class="card panel" id="exportPanel" aria-labelledby="exportTitle">
         <h2 id="exportTitle" style="margin:0 0 8px">Data Management</h2>
         <div class="btns">
           <button id="exportJsonBtn" type="button" class="secondary">Export JSON</button>
           <button id="importJsonBtn" type="button" class="secondary">Import JSON</button>
           <button id="exportCsvBtn" type="button" class="secondary">Export CSV</button>
-        </div>
+          <button id="exportImagesBtn" type="button" class="secondary">Export Images</button>
+        <button id="exportPackageBtn" type="button" class="secondary">Export Package (ZIP)</button>
+
+</div>
         <input type="file" id="jsonFileInput" accept=".json" style="display:none;" />
       </div>
+
+
     </div>
 
 
@@ -666,6 +673,7 @@ function getTimestamp(){
   return now.toISOString().replace(/[:.]/g, '-').slice(0, 19);
 }
 
+
 function exportJSON(){
   const p = read();
   const data = {
@@ -680,7 +688,7 @@ function exportJSON(){
       kth: p.kth,
       Hr: p.Hr,
       A1: p.A1,
-      E1: p.E1 / 1000, // convert back to kJ/mol
+      E1: p.E1 / 1000,
       A2: p.A2,
       E2: p.E2 / 1000,
       pExp: p.pExp,
@@ -699,8 +707,52 @@ function exportJSON(){
       tanDel: +$('tanDel').value,
       bcMode: p.bcMode,
       dalphaMax: p.dalphaMax
+    },
+    results: {
+      staticStiffness: $('staticK').value,
+      dynamicStiffness: $('dynK').value
+    },
+    images: {
+      geometry: $('rz').toDataURL('image/png'),
+      deformedShape: $('rzPost').toDataURL('image/png'),
+      deflection: $('rzDeflect').toDataURL('image/png'),
+      cure: $('cureCanvas').toDataURL('image/png')
     }
   };
+  
+function exportImages(){
+  const timestamp = getTimestamp();
+  const canvases = [
+    {id: 'rz', name: 'geometry'},
+    {id: 'rzPost', name: 'deformed-shape'},
+    {id: 'rzDeflect', name: 'deflection'},
+    {id: 'cureCanvas', name: 'cure'}
+  ];
+  
+  canvases.forEach(({id, name}) => {
+    const canvas = $(id);
+    canvas.toBlob((blob) => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `rubber-tubeform-${name}-${timestamp}.png`;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+  });
+}
+
+
+  const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `rubber-tubeform-${getTimestamp()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+
   
   const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
   const url = URL.createObjectURL(blob);
@@ -815,6 +867,85 @@ function exportCSV(){
   URL.revokeObjectURL(url);
 }
 
+async function exportPackage(){
+  const timestamp = getTimestamp();
+  const zip = new JSZip();
+  
+  // Add CSV
+  const p = read();
+  const staticK = $('staticK').value;
+  const dynK = $('dynK').value;
+  const tanDel = $('tanDel').value;
+  
+  const rows = [
+    ['Rubber Tubeform Molding - Results Summary'],
+    ['Timestamp', new Date().toISOString()],
+    [''],
+    ['Input Parameters'],
+    ['Units', p.units],
+    ['Shear Modulus (G)', p.G],
+    ['CTE (1/°unit)', p.cte],
+    ['Mold Cavity OD', p.OD],
+    ['Mold Cavity ID', p.ID],
+    ['t at OD', p.tOD],
+    ['t at ID', p.tID],
+    ['ID/OD offset', p.offset],
+    ['Molding T', p.Tmold],
+    ['RT', p.Trt],
+    ['k (top)', p.kTop],
+    ['k (bottom)', p.kBot],
+    ['k_s (top S)', p.kSTop],
+    ['k_s (bottom S)', p.kSBot],
+    ['Weight Density ρ (kg/m³)', p.rho],
+    ['Heat Capacity Cₚ (J/kg·K)', p.cp],
+    ['Thermal Conductivity k (W/m·K)', p.kth],
+    ['Heat of Reaction Hᵣ (J/kg)', p.Hr],
+    ['A₁ (1/s)', p.A1],
+    ['E₁ (kJ/mol)', p.E1 / 1000],
+    ['p (–)', p.pExp],
+    ['A₂ (1/s)', p.A2],
+    ['E₂ (kJ/mol)', p.E2 / 1000],
+    ['q (–)', p.qExp],
+    [''],
+    ['Stiffness Results'],
+    ['Static Stiffness (Fz/Δz)', staticK],
+    ['tan δ', tanDel],
+    ['Dynamic Stiffness', dynK]
+  ];
+  
+  const csvContent = rows.map(row => row.map(cell => {
+    const str = String(cell);
+    return str.includes(',') ? `"${str}"` : str;
+  }).join(',')).join('\n');
+  
+  zip.file('results.csv', csvContent);
+  
+  // Add images
+  const canvases = [
+    {id: 'rz', name: 'geometry.png'},
+    {id: 'rzPost', name: 'deformed-shape.png'},
+    {id: 'rzDeflect', name: 'deflection.png'},
+    {id: 'cureCanvas', name: 'cure.png'}
+  ];
+  
+  for(const {id, name} of canvases){
+    const canvas = $(id);
+    const dataUrl = canvas.toDataURL('image/png');
+    const base64Data = dataUrl.split(',')[1];
+    zip.file(name, base64Data, {base64: true});
+  }
+  
+  // Generate and download
+  const blob = await zip.generateAsync({type: 'blob'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `rubber-tubeform-package-${timestamp}.zip`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+
 // Wire up the buttons
 $('exportJsonBtn').addEventListener('click', exportJSON);
 $('importJsonBtn').addEventListener('click', () => $('jsonFileInput').click());
@@ -826,9 +957,14 @@ $('jsonFileInput').addEventListener('change', (e) => {
 });
 $('exportCsvBtn').addEventListener('click', exportCSV);
 
+$('exportImagesBtn').addEventListener('click', exportImages);
+
+$('exportPackageBtn').addEventListener('click', exportPackage);
+
 </script>
 </body>
 </html>
+
 
 
 
