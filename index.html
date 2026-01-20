@@ -78,8 +78,10 @@ button.secondary{background:#fff;color:#0b73c8}
           </div>
         </div>
       </div>
-    
-      <!-- Stiffness panel -->
+
+
+   
+<!-- Stiffness panel -->
       <div class="card panel" id="stiffnessPanel" aria-labelledby="stiffTitle">
         <h2 id="stiffTitle" style="margin:0 0 8px">Stiffness Summary</h2>
         <div class="row">
@@ -97,9 +99,8 @@ button.secondary{background:#fff;color:#0b73c8}
           </div>
         </div>
       </div>
-    </div>
 
-<!-- Export/Import panel -->
+      <!-- Export/Import panel -->
       <div class="card panel" id="exportPanel" aria-labelledby="exportTitle">
         <h2 id="exportTitle" style="margin:0 0 8px">Data Management</h2>
         <div class="btns">
@@ -109,9 +110,19 @@ button.secondary{background:#fff;color:#0b73c8}
         </div>
         <input type="file" id="jsonFileInput" accept=".json" style="display:none;" />
       </div>
+    </div>
 
-    
-    <!-- Right column (plots) -->
+
+
+
+
+
+
+
+
+
+
+ <!-- Right column (plots) -->
     <div class="col">
       <div class="right" style="order:1">
         <h2 style="margin:0 0 8px">r–z Geometry Preview</h2>
@@ -647,6 +658,8 @@ $('tanDel').addEventListener('input', updateDynamicStiffness);
 window.addEventListener('load', ()=>{ draw(); updateDynamicStiffness(); });
 document.addEventListener('DOMContentLoaded', draw);
 
+
+
 // ---------- Export/Import JSON ----------
 function getTimestamp(){
   const now = new Date();
@@ -812,10 +825,11 @@ $('jsonFileInput').addEventListener('change', (e) => {
   }
 });
 $('exportCsvBtn').addEventListener('click', exportCSV);
-  
+
 </script>
 </body>
 </html>
+
 
 
 
