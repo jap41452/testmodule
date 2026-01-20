@@ -1,4 +1,822 @@
-stiffnessPanel
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Rubber Tubeform Molding — Panel V1</title>
+<style>
+:root{--w:250px;--gap:10px;--pad:14px;--h:34px;--r:12px;--ink:#111;--muted:#666;--bd:#d9d9d9;--bg:#f7f7f9;--card:#fff}
+*{box-sizing:border-box;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+body{margin:0;background:var(--bg);color:var(--ink);display:flex;justify-content:center;padding:16px}
+.card{width:var(--w);background:var(--card);border:1px solid var(--bd);border-radius:var(--r);padding:var(--pad);box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.right{width:600px;background:var(--card);border:1px solid var(--bd);border-radius:var(--r);padding:var(--pad);box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.panel{margin-top:16px}
+.row{display:flex;flex-direction:column;gap:var(--gap)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:var(--gap)}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:var(--gap)}
+label{font-size:12px;color:var(--muted);margin-bottom:4px;display:block}
+select,input[type=number],input[type=text]{height:var(--h);width:100%;border:1px solid var(--bd);border-radius:10px;padding:0 10px;font-size:14px;background:#fff}
+input[type=range]{width:100%}
+.hint{font-size:11px;color:var(--muted);text-align:center;margin-top:8px}
+.wrap{display:flex;gap:16px;align-items:flex-start}
+canvas{display:block;width:100%;height:400px;border-radius:10px;border:1px solid var(--bd);background:#fff}
+.meta{font-size:12px;color:var(--muted);display:flex;justify-content:space-between;margin-top:8px}
+.btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+button{height:34px;border:1px solid var(--bd);background:#0b73c8;color:#fff;border-radius:10px;padding:0 12px;cursor:pointer}
+button.secondary{background:#fff;color:#0b73c8}
+.canvasWrap{position:relative}
+.readonly{background:#f3f3f3 !important;color:#777 !important}
+#postOverlay,#cureOverlay,#deflectOverlay{
+  position:absolute;top:8px;right:8px;background:rgba(0,0,0,.6);color:#fff;
+  font-size:12px;padding:2px 8px;border-radius:999px;pointer-events:none;
+  opacity:0;transition:opacity .2s;z-index:1; /* ensure it sits above canvas */
+}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <!-- Input column -->
+    <div>
+      <div class="card" role="form" aria-labelledby="title">
+        <h2 id="title" style="margin:0 0 8px">Rubber Tubeform Molding</h2>
+        <div class="row">
+          <div class="field"><label for="units">Units</label><select id="units"><option value="imperial" selected>lbs, in, °F</option><option value="si">N, mm, °C</option></select></div>
+          <div class="field"><label for="G">Shear Modulus (G)</label><input id="G" type="number" step="any" value="120" /></div>
+          <div class="field"><label for="cte">CTE (1/°unit)</label><input id="cte" type="number" step="any" value="0.00011" /></div>
+          <div class="grid2">
+            <div class="field"><label for="od">Mold Cavity OD</label><input id="od" type="number" step="any" value="4" /></div>
+            <div class="field"><label for="id">Mold Cavity ID</label><input id="id" type="number" step="any" value="1" /></div>
+          </div>
+          <div class="grid2">
+            <div class="field"><label for="tOD">t at OD</label><input id="tOD" type="number" step="any" value="1" /></div>
+            <div class="field"><label for="tID">t at ID</label><input id="tID" type="number" step="any" value="2" /></div>
+          </div>
+          <div class="field"><label for="offset">ID/OD offset</label><input id="offset" type="number" step="any" value="0.5" /></div>
+          <div class="grid2">
+            <div class="field"><label for="Tmold">Molding T</label><input id="Tmold" type="number" step="any" value="305" /></div>
+            <div class="field"><label for="Trt">RT</label><input id="Trt" type="number" step="any" value="70" /></div>
+          </div>
+          <div class="field"><label for="kTop">k (top) <span id="kTopVal" style="float:right;color:#333">0.00</span></label><input id="kTop" type="range" min="-3" max="3" step="0.01" value="0" /></div>
+          <div class="field"><label for="kBot">k (bottom) <span id="kBotVal" style="float:right;color:#333">0.00</span></label><input id="kBot" type="range" min="-3" max="3" step="0.01" value="0" /></div>
+          <div class="field"><label for="kSTop">k_s (top S) <span id="kSTopVal" style="float:right;color:#333">0.00</span></label><input id="kSTop" type="range" min="-3" max="3" step="0.01" value="0" /></div>
+          <div class="field"><label for="kSBot">k_s (bottom S) <span id="kSBotVal" style="float:right;color:#333">0.00</span></label><input id="kSBot" type="range" min="-3" max="3" step="0.01" value="0" /></div>
+          <div class="grid2">
+            <div class="field"><label for="rho">Weight Density ρ (kg/m³)</label><input id="rho" type="number" step="any" value="1100" /></div>
+            <div class="field"><label for="cp">Heat Capacity Cₚ (J/kg·K)</label><input id="cp" type="number" step="any" value="1500" /></div>
+          </div>
+          <div class="grid2">
+            <div class="field"><label for="kth">Thermal Conductivity k (W/m·K)</label><input id="kth" type="number" step="any" value="0.22" /></div>
+            <div class="field"><label for="Hr">Heat of Reaction Hᵣ (J/kg)</label><input id="Hr" type="number" step="any" value="200000" /></div>
+          </div>
+          <div class="grid3">
+            <div class="field"><label for="A1">A₁ (1/s)</label><input id="A1" type="number" step="any" value="1e6" /></div>
+            <div class="field"><label for="E1">E₁ (kJ/mol)</label><input id="E1" type="number" step="any" value="60" /></div>
+            <div class="field"><label for="pExp">p (–)</label><input id="pExp" type="number" step="any" value="1" /></div>
+            <div class="field"><label for="A2">A₂ (1/s)</label><input id="A2" type="number" step="any" value="1e3" /></div>
+            <div class="field"><label for="E2">E₂ (kJ/mol)</label><input id="E2" type="number" step="any" value="100" /></div>
+            <div class="field"><label for="qExp">q (–)</label><input id="qExp" type="number" step="any" value="1" /></div>
+          </div>
+        </div>
+      </div>
+    
+      <!-- Stiffness panel -->
+      <div class="card panel" id="stiffnessPanel" aria-labelledby="stiffTitle">
+        <h2 id="stiffTitle" style="margin:0 0 8px">Stiffness Summary</h2>
+        <div class="row">
+          <div class="field">
+            <label for="staticK">Static Stiffness (Fz (ID) / Δz (ID))</label>
+            <input id="staticK" type="text" class="readonly" readonly value="—" />
+          </div>
+          <div class="field">
+            <label for="tanDel">tan δ</label>
+            <input id="tanDel" type="number" step="any" value="0.2" />
+          </div>
+          <div class="field">
+            <label for="dynK">Dynamic Stiffness √(K² + (tan δ·K)²)</label>
+            <input id="dynK" type="text" class="readonly" readonly value="—" />
+          </div>
+        </div>
+      </div>
+    </div>
+
+<!-- Export/Import panel -->
+      <div class="card panel" id="exportPanel" aria-labelledby="exportTitle">
+        <h2 id="exportTitle" style="margin:0 0 8px">Data Management</h2>
+        <div class="btns">
+          <button id="exportJsonBtn" type="button" class="secondary">Export JSON</button>
+          <button id="importJsonBtn" type="button" class="secondary">Import JSON</button>
+          <button id="exportCsvBtn" type="button" class="secondary">Export CSV</button>
+        </div>
+        <input type="file" id="jsonFileInput" accept=".json" style="display:none;" />
+      </div>
+
+    
+    <!-- Right column (plots) -->
+    <div class="col">
+      <div class="right" style="order:1">
+        <h2 style="margin:0 0 8px">r–z Geometry Preview</h2>
+        <canvas id="rz" width="600" height="400"></canvas>
+        <div class="meta"><span>Axes: r →, z ↑</span><span id="unitsTag">Units: in, °F</span></div>
+      </div>
+
+      <div class="right panel" id="cureControlsPanel" style="order:2">
+        <h2 style="margin:0 0 8px">Cure Controls</h2>
+        <div class="btns"><button id="solveCureBtn" type="button">Molding State of Cure</button></div>
+        <div class="grid2" style="margin-top:8px">
+          <div class="field"><label for="dalphaMax">Chem. Δα max/step</label><input id="dalphaMax" type="number" min="0.001" max="0.2" step="0.001" value="0.01" /></div>
+          <div class="field"><label for="bcMode">Heating boundary</label>
+            <select id="bcMode"><option value="all" selected>All surfaces @ Tmold</option><option value="od">OD only @ Tmold (others insulated)</option></select>
+          </div>
+        </div>
+      </div>
+
+      <div class="right panel" id="curePanel" style="order:3">
+        <h2 style="margin:0 0 8px">Molding: Temperature & State of Cure</h2>
+        <div class="canvasWrap">
+          <canvas id="cureCanvas" width="600" height="400"></canvas>
+          <div id="cureOverlay" aria-live="polite"></div>
+        </div>
+        <div class="meta"><span id="cureMsg">Ready.</span><span id="cureStats"></span></div>
+        <div class="field" id="timeBrowseField">
+          <label for="timeSlider">Time (browse): <span id="timeVal" style="float:right;color:#333">0.0</span> s</label>
+          <input id="timeSlider" type="range" min="0" max="0" step="1" value="0" disabled />
+        </div>
+      </div>
+
+      <div class="right panel" id="controls" style="order:4">
+        <h2 style="margin:0 0 8px">Analysis Controls</h2>
+        <div class="btns">
+          <button id="solveBtn" type="button">Molding Shrinkage</button>
+        </div>
+        <div class="meta"><span id="solveMsg">Ready.</span></div>
+      </div>
+
+      <div class="right panel" style="order:5">
+        <h2 style="margin:0 0 8px">Deformed Shape & Shear (axisym)</h2>
+        <div class="canvasWrap">
+          <canvas id="rzPost" width="600" height="400"></canvas>
+          <div id="postOverlay" aria-live="polite"></div>
+        </div>
+      </div>
+
+      <div class="right panel" id="deflectPanel" style="order:6">
+        <h2 style="margin:0 0 8px">Z-Deflection: Shear & Reactions</h2>
+        <div class="btns"><button id="deflectBtn" type="button">Z Deflection</button></div>
+        <div class="canvasWrap">
+          <canvas id="rzDeflect" width="600" height="400"></canvas>
+          <div id="deflectOverlay" aria-live="polite"></div>
+        </div>
+        <div class="meta"><span id="deflectMsg">Ready.</span><span id="deflectStats"></span></div>
+      </div>
+    </div>
+  </div>
+
+<script>
+'use strict';
+// ---------- DOM helpers & parsing ----------
+const $ = id => document.getElementById(id);
+const fmtUnits = u => u==='imperial' ? 'in, °F' : 'mm, °C';
+const parseE = id => { const v = +$(id).value; return v*1000; };
+
+// Paint-yield helpers so overlays show before heavy work
+const nextPaint = () => new Promise(r => requestAnimationFrame(r));
+const flushAndPaint = async el => { void el.offsetWidth; await nextPaint(); await nextPaint(); };
+
+// stiffness helpers
+function setStaticK(k){
+  const el = $('staticK');
+  el.value = Number.isFinite(k) ? k.toFixed(6) : '—';
+  updateDynamicStiffness();
+}
+function updateDynamicStiffness(){
+  const k = +$('staticK').value;
+  const td = +$('tanDel').value;
+  const out = $('dynK');
+  if(Number.isFinite(k) && Number.isFinite(td)){
+    out.value = Math.sqrt(k*k + (td*k)*(td*k)).toFixed(6);
+  } else {
+    out.value = '—';
+  }
+}
+
+function read(){
+  return {
+    units: $('units').value,
+    G:+$('G').value, cte:+$('cte').value,
+    rho:+$('rho').value, cp:+$('cp').value, kth:+$('kth').value, Hr:+$('Hr').value,
+    A1:+$('A1').value, E1:parseE('E1'), A2:+$('A2').value, E2:parseE('E2'),
+    pExp:+$('pExp').value, qExp:+$('qExp').value,
+    OD:+$('od').value, ID:+$('id').value, tOD:+$('tOD').value, tID:+$('tID').value,
+    kTop:+$('kTop').value, kBot:+$('kBot').value, kSTop:+$('kSTop').value, kSBot:+$('kSBot').value,
+    offset:+$('offset').value||0, Tmold:+$('Tmold').value, Trt:+$('Trt').value,
+    bcMode:$('bcMode')?.value||'all', dalphaMax:+($('dalphaMax')?.value||0.01)
+  };
+}
+
+// ---------- Geometry ----------
+function buildGeometryFuncs(p=read()){
+  const rI=p.ID*0.5, rO=p.OD*0.5; const L=rO-rI; const tRef=0.5*(p.tID+p.tOD);
+  const zID_top= p.tID/2,  zID_bot=-p.tID/2;
+  const zOD_top= -p.offset + p.tOD/2, zOD_bot=-p.offset - p.tOD/2;
+  const zTop=(r)=>{ const s=(r-rI)/(L||1); const phi=s*(1-s); const anti=(2*s-1)*phi; return (1-s)*zID_top + s*zOD_top + p.kTop*tRef*phi + p.kSTop*tRef*anti; };
+  const zBot=(r)=>{ const s=(r-rI)/(L||1); const phi=s*(1-s); const anti=(2*s-1)*phi; return (1-s)*zID_bot + s*zOD_bot - p.kBot*tRef*phi + p.kSBot*tRef*anti; };
+  return {zTop,zBot,rI,rO};
+}
+
+// ---------- Geometry preview ----------
+const rz=$('rz');
+function draw(){
+  const p=read();
+  const geom=buildGeometryFuncs(p);
+  $('unitsTag').textContent='Units: '+fmtUnits(p.units);
+  for(const [id,val] of [['kTopVal',p.kTop],['kBotVal',p.kBot],['kSTopVal',p.kSTop],['kSBotVal',p.kSBot]]) $(id).textContent=(+val).toFixed(2);
+
+  const {rI,rO}=geom; let zMin=Infinity,zMax=-Infinity; for(let i=0;i<=140;i++){ const r=rI+(rO-rI)*i/140; zMin=Math.min(zMin,geom.zBot(r)); zMax=Math.max(zMax,geom.zTop(r)); }
+  const rMin=Math.max(0,rI-0.1*(rO-rI)), rMax=rO+0.1*(rO-rI);
+
+  const padL=52,padR=28,padT=22,padB=42, W=rz.width,H=rz.height;
+  const sx=(r)=> padL+(r-rMin)*(W-padL-padR)/(rMax-rMin||1);
+  const sy=(z)=> H-padB-(z-zMin)*(H-padT-padB)/(zMax-zMin||1);
+
+  const ctx=rz.getContext('2d');
+  ctx.clearRect(0,0,W,H);
+
+  const N=160, top=[], bot=[]; for(let i=0;i<=N;i++){ const r=rI+(rO-rI)*i/N; top.push([r,geom.zTop(r)]); bot.push([r,geom.zBot(r)]); }
+  ctx.beginPath(); ctx.moveTo(sx(top[0][0]),sy(top[0][1]));
+  for(const [r,z] of top) ctx.lineTo(sx(r),sy(z));
+  for(let i=N;i>=0;i--){ const [r,z]=bot[i]; ctx.lineTo(sx(r),sy(z)); }
+  ctx.closePath(); ctx.fillStyle='rgba(30,136,229,.08)'; ctx.strokeStyle='#1e88e5'; ctx.lineWidth=2; ctx.fill(); ctx.stroke();
+
+  const arrow=(x1,y1,x2,y2)=>{ ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke(); const ang=Math.atan2(y2-y1,x2-x1), s=6; ctx.beginPath(); ctx.moveTo(x2,y2); ctx.lineTo(x2-s*Math.cos(ang-Math.PI/6), y2-s*Math.sin(ang-Math.PI/6)); ctx.lineTo(x2-s*Math.cos(ang+Math.PI/6), y2-s*Math.sin(ang+Math.PI/6)); ctx.closePath(); ctx.fill(); };
+  const dimV=(x,y1,y2,txt)=>{ ctx.save(); ctx.strokeStyle='#444'; ctx.fillStyle='#444'; ctx.lineWidth=1; arrow(x,y1,x,y2); arrow(x,y2,x,y1); ctx.textAlign='left'; ctx.textBaseline='middle'; ctx.fillText(txt, x+6, (y1+y2)/2); ctx.restore(); };
+
+  ctx.save();
+  ctx.strokeStyle='#444'; ctx.fillStyle='#444'; ctx.lineWidth=1.2;
+  arrow(padL, H-padB, W-padR-6, H-padB);
+  ctx.textAlign='right'; ctx.textBaseline='top'; ctx.fillText('r →', W-padR-8, H-padB+4);
+  arrow(padL, H-padB, padL, padT+6);
+  ctx.textAlign='left'; ctx.textBaseline='top'; ctx.fillText('z ↑', padL+4, padT+4);
+  ctx.restore();
+
+  if(zMin<=0 && zMax>=0){ ctx.save(); ctx.setLineDash([5,4]); ctx.strokeStyle='#b3b3b3'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(sx(rMin), sy(0)); ctx.lineTo(sx(rMax), sy(0)); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle='#666'; ctx.textAlign='right'; ctx.textBaseline='bottom'; ctx.fillText('z=0', sx(rMax)-6, sy(0)-4); ctx.restore(); }
+
+  ctx.save(); ctx.setLineDash([4,4]); ctx.strokeStyle='#999'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(sx(rI),sy(zMin)); ctx.lineTo(sx(rI),sy(zMax)); ctx.moveTo(sx(rO),sy(zMin)); ctx.lineTo(sx(rO),sy(zMax)); ctx.stroke(); ctx.restore();
+
+  const zIDt=geom.zTop(rI), zIDb=geom.zBot(rI); const zODt=geom.zTop(rO), zODb=geom.zBot(rO);
+  dimV(sx(rI)-10, sy(zIDb), sy(zIDt), `t_ID=${p.tID}`);
+  dimV(sx(rO)+10, sy(zODb), sy(zODt), `t_OD=${p.tOD}`);
+
+  ctx.save(); ctx.fillStyle='#444'; ctx.textAlign='center'; ctx.textBaseline='top';
+  ctx.fillText(`r_I=${(rI).toFixed(2)}`, sx(rI), H-padB+6);
+  ctx.fillText(`r_O=${(rO).toFixed(2)}`, sx(rO), H-padB+6);
+  ctx.restore();
+}
+
+// ---------- Mesh / FEM ----------
+function makeMesh(NR=36,NZ=24){ const p=read(); const g=buildGeometryFuncs(p); const {rI,rO}=g; const nodes=[], conn=[], ncol=NZ+1; for(let i=0;i<=NR;i++){ const r=rI+(rO-rI)*i/NR; const zt=g.zTop(r), zb=g.zBot(r); for(let j=0;j<=NZ;j++){ const s=j/NZ; nodes.push([r, zb+(zt-zb)*s]); }} for(let i=0;i<NR;i++) for(let j=0;j<NZ;j++){ const n00=i*ncol+j, n01=n00+1, n10=(i+1)*ncol+j, n11=n10+1; conn.push([n00,n10,n11,n01]); } return {nodes,conn}; }
+
+function solveDense(A,b){
+  const n=b.length;
+  const M=A.map(r=>Float64Array.from(r));
+  const x=Float64Array.from(b);
+  const piv=new Uint32Array(n);
+  for(let i=0;i<n;i++) piv[i]=i;
+
+  for(let k=0;k<n;k++){
+    let p=k, m=Math.abs(M[piv[k]][k]);
+    for(let i=k+1;i<n;i++){
+      const v=Math.abs(M[piv[i]][k]);
+      if(v>m){ m=v; p=i; }
+    }
+    if(!isFinite(m)||m===0) throw new Error('Singular matrix');
+    if(p!==k){ const t=piv[k]; piv[k]=piv[p]; piv[p]=t; }
+
+    const r=M[piv[k]], inv=1/r[k];
+    for(let j=k;j<n;j++) r[j]*=inv;
+    x[piv[k]] *= inv;
+
+    for(let i=k+1;i<n;i++){
+      const ri=M[piv[i]], f=ri[k];
+      if(f===0) continue;
+      for(let j=k;j<n;j++) ri[j]-=f*r[j];
+      x[piv[i]] -= f*x[piv[k]];
+      ri[k]=0;
+    }
+  }
+
+  const sol=new Float64Array(n);
+  for(let i=n-1;i>=0;i--){
+    let s=x[piv[i]];
+    const r=M[piv[i]];
+    for(let j=i+1;j<n;j++) s-=r[j]*sol[j];
+    sol[i]=s;
+  }
+  return sol;
+}
+
+// LU helpers for thermal
+function luFactor(A){ const n=A.length; const LU=A.map(row=>Float64Array.from(row)); const piv=new Uint32Array(n); for(let i=0;i<n;i++) piv[i]=i; for(let k=0;k<n;k++){ let p=k, m=Math.abs(LU[piv[k]][k]); for(let i=0;i<n;i++){} for(let i=k+1;i<n;i++){ const v=Math.abs(LU[piv[i]][k]); if(v>m){m=v; p=i;} } if(!isFinite(m)||m===0) throw new Error('Singular matrix'); if(p!==k){ const t=piv[k]; piv[k]=piv[p]; piv[p]=t; } const rk=LU[piv[k]]; for(let i=0;i<n;i++){} for(let i=k+1;i<n;i++){ const ri=LU[piv[i]]; const f=ri[k]/rk[k]; ri[k]=f; for(let j=k+1;j<n;j++){ ri[j]-=f*rk[j]; } } } return {LU,piv}; }
+function luSolve(LU,piv,b){ const n=b.length; const y=new Float64Array(n); for(let i=0;i<n;i++){ let s=b[piv[i]]; for(let j=0;j<i;j++){ s-=LU[piv[i]][j]*y[j]; } y[i]=s; } const x=new Float64Array(n); for(let i=n-1;i>=0;i--){ let s=y[i]; for(let j=i+1;j<n;j++){ s-=LU[piv[i]][j]*x[j]; } x[i]=s/LU[piv[i]][i]; } return x; }
+
+function assembleAxisym(NR=36,NZ=24,{thermal=false,dT=0}={})
+{
+  const p=read(); const {nodes,conn}=makeMesh(NR,NZ); const nN=nodes.length, nD=2*nN; const K=Array.from({length:nD},()=>new Float64Array(nD).fill(0)); const F=new Float64Array(nD).fill(0);
+  const nu=0.499, G=Math.max(p.G,1e-9), E=2*G*(1+nu); const lam=(E*nu)/((1+nu)*(1-2*nu)), mu=E/(2*(1+nu));
+  const D=[[lam+2*mu,lam,0,lam],[lam,lam+2*mu,0,lam],[0,0,mu,0],[lam,lam,0,lam+2*mu]]; const gp=[-1/Math.sqrt(3),1/Math.sqrt(3)], w=[1,1];
+  for(const e of conn){ const xe=e.map(k=>nodes[k][0]); const ze=e.map(k=>nodes[k][1]); const ke=Array.from({length:8},()=>new Float64Array(8).fill(0)); const fe=new Float64Array(8).fill(0);
+    for(let a=0;a<2;a++) for(let b=0;b<2;b++){
+      const xi=gp[a], eta=gp[b];
+      const N=[0.25*(1-xi)*(1-eta),0.25*(1+xi)*(1-eta),0.25*(1+xi)*(1+eta),0.25*(1-xi)*(1+eta)];
+      const dNdxi=[-0.25*(1-eta),0.25*(1-eta),0.25*(1+eta),-0.25*(1+eta)];
+      const dNdeta=[-0.25*(1-xi),-0.25*(1+xi),0.25*(1+xi),0.25*(1-xi)];
+      let xr=0,xz=0,zr=0,zz=0,r_gp=0; for(let m=0;m<4;m++){ xr+=dNdxi[m]*xe[m]; xz+=dNdxi[m]*ze[m]; zr+=dNdeta[m]*xe[m]; zz+=dNdeta[m]*ze[m]; r_gp+=N[m]*xe[m]; }
+      const J=xr*zz-xz*zr; const invJ=[[zz/J,-xz/J],[-zr/J,xr/J]]; const dNdr=new Array(4), dNdz=new Array(4);
+      for(let m=0;m<4;m++){ dNdr[m]=invJ[0][0]*dNdxi[m]+invJ[0][1]*dNdeta[m]; dNdz[m]=invJ[1][0]*dNdxi[m]+invJ[1][1]*dNdeta[m]; }
+      const B=Array.from({length:4},()=>new Float64Array(8).fill(0));
+      for(let m=0;m<4;m++){ const col=2*m, Nm=N[m]; B[0][col]=dNdr[m]; B[1][col+1]=dNdz[m]; B[2][col]=dNdz[m]; B[2][col+1]=dNdr[m]; B[3][col]=Nm/(r_gp); }
+      const weight=2*Math.PI*r_gp*J*w[a]*w[b];
+      const DB=Array.from({length:4},()=>new Float64Array(8).fill(0));
+      for(let i=0;i<4;i++) for(let j=0;j<8;j++){ let s=0; for(let k=0;k<4;k++) s+=D[i][k]*B[k][j]; DB[i][j]=s; }
+      for(let i=0;i<8;i++) for(let j=0;j<8;j++){ let s=0; for(let k=0;k<4;k++) s+=B[k][i]*DB[k][j]; ke[i][j]+=s*weight; }
+      if(thermal){ const aT=p.cte; const eth=[aT*dT,aT*dT,0,aT*dT]; const Deth=new Float64Array(4); for(let i=0;i<4;i++){ let s=0; for(let k=0;k<4;k++) s+=D[i][k]*eth[k]; Deth[i]=s; } for(let j=0;j<8;j++){ let s=0; for(let k=0;k<4;k++) s+=B[k][j]*Deth[k]; fe[j]+=s*weight; } }
+    }
+    for(let a=0;a<4;a++){ const A=e[a]; for(let c=0;c<2;c++){ const I=2*A+c, ia=2*a+c; for(let b=0;b<4;b++){ const Bn=e[b]; for(let d=0;d<2;d++){ const Jd=2*Bn+d, jb=2*b+d; K[I][Jd]+=ke[ia][jb]; }} F[I]+=fe[ia]; }}
+  }
+  return {nodes,conn,K,F};
+}
+
+function solveShrinkage(){
+  const {nodes,conn,K,F}=assembleAxisym(36,24,{thermal:true,dT:(read().Trt-read().Tmold)}); const p=read(); const nN=nodes.length, nD=2*nN; const rI=p.ID*0.5, rO=p.OD*0.5;
+  const Kbc=K.map(r=>Float64Array.from(r)); const Fbc=Float64Array.from(F);
+  for(let n=0;n<nN;n++){ const r=nodes[n][0]; if(Math.abs(r-rI)<1e-9||Math.abs(r-rO)<1e-9){ for(let j=0;j<nD;j++) Kbc[2*n][j]=0, Kbc[2*n+1][j]=0; Kbc[2*n][2*n]=1; Kbc[2*n+1][2*n+1]=1; Fbc[2*n]=0; Fbc[2*n+1]=0; }}
+  const u=solveDense(Kbc,Fbc); return {nodes,conn,u};
+}
+
+function solveCombined(){
+  const p = read();
+  const {nodes,conn,K,F} = assembleAxisym(36,24,{ thermal:true, dT:(p.Trt - p.Tmold) });
+
+  const nN = nodes.length, nD = 2*nN;
+  const rI = p.ID * 0.5, rO = p.OD * 0.5;
+  const delZ = -0.20 * 0.5 * (p.tID + p.tOD);   // 20% downward at ID
+
+  const Kbc = K.map(row => Float64Array.from(row));
+  const Fbc = Float64Array.from(F);
+
+  for(let n=0; n<nN; n++){
+    const r = nodes[n][0];
+    if (Math.abs(r - rI) < 1e-9) {
+      for (let j=0; j<nD; j++){ Kbc[2*n][j] = 0; Kbc[2*n+1][j] = 0; }
+      Kbc[2*n][2*n] = 1;      Fbc[2*n]   = 0;
+      Kbc[2*n+1][2*n+1] = 1;  Fbc[2*n+1] = delZ;
+    } else if (Math.abs(r - rO) < 1e-9){
+      for (let j=0; j<nD; j++){ Kbc[2*n][j] = 0; Kbc[2*n+1][j] = 0; }
+      Kbc[2*n][2*n] = 1;      Fbc[2*n]   = 0;
+      Kbc[2*n+1][2*n+1] = 1;  Fbc[2*n+1] = 0;
+    }
+  }
+
+  const u = solveDense(Kbc, Fbc);
+
+  const R = new Float64Array(nD);
+  for (let i=0; i<nD; i++){
+    let s = -F[i];
+    const Ki = K[i];
+    for (let j=0; j<nD; j++) s += Ki[j]*u[j];
+    R[i] = s;
+  }
+
+  let Fz = 0;
+  for (let n=0; n<nN; n++){
+    if (Math.abs(nodes[n][0] - rI) < 1e-9) Fz += R[2*n+1];
+  }
+
+  return {nodes, conn, u, delZ, Fz};
+}
+
+function shearByElement(nodes,conn,u){
+  const out=new Float64Array(conn.length); const gp0=0; for(let eIdx=0;eIdx<conn.length;eIdx++){
+    const e=conn[eIdx]; const xe=e.map(k=>nodes[k][0]); const ze=e.map(k=>nodes[k][1]);
+    const N=[0.25*(1-gp0)*(1-gp0),0.25*(1+gp0)*(1-gp0),0.25*(1+gp0)*(1+gp0),0.25*(1-gp0)*(1+gp0)];
+    const dNdxi=[-0.25*(1-gp0),0.25*(1-gp0),0.25*(1+gp0),-0.25*(1+gp0)];
+    const dNdeta=[-0.25*(1-gp0),-0.25*(1+gp0),0.25*(1+gp0),0.25*(1-gp0)];
+    let xr=0,xz=0,zr=0,zz=0,r_gp=0; for(let m=0;m<4;m++){ xr+=dNdxi[m]*xe[m]; xz+=dNdxi[m]*ze[m]; zr+=dNdeta[m]*xe[m]; zz+=dNdeta[m]*ze[m]; r_gp+=N[m]*xe[m]; }
+    const J=xr*zz-xz*zr; const invJ=[[zz/J,-xz/J],[-zr/J,xr/J]]; const dNdr=new Array(4), dNdz=new Array(4);
+    for(let m=0;m<4;m++){ dNdr[m]=invJ[0][0]*dNdxi[m]+invJ[0][1]*dNdeta[m]; dNdz[m]=invJ[1][0]*dNdxi[m]+invJ[1][1]*dNdeta[m]; }
+    let ur_z=0, uz_r=0; for(let m=0;m<4;m++){ const ur=u[2*e[m]], uz=u[2*e[m]+1]; ur_z+=dNdz[m]*ur; uz_r+=dNdr[m]*uz; }
+    out[eIdx]=ur_z+uz_r;
+  }
+  return out;
+}
+
+// bounds incl. deformation
+function computeBounds(nodes, conn, u, scale){
+  let rMin=Infinity,rMax=-Infinity,zMin=Infinity,zMax=-Infinity;
+  for(const [r,z] of nodes){ rMin=Math.min(rMin,r); rMax=Math.max(rMax,r); zMin=Math.min(zMin,z); zMax=Math.max(zMax,z); }
+  if(u){
+    for(let k=0;k<nodes.length;k++){
+      const r = nodes[k][0] + scale*u[2*k];
+      const z = nodes[k][1] + scale*u[2*k+1];
+      rMin=Math.min(rMin,r); rMax=Math.max(rMax,r); zMin=Math.min(zMin,z); zMax=Math.max(zMax,z);
+    }
+  }
+  return {rMin,rMax,zMin,zMax};
+}
+
+function drawPost(res){
+  const cvs=$('rzPost'), c=cvs.getContext('2d'); const {nodes,conn,u}=res; const p=read(); const rI=p.ID*0.5, rO=p.OD*0.5;
+  const LEG_W=12, LEG_PAD=12;
+  const padL=45, padR=LEG_W + LEG_PAD + 22, padT=20, padB=38, W=cvs.width, H=cvs.height;
+  const scale = 1;
+
+  const {rMin,rMax,zMin,zMax}=computeBounds(nodes,conn,u,scale);
+  const sx=(r)=> padL+(r-rMin)*(W-padL-padR)/(rMax-rMin||1);
+  const sy=(z)=> H-padB-(z-zMin)*(H-padT-padB)/(zMax-zMin||1);
+
+  c.clearRect(0,0,W,H);
+  const geom=buildGeometryFuncs(); c.setLineDash([6,4]); c.strokeStyle='#999'; c.lineWidth=1.2;
+  c.beginPath();
+  for(let i=0;i<=120;i++){ const r=rI+(rO-rI)*i/120; const z=geom.zTop(r); const x=sx(r), y=sy(z); if(i===0) c.moveTo(x,y); else c.lineTo(x,y); }
+  for(let i=120;i>=0;i--){ const r=rI+(rO-rI)*i/120; const z=geom.zBot(r); c.lineTo(sx(r),sy(z)); }
+  c.closePath(); c.stroke(); c.setLineDash([]);
+
+  const g=shearByElement(nodes,conn,u); let gmin=Infinity,gmax=-Infinity; for(let i=0;i<g.length;i++){ const v=g[i]; if(v<gmin) gmin=v; if(v>gmax) gmax=v; }
+  for(let eIdx=0;eIdx<conn.length;eIdx++){ const e=conn[eIdx]; const t=(g[eIdx]-gmin)/(gmax-gmin||1); const R=Math.round(255*t), B=Math.round(255*(1-t)); c.fillStyle=`rgba(${R},0,${B},0.5)`; const pts=e.map(k=>[sx(nodes[k][0]+scale*u[2*k]), sy(nodes[k][1]+scale*u[2*k+1])]); c.beginPath(); c.moveTo(pts[0][0],pts[0][1]); for(let i=1;i<4;i++) c.lineTo(pts[i][0],pts[i][1]); c.closePath(); c.fill(); }
+
+  const x0=W-LEG_PAD-LEG_W, y0=30, h=Math.max(60, H-70), w=LEG_W;
+  for(let i=0;i<h;i++){ const t=1-i/h; const R=Math.round(255*t), B=Math.round(255*(1-t)); c.fillStyle=`rgb(${R},0,${B})`; c.fillRect(x0,y0+i,w,1); }
+  c.fillStyle='#333'; c.textBaseline='alphabetic'; c.textAlign='right';
+  const lblX=W-LEG_PAD-4; c.fillText(gmax.toFixed(3), lblX, y0+8); c.fillText(gmin.toFixed(3), lblX, y0+h+4);
+  c.textAlign='left'; c.fillText('γ', x0-10, y0-6);
+}
+
+function drawDeflection(res){
+  const cvs=$('rzDeflect'), c=cvs.getContext('2d'); const {nodes,conn,u,delZ,Fz}=res;
+  const LEG_W=12, LEG_PAD=12;
+  const padL=45, padR=LEG_W+LEG_PAD+22, padT=20, padB=35, W=cvs.width, H=cvs.height;
+  const p=read(); const rI=p.ID*0.5, rO=p.OD*0.5; const geom=buildGeometryFuncs(p);
+  const scale = 1;
+
+  const {rMin,rMax,zMin,zMax}=computeBounds(nodes,conn,u,scale);
+  const sx=(r)=> padL+(r-rMin)*(W-padL-padR)/(rMax-rMin||1);
+  const sy=(z)=> H-padB-(z-zMin)*(H-padT-padB)/(zMax-zMin||1);
+
+  c.clearRect(0,0,W,H);
+  c.setLineDash([6,4]); c.strokeStyle='#999'; c.lineWidth=1.2;
+  c.beginPath();
+  for(let i=0;i<=120;i++){ const r=rI+(rO-rI)*i/120; const z=geom.zTop(r); const x=sx(r), y=sy(z); if(i===0) c.moveTo(x,y); else c.lineTo(x,y); }
+  for(let i=120;i>=0;i--){ const r=rI+(rO-rI)*i/120; const z=geom.zBot(r); c.lineTo(sx(r),sy(z)); }
+  c.closePath(); c.stroke(); c.setLineDash([]);
+
+  const g=shearByElement(nodes,conn,u); let gmin=Infinity,gmax=-Infinity; for(let i=0;i<g.length;i++){ const v=g[i]; if(v<gmin) gmin=v; if(v>gmax) gmax=v; }
+  for(let eIdx=0;eIdx<conn.length;eIdx++){ const e=conn[eIdx]; const t=(g[eIdx]-gmin)/(gmax-gmin||1); const R=Math.round(255*t), B=Math.round(255*(1-t)); c.fillStyle=`rgba(${R},0,${B},0.5)`; const pts=e.map(k=>[sx(nodes[k][0]+scale*u[2*k]), sy(nodes[k][1]+scale*u[2*k+1])]); c.beginPath(); c.moveTo(pts[0][0],pts[0][1]); for(let i=1;i<4;i++) c.lineTo(pts[i][0],pts[i][1]); c.closePath(); c.fill(); }
+
+  const x0=W-LEG_PAD-LEG_W, y0=30, h=Math.max(60,H-70), w=LEG_W;
+  for(let i=0;i<h;i++){ const t=1-i/h; const R=Math.round(255*t), B=Math.round(255*(1-t)); c.fillStyle=`rgb(${R},0,${B})`; c.fillRect(x0,y0+i,w,1); }
+  c.fillStyle='#333'; c.textAlign='right'; c.textBaseline='alphabetic';
+  c.fillText(gmax.toFixed(3), W-LEG_PAD-4, y0+8);
+  c.fillText(gmin.toFixed(3), W-LEG_PAD-4, y0+h+4);
+  c.textAlign='left'; c.fillText('γ', x0-10, y0-6);
+
+  const forceUnit = read().units==='imperial' ? 'lbf' : 'N';
+  $('deflectStats').textContent=`Δz(ID)=${delZ.toFixed(3)}, Fz(ID)=${Fz.toFixed(3)} ${forceUnit}`;
+
+  // push value into Static / Dynamic stiffness panel
+  setStaticK(Fz / delZ); // as requested: Fz/Δz
+}
+
+// ---------- Thermal + Cure ----------
+const Rgas=8.314; const toKelvin=(T,u)=> u==='imperial'? (T-32)*5/9+273.15 : T+273.15; const fromKelvin=(TK,u)=> u==='imperial'? (TK-273.15)*9/5+32 : TK-273.15; const colAlpha=(a)=>{ const r=Math.round(255*Math.max(0,Math.min(1,a))); return `rgb(${r},0,${255-r})`; };
+
+function assembleThermal(NR=24,NZ=16){
+  const p=read(); const ulen=p.units==='imperial'?0.0254:0.001; const g=buildGeometryFuncs(p); const {rI,rO}=g; const nodes=[], conn=[], ncol=NZ+1;
+  for(let i=0;i<=NR;i++){ const r=rI+(rO-rI)*i/NR; const zt=g.zTop(r), zb=g.zBot(r); for(let j=0;j<=NZ;j++){ const s=j/NZ; nodes.push([r*ulen, (zb+(zt-zb)*s)*ulen]); }}
+  for(let i=0;i<NR;i++) for(let j=0;j<NZ;j++){ const n00=i*ncol+j, n01=n00+1, n10=(i+1)*ncol+j, n11=n10+1; conn.push([n00,n10,n11,n01]); }
+  const nN=nodes.length; const C=Array.from({length:nN},()=>new Float64Array(nN).fill(0)); const K=Array.from({length:nN},()=>new Float64Array(nN).fill(0)); const {rho,cp,kth}=p; const gp=[-1/Math.sqrt(3),1/Math.sqrt(3)], w=[1,1];
+  for(const e of conn){ const xe=e.map(k=>nodes[k][0]); const ze=e.map(k=>nodes[k][1]); const Ce=Array.from({length:4},()=>new Float64Array(4).fill(0)); const Ke=Array.from({length:4},()=>new Float64Array(4).fill(0));
+    for(let a=0;a<2;a++) for(let b=0;b<2;b++){
+      const xi=gp[a],eta=gp[b]; const N=[0.25*(1-xi)*(1-eta),0.25*(1+xi)*(1-eta),0.25*(1+xi)*(1+eta),0.25*(1-xi)*(1+eta)];
+      const dNdxi=[-0.25*(1-eta),0.25*(1-eta),0.25*(1+eta),-0.25*(1+eta)]; const dNdeta=[-0.25*(1-xi),-0.25*(1+xi),0.25*(1+xi),0.25*(1-xi)];
+      let xr=0,xz=0,zr=0,zz=0,r_gp=0; for(let m=0;m<4;m++){ xr+=dNdxi[m]*xe[m]; xz+=dNdxi[m]*ze[m]; zr+=dNdeta[m]*xe[m]; zz+=dNdeta[m]*ze[m]; r_gp+=N[m]*xe[m]; }
+      const J=xr*zz-xz*zr; const invJ=[[zz/J,-xz/J],[-zr/J,xr/J]]; const dNdr=new Array(4), dNdz=new Array(4);
+      for(let m=0;m<4;m++){ dNdr[m]=invJ[0][0]*dNdxi[m]+invJ[0][1]*dNdeta[m]; dNdz[m]=invJ[1][0]*dNdxi[m]+invJ[1][1]*dNdeta[m]; }
+      const weight=2*Math.PI*r_gp*J*w[a]*w[b];
+      for(let i=0;i<4;i++) for(let j=0;j<4;j++){ Ce[i][j]+=rho*cp*N[i]*N[j]*weight; Ke[i][j]+=kth*(dNdr[i]*dNdr[j]+dNdz[i]*dNdz[j])*weight; }
+    }
+    for(let a=0;a<4;a++) for(let b=0;b<4;b++){ C[e[a]][e[b]]+=Ce[a][b]; K[e[a]][e[b]]+=Ke[a][b]; }
+  }
+  const bAll=new Set(), bOD=new Set(); for(let i=0;i<=NR;i++) for(let j=0;j<=NZ;j++){ const id=i*ncol+j; if(i===0||i===NR||j===0||j===NZ) bAll.add(id); if(i===NR) bOD.add(id); }
+  return {nodes,conn,C,K,bAll:[...bAll],bOD:[...bOD]};
+}
+
+function kineticsRate(TK,a,p){
+  if(!Number.isFinite(TK) || TK < 200) TK = 200;
+  const k1 = p.A1*Math.exp(-p.E1/(Rgas*TK));
+  const k2 = p.A2*Math.exp(-p.E2/(Rgas*TK));
+  const aCl = Math.max(0, Math.min(1, a));
+  return (k1 + k2*Math.pow(aCl, p.pExp)) * Math.pow(Math.max(1-aCl,0), p.qExp);
+}
+
+let cureTimeline=[];
+function solveCure(){
+  const p=read();
+  const {nodes,conn,C,K,bAll,bOD}=assembleThermal(24,16);
+  const n=nodes.length; const TmK=toKelvin(p.Tmold,p.units); const TrtK=toKelvin(p.Trt,p.units);
+  const dt=5;
+  const dalphaMax = Math.max(1e-4, +p.dalphaMax || 0.01);
+  const A_th = Array.from({length:n},(_,i)=>{ const row=new Float64Array(n); for(let j=0;j<n;j++) row[j]=C[i][j]/dt + K[i][j]; return row; });
+  const bcNodes=(p.bcMode||'all')==='all'? bAll : bOD; const isC=new Uint8Array(n); for(const k of bcNodes) isC[k]=1; const free=[], constrained=[]; for(let i=0;i<n;i++) (isC[i]? constrained:free).push(i);
+  const Af=Array.from({length:free.length},()=>new Float64Array(free.length));
+  for(let ii=0; ii<free.length; ii++){ const i=free[ii]; for(let jj=0; jj<free.length; jj++){ Af[ii][jj] = A_th[i][free[jj]];} }
+  const {LU,piv}=luFactor(Af);
+  const W=new Float64Array(n); const denom=(p.rho*p.cp)||1; for(let i=0;i<n;i++){ let s=0; for(let j=0;j<n;j++) s+=C[i][j]; W[i]=s/denom; }
+  let T=new Float64Array(n).fill(TrtK); let A=new Float64Array(n).fill(0);
+  cureTimeline=[]; const milestones=[0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9]; let mIdx=0; const snap=(t)=>{ cureTimeline.push({t, T:T.slice(0), A:A.slice(0), nodes, conn}); };
+  snap(0);
+  const maxTime=6*3600; let t=0; let stopReason='cap';
+  while(t<maxTime){
+    const rate=new Float64Array(n); let rMax=0; for(let i=0;i<n;i++){ const r=kineticsRate(T[i],A[i],p); rate[i]=r; if(r>rMax) rMax=r; }
+    const chemScale = rMax>0 ? Math.min(1, dalphaMax/(rMax*dt)) : 1;
+    const rhs=new Float64Array(n);
+    for(let i=0;i<n;i++){
+      let s=0; for(let j=0;j<n;j++) s+=C[i][j]*T[j]/dt;
+      const q = p.rho*p.Hr*(rate[i]*chemScale)*W[i];
+      rhs[i]=s + q;
+    }
+    const rf=new Float64Array(free.length);
+    for(let ii=0; ii<free.length; ii++){
+      const i=free[ii]; let s=rhs[i]; for(const cIdx of constrained){ s -= A_th[i][cIdx]*TmK; } rf[ii]=s; }
+    const Tf=luSolve(LU,piv,rf);
+    const map=new Int32Array(n).fill(-1); for(let ii=0; ii<free.length; ii++) map[ free[ii] ]=ii;
+    const Tnew=new Float64Array(n);
+    for(let i=0;i<n;i++) Tnew[i] = isC[i] ? TmK : Tf[map[i]];    for(let i=0;i<n;i++) if(!Number.isFinite(Tnew[i]) || Tnew[i]>4000) Tnew[i]=Math.min(Math.max(TmK, TrtK), 4000);
+    for(let i=0;i<n;i++){ const a=A[i] + dt*(rate[i]*chemScale); A[i]= a>1?1:a; }
+    T=Tnew; t+=dt;
+    let aMin=1; for(let i=0;i<n;i++) aMin=Math.min(aMin,A[i]);
+    while(mIdx<milestones.length && aMin>=milestones[mIdx]){ snap(t); mIdx++; }
+    if(aMin>=0.90){ snap(t); stopReason='target'; break; }
+  }
+  if(cureTimeline.length===0 || cureTimeline[cureTimeline.length-1].t < t) snap(t);
+  const slider=$('timeSlider'); slider.disabled=false; slider.min=0; slider.max=Math.max(0,cureTimeline.length-1); slider.value=slider.max; $('timeVal').textContent=(cureTimeline[cureTimeline.length-1]?.t||0).toFixed(1);
+  $('cureMsg').textContent = stopReason==='target'? 'Done.' : 'Done (time cap).';
+  drawCureAt(+slider.value);
+  return {timeline:cureTimeline};
+}
+
+function drawCure(state){
+  const cvs=$('cureCanvas'), c=cvs.getContext('2d'); const {nodes,conn,A,T}=state;
+  let rMin=Infinity,rMax=-Infinity,zMin=Infinity,zMax=-Infinity; for(const [r,z] of nodes){ rMin=Math.min(rMin,r); rMax=Math.max(rMax,r); zMin=Math.min(zMin,z); zMax=Math.max(zMax,z); }
+  const padL=40,padR=40,padT=20,padB=35,W=cvs.width,H=cvs.height; const sx=(r)=>padL+(r-rMin)*(W-padL-padR)/(rMax-rMin||1); const sy=(z)=>H-padB-(z-zMin)*(H-padT-padB)/(zMax-zMin||1);
+  c.clearRect(0,0,W,H);
+  for(const e of conn){ const pts=e.map(k=>[sx(nodes[k][0]), sy(nodes[k][1])]); let a=(A[e[0]]+A[e[1]]+A[e[2]]+A[e[3]])/4; if(!Number.isFinite(a)) a=0; c.fillStyle=colAlpha(a); c.beginPath(); c.moveTo(pts[0][0],pts[0][1]); for(let i=1;i<4;i++) c.lineTo(pts[i][0],pts[i][1]); c.closePath(); c.fill(); }
+  const x0=W-22,y0=30,h=H-70,w=10; for(let i=0;i<h;i++){ c.fillStyle=colAlpha(1-i/h); c.fillRect(x0,y0+i,w,1); }
+  c.fillStyle='#333'; c.fillText('α',x0-10,y0-6); c.fillText('1.0',x0+14,y0+4); c.fillText('0.0',x0+14,y0+h+4);
+  let aMin=1,Tmax=-Infinity,n90=0; const N=A.length||1;
+  for(let i=0;i<N;i++){
+    const ai=A[i]; if(Number.isFinite(ai)){ aMin=Math.min(aMin,ai); if(ai>=0.9) n90++; }
+    const Ti=T[i]; if(Number.isFinite(Ti)) Tmax=Math.max(Tmax,Ti);
+  }
+  const aStr = Number.isFinite(aMin)? (aMin*100).toFixed(1)+'%' : 'NaN%';
+  const pct90 = ((n90/N)*100).toFixed(1)+'%';
+  const tStr = Number.isFinite(Tmax)? fromKelvin(Tmax, read().units).toFixed(1)+'°' : 'NaN°';
+  $('cureStats').textContent=`t=${(state.t).toFixed(1)} s | min α=${aStr} | ≥90% nodes=${pct90} | max T=${tStr}`;
+}
+
+function drawCureAt(idx){ idx=Math.max(0,Math.min(idx,cureTimeline.length-1)); $('timeVal').textContent=(cureTimeline[idx].t).toFixed(1); drawCure(cureTimeline[idx]); }
+
+// ---------- Wire UI ----------
+$('solveCureBtn').addEventListener('click', async ()=>{
+  const ov=$('cureOverlay');
+  try{
+    ov.textContent='Calculating…';
+    ov.style.opacity=1;
+    await flushAndPaint(ov);
+    solveCure();
+    $('cureMsg').textContent='Done.';
+  } catch(e){
+    console.error(e);
+    $('cureMsg').textContent=e.message;
+  } finally {
+    ov.style.opacity=0;
+  }
+});
+
+$('timeSlider').addEventListener('input', (e)=> drawCureAt(+e.target.value));
+
+$('solveBtn').addEventListener('click', async ()=>{
+  const ov=$('postOverlay');
+  try{
+    ov.textContent='Calculating…';
+    ov.style.opacity=1;
+    await flushAndPaint(ov);
+    const r=solveShrinkage();
+    drawPost(r);
+    $('solveMsg').textContent='Done.';
+  } catch(e){
+    console.error(e);
+    $('solveMsg').textContent=e.message;
+  } finally {
+    ov.style.opacity=0;
+  }
+});
+
+$('deflectBtn').addEventListener('click', async ()=>{
+  const ov=$('deflectOverlay');
+  try{
+    $('deflectMsg').textContent='Solving…';
+    ov.textContent='Calculating…';
+    ov.style.opacity=1;
+    await flushAndPaint(ov);
+    const r=solveCombined();
+    drawDeflection(r);
+    $('deflectMsg').textContent='Done.';
+  } catch(e){
+    console.error(e);
+    $('deflectMsg').textContent=e.message;
+  } finally {
+    ov.style.opacity=0;
+  }
+});
+
+['units','G','cte','od','id','tOD','tID','offset','Tmold','Trt','kTop','kBot','kSTop','kSBot'].forEach(id=>{ const el=$(id); if(el) el.addEventListener('input', draw); });
+
+// tanδ live update
+$('tanDel').addEventListener('input', updateDynamicStiffness);
+
+// initial
+window.addEventListener('load', ()=>{ draw(); updateDynamicStiffness(); });
+document.addEventListener('DOMContentLoaded', draw);
+
+// ---------- Export/Import JSON ----------
+function getTimestamp(){
+  const now = new Date();
+  return now.toISOString().replace(/[:.]/g, '-').slice(0, 19);
+}
+
+function exportJSON(){
+  const p = read();
+  const data = {
+    timestamp: new Date().toISOString(),
+    version: "1.0",
+    inputs: {
+      units: p.units,
+      G: p.G,
+      cte: p.cte,
+      rho: p.rho,
+      cp: p.cp,
+      kth: p.kth,
+      Hr: p.Hr,
+      A1: p.A1,
+      E1: p.E1 / 1000, // convert back to kJ/mol
+      A2: p.A2,
+      E2: p.E2 / 1000,
+      pExp: p.pExp,
+      qExp: p.qExp,
+      OD: p.OD,
+      ID: p.ID,
+      tOD: p.tOD,
+      tID: p.tID,
+      offset: p.offset,
+      Tmold: p.Tmold,
+      Trt: p.Trt,
+      kTop: p.kTop,
+      kBot: p.kBot,
+      kSTop: p.kSTop,
+      kSBot: p.kSBot,
+      tanDel: +$('tanDel').value,
+      bcMode: p.bcMode,
+      dalphaMax: p.dalphaMax
+    }
+  };
+  
+  const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `rubber-tubeform-${getTimestamp()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function importJSON(file){
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+      const inp = data.inputs;
+      
+      // Populate all input fields
+      $('units').value = inp.units || 'imperial';
+      $('G').value = inp.G;
+      $('cte').value = inp.cte;
+      $('rho').value = inp.rho;
+      $('cp').value = inp.cp;
+      $('kth').value = inp.kth;
+      $('Hr').value = inp.Hr;
+      $('A1').value = inp.A1;
+      $('E1').value = inp.E1;
+      $('A2').value = inp.A2;
+      $('E2').value = inp.E2;
+      $('pExp').value = inp.pExp;
+      $('qExp').value = inp.qExp;
+      $('od').value = inp.OD;
+      $('id').value = inp.ID;
+      $('tOD').value = inp.tOD;
+      $('tID').value = inp.tID;
+      $('offset').value = inp.offset;
+      $('Tmold').value = inp.Tmold;
+      $('Trt').value = inp.Trt;
+      $('kTop').value = inp.kTop;
+      $('kBot').value = inp.kBot;
+      $('kSTop').value = inp.kSTop;
+      $('kSBot').value = inp.kSBot;
+      $('tanDel').value = inp.tanDel;
+      if(inp.bcMode) $('bcMode').value = inp.bcMode;
+      if(inp.dalphaMax) $('dalphaMax').value = inp.dalphaMax;
+      
+      // Redraw and update
+      draw();
+      updateDynamicStiffness();
+      
+      alert('Configuration imported successfully!');
+    } catch(err) {
+      alert('Error importing JSON: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+}
+
+function exportCSV(){
+  const p = read();
+  const staticK = $('staticK').value;
+  const dynK = $('dynK').value;
+  const tanDel = $('tanDel').value;
+  
+  const rows = [
+    ['Rubber Tubeform Molding - Results Summary'],
+    ['Timestamp', new Date().toISOString()],
+    [''],
+    ['Input Parameters'],
+    ['Units', p.units],
+    ['Shear Modulus (G)', p.G],
+    ['CTE (1/°unit)', p.cte],
+    ['Mold Cavity OD', p.OD],
+    ['Mold Cavity ID', p.ID],
+    ['t at OD', p.tOD],
+    ['t at ID', p.tID],
+    ['ID/OD offset', p.offset],
+    ['Molding T', p.Tmold],
+    ['RT', p.Trt],
+    ['k (top)', p.kTop],
+    ['k (bottom)', p.kBot],
+    ['k_s (top S)', p.kSTop],
+    ['k_s (bottom S)', p.kSBot],
+    ['Weight Density ρ (kg/m³)', p.rho],
+    ['Heat Capacity Cₚ (J/kg·K)', p.cp],
+    ['Thermal Conductivity k (W/m·K)', p.kth],
+    ['Heat of Reaction Hᵣ (J/kg)', p.Hr],
+    ['A₁ (1/s)', p.A1],
+    ['E₁ (kJ/mol)', p.E1 / 1000],
+    ['p (–)', p.pExp],
+    ['A₂ (1/s)', p.A2],
+    ['E₂ (kJ/mol)', p.E2 / 1000],
+    ['q (–)', p.qExp],
+    [''],
+    ['Stiffness Results'],
+    ['Static Stiffness (Fz/Δz)', staticK],
+    ['tan δ', tanDel],
+    ['Dynamic Stiffness', dynK]
+  ];
+  
+  const csvContent = rows.map(row => row.map(cell => {
+    const str = String(cell);
+    return str.includes(',') ? `"${str}"` : str;
+  }).join(',')).join('\n');
+  
+  const blob = new Blob([csvContent], {type: 'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `rubber-tubeform-results-${getTimestamp()}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Wire up the buttons
+$('exportJsonBtn').addEventListener('click', exportJSON);
+$('importJsonBtn').addEventListener('click', () => $('jsonFileInput').click());
+$('jsonFileInput').addEventListener('change', (e) => {
+  if(e.target.files.length > 0){
+    importJSON(e.target.files[0]);
+    e.target.value = ''; // Reset file input
+  }
+});
+$('exportCsvBtn').addEventListener('click', exportCSV);
+  
+</script>
+</body>
+</html>
+
 
 
 
