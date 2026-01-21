@@ -1,995 +1,699 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<title>Guard Rail Impact - Unified + Tire Presets</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="utf-8">
 
-<script src="https://unpkg.com/chart.js@4.4.1/dist/chart.umd.js"></script>
+<title>Vertical Plate — steady state + multi sources</title>
+<!-- ADD THIS LINE FOR ZIP FUNCTIONALITY -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
-<style>
-  body { margin:0; font-family:'Segoe UI', Tahoma, sans-serif; background:#ffffff; overflow: hidden; color: #333333; }
-  #container { display:flex; height:100vh; width: 100vw; flex-direction: column; }
-  #top-section { display: flex; flex: 1; min-height: 0; }
-  #ui { width:380px; padding:12px; background:#f5f5f5; border-right:2px solid #cccccc; overflow-y:auto; flex-shrink: 0; box-shadow: 4px 0 8px rgba(0,0,0,0.1); z-index: 10; height: 100%; box-sizing: border-box;}
-  #viewer { flex-grow:1; position:relative; background: #ffffff; }
-  #chart-container { height: 220px; background: #f5f5f5; border-top: 2px solid #cccccc; padding: 12px; flex-shrink: 0; z-index: 20; display: flex; }
-  h3 { margin:18px 0 8px 0; font-size:13px; border-bottom:2px solid #ff6b35; padding-bottom: 4px; text-transform: uppercase; letter-spacing: 1px; color: #ff6b35; font-weight: 600; }
-  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:8px 12px; }
-  label { font-size:11px; display:block; color: #555555; margin-bottom: 2px; }
-  input[type="number"], select { width:100%; padding:6px; font-size:11px; border:1px solid #cccccc; border-radius: 4px; box-sizing: border-box; background: #ffffff; color: #333333;}
-  input[type="number"]:focus, select:focus { outline: none; border-color: #ff6b35; }
-  .units { float:right; font-size:9px; color:#888888; font-weight: bold; }
-  button { width:100%; margin-top:6px; padding:10px; font-size:12px; cursor:pointer; background: #e8e8e8; border: 1px solid #bbbbbb; border-radius: 4px; transition: all 0.2s; color: #333333; font-weight: 600; }
-  button:hover { background: #d8d8d8; transform: translateY(-1px); }
-  #solveBtn { background: #d4edda; border-color: #c3e6cb; color: #155724; }
-  #stopBtn { background: #f8d7da; border-color: #f5c6cb; color: #721c24; }
-  .impact-section { background: #fff3e0; padding: 10px; border-radius: 4px; border: 2px solid #ff6b35; margin-top: 8px; }
-  .impact-badge { display: inline-block; background: #ff6b35; color: #ffffff; padding: 2px 8px; border-radius: 3px; font-size: 9px; font-weight: bold; margin-left: 6px; }
-</style>
 
-<script type="importmap">
-{
-  "imports": {
-    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
-  }
-}
-</script>
+  <style>
+    .app *{ box-sizing:border-box; }
+    .app{ font-family:system-ui,Arial,sans-serif; color:#111; margin:12px; }
+    .panel{ border:1px solid #ddd; border-radius:8px; background:#fff; padding:10px; }
+
+    /* Harden topline so it survives host CSS */
+    .topline{
+      font-size:14px;
+      margin-bottom:8px;
+      display:block;
+      padding:6px 8px;
+      border:1px solid #e5e7eb;
+      border-radius:8px;
+      background:#fff;
+      color:#111;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+
+    .grid{ display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start; }
+    .grid>.col{ min-width:280px; max-width:720px; flex:1 1 720px; }
+    .row{ display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin:8px 0; }
+
+    /* keep labels visible on any host */
+    .app label{
+      display:inline-block !important;
+      width:120px; text-align:right; margin-right:8px;
+      font-size:13px; white-space:nowrap;
+    }
+    .app input[type=number], .app select, .app button{
+      height:28px; padding:0 8px; line-height:1;
+    }
+    .app input[type=number]{ width:100px; }
+    #nx{ width:100px; }
+
+    canvas{ border:1px solid #333; background:#fff; cursor:crosshair; }
+    #canvasWrap{ position:relative; display:inline-block }
+    .legend{ position:absolute; right:6px; top:6px; padding:6px; background:rgba(255,255,255,.92); border:1px solid #ddd; border-radius:6px }
+    .legend .bar{ width:12px; height:120px; background:linear-gradient(#f00,#ff0,#0f0,#0bf,#00f); }
+    .legend .ticks{ height:120px; display:flex; flex-direction:column; justify-content:space-between; margin-left:6px; font-size:12px }
+
+    #sourcesList{ border:1px dashed #c8d; padding:8px; border-radius:8px; background:#faf8ff }
+    .srcRow{ display:flex; align-items:center; gap:10px; margin:6px 0; }
+    .pill{ font-size:12px; padding:2px 6px; background:#eef; border:1px solid #cde; border-radius:10px; }
+    .hint{ font-size:12px; color:#555; }
+  </style>
+
+
+
+
 </head>
 
 <body>
-<div id="container">
-  <div id="top-section">
-    <div id="ui">
-      <div style="background: #fff3e0; padding: 10px; border-radius: 4px; margin-bottom: 15px; border: 2px solid #ff6b35;">
-        <div style="font-size: 14px; font-weight: bold; color: #d84315;">Guard Rail Impact Module</div>
-        <div style="font-size: 10px; color: #d84315; margin-top: 4px;">Unified Angled Rail + Dynamic Breakage</div>
-      </div>
-      
-      <div class="auto-update-group">
-        <h3>Box 1 (Chassis)</h3>
-        <div class="grid2">
-          <label>Length (Y) <span class="units">in</span><input id="box1_L" type="number" value="120"></label>
-          <label>Width (X)  <span class="units">in</span><input id="box1_W" type="number" value="72"></label>
-          <label>Height (Z) <span class="units">in</span><input id="box1_H" type="number" value="24"></label>
-          <label>Weight     <span class="units">lb</span><input id="box1_Wt" type="number" value="2500"></label>
+  <div class="app">
+    <!-- FIX: do not use id="top" (collides with window.top in iframes) -->
+    <div id="topline" class="topline">—</div>
+
+    <div class="grid panel">
+      <div class="col">
+        <div class="row">
+          <label for="widthM">Width (m)</label><input id="widthM" type="number" value="0.20" step="0.01">
+          <label for="heightM">Height (m)</label><input id="heightM" type="number" value="0.12" step="0.01">
         </div>
-        <h3>Box 2 (Cab/Cargo)</h3>
-        <div class="grid2">
-          <label>Length (Y) <span class="units">in</span><input id="box2_L" type="number" value="60"></label>
-          <label>Width (X)  <span class="units">in</span><input id="box2_W" type="number" value="60"></label>
-          <label>Height (Z) <span class="units">in</span><input id="box2_H" type="number" value="20"></label>
-          <label>Weight     <span class="units">lb</span><input id="box2_Wt" type="number" value="800"></label>
-          <label>Front Offset (Y) <span class="units">in</span><input id="box2_dY" type="number" value="0"></label>
-        </div>
-        <h3>Wheels</h3>
-        <div class="grid2">
-          <label>Diameter <span class="units">in</span><input id="wheel_D" type="number" value="32"></label>
-          <label>Weight   <span class="units">lb</span><input id="wheel_Wt" type="number" value="120"></label>
-          <label>Front Y  <span class="units">in</span><input id="wheel_Yf" type="number" value="-20"></label>
-          <label>Rear Spacing <span class="units">in</span><input id="wheel_dYr" type="number" value="80"></label>
-        </div>
-      </div>
-      
-      <div class="impact-section">
-        <h3>Guard Rail Configuration <span class="impact-badge">IMPACT</span></h3>
-        <div class="grid2">
-          <label>Center Y <span class="units">in</span><input id="rail_y" type="number" value="300"></label>
-          <label>Angle <span class="units">deg</span><input id="rail_angle" type="number" value="0" min="-60" max="60"></label>
-          <label>Height <span class="units">in</span><input id="rail_height" type="number" value="18" min="6" max="72"></label>
-          <label style="background: #ffe0b2; padding: 4px; border-radius: 3px;">
-            CG Height: <span id="cg_height_display" style="font-weight: bold; color: #d84315;">--</span> <span class="units">in</span>
-          </label>
-        </div>
-        <div style="font-size: 10px; color: #d84315; margin-top: 6px; line-height: 1.4;">
-          Angle 0° = Perpendicular Wall. Positive = Rotated Left (Driver Side Hit).
-        </div>
-      </div>
-      
-      <div class="impact-section">
-        <h3>Contact Parameters</h3>
-        <div class="grid2">
-          <label>Rail Stiffness <span class="units">lb/in</span><input id="k_rail" type="number" value="3000"></label>
-          <label>Bumper Stiffness <span class="units">lb/in</span><input id="k_bumper" type="number" value="2000"></label>
-          <label>Rail Break Load <span class="units">lb</span><input id="rail_break" type="number" value="50000"></label>
-          <label>Friction (Vert) <span class="units">µ</span><input id="rail_mu" type="number" value="0.3"></label>
-        </div>
-      </div>
-      
-      <h3>Lateral Dynamics</h3>
-      <div class="grid2">
-        <label style="grid-column: 1 / span 2;">Tire Preset
-          <select id="tire_preset">
-            <option value="custom">Custom</option>
-            <option value="sports">Sports Car (Sharp)</option>
-            <option value="sedan">Sedan / SUV (Standard)</option>
-            <option value="truck">Panel Truck (Heavy)</option>
-            <option value="offroad">Off-Road (Soft)</option>
-            <option value="drift">Drift / Ice (Slippery)</option>
+        <div class="row">
+          <label for="thicknessM">Thickness (m)</label><input id="thicknessM" type="number" value="0.005" step="0.001">
+          <label for="material">Material</label>
+          <select id="material">
+            <option value="Al">Aluminum (6061)</option>
+            <option value="Cu">Copper</option>
+            <option value="Steel">Steel</option>
+            <option value="FR4">FR4</option>
           </select>
-        </label>
-        <label>Lateral Tire K <span class="units">lb/in</span><input id="k_lat" type="number" value="800"></label>
-        <label>Lateral Tire C <span class="units">lb·s/in</span><input id="c_lat" type="number" value="50"></label>
-      </div>
-      
-      <h3>Suspension</h3>
-      <div class="grid2">
-        <label>Front K <span class="units">lb/in</span><input id="k_sf" type="number" value="300"></label>
-        <label>Front C <span class="units">lb·s/in</span><input id="c_sf" type="number" value="25"></label>
-        <label>Rear K <span class="units">lb/in</span><input id="k_sr" type="number" value="350"></label>
-        <label>Rear C <span class="units">lb·s/in</span><input id="c_sr" type="number" value="30"></label>
-      </div>
-      
-      <h3>Tires (Vertical)</h3>
-      <div class="grid2">
-        <label>Front K <span class="units">lb/in</span><input id="k_tf" type="number" value="1200"></label>
-        <label>Rear K <span class="units">lb/in</span><input id="k_tr" type="number" value="1400"></label>
-      </div>
+        </div>
+        <div class="row">
+          <label for="ambientT">Ambient (°C)</label><input id="ambientT" type="number" value="20" step="1">
+          <label for="nx"># cells along width</label><input id="nx" type="number" value="96" min="20" max="400">
+        </div>
 
-      <h3>Simulation</h3>
-      <div class="grid2">
-        <label>Speed <span class="units">in/s</span><input id="veh_v" type="number" value="300"></label>
-        <label>Gravity <span class="units">in/s²</span><input id="veh_g" type="number" value="386.1"></label>
-        <label>Time Scale <span class="units">x</span><input id="time_scale" type="number" value="1.0" step="0.1" min="0.1" max="10"></label>
-      </div>
 
-   <div class="grid2" style="margin-top:10px;">
-  <button id="solveBtn">▶ Solve</button>
-  <button id="stopBtn">■ Stop</button>
+    <div class="row">
+  <button id="setup">Setup Grid</button>
+  <button id="solve">Solve</button>
+  <button id="reset">Reset to Ambient</button>
+  <label class="hint"><input id="showGrid" type="checkbox" checked> Show grid</label>
+  
+  <!-- ADD THESE FOUR BUTTONS HERE -->
+  <button id="exportJsonBtn" style="background: #fff3cd; border: 1px solid #ffc107; color: #856404; margin-left: 8px;">💾 JSON</button>
+  <button id="importJsonBtn" style="background: #d1ecf1; border: 1px solid #bee5eb; color: #0c5460;">📂 Import</button>
+  <button id="exportCsvBtn" style="background: #d4edda; border: 1px solid #c3e6cb; color: #155724;">📊 CSV</button>
+  <button id="exportZipBtn" style="background: #cfe2ff; border: 1px solid #b6d4fe; color: #084298;">📦 ZIP</button>
+  <!-- END OF NEW BUTTONS -->
+</div>    
+
+
+
 </div>
-<button id="updateBtn">Reset / Rebuild Scene</button>
-
-<!-- ADD THESE THREE BUTTONS HERE -->
-<div style="margin-top:10px;">
-  <button id="exportJsonBtn" style="background: #fff3cd; border-color: #ffc107; color: #856404;">💾 Export JSON</button>
-  <button id="importJsonBtn" style="background: #d1ecf1; border-color: #bee5eb; color: #0c5460;">📂 Import JSON</button>
-  <button id="exportCsvBtn" style="background: #d4edda; border-color: #c3e6cb; color: #155724;">📊 Export CSV</button>
-</div>
-<!-- END OF NEW BUTTONS -->
+      </div>
 
 
 
- </div>
-   
 
- <div id="viewer"></div>
+      <div class="col">
+        <div class="row"><strong>Drag rectangles on the canvas to add heat sources</strong></div>
+        <div class="row">
+          <label for="defaultW">Default power (W)</label><input id="defaultW" type="number" value="10" step="0.1">
+          <button id="clearAll">Clear all sources</button>
+        </div>
+        <div id="sourcesList" class="panel">
+          <div class="hint">No sources yet. Drag a rectangle on the canvas. Each row is editable and has a Remove button.</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="canvasWrap" class="panel">
+      <canvas id="cv" width="720" height="432"></canvas>
+      <div class="legend" id="legend" style="display:none">
+        <div style="display:flex">
+          <div class="bar"></div>
+          <div class="ticks">
+            <div id="tMaxLbl">—</div><div></div><div id="tMinLbl">—</div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
-  <div id="chart-container">
-    <canvas id="accelChart"></canvas>
-  </div>
-</div>
 
-<script type="module">
-import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-
-let scene, camera, renderer, controls;
-let vehicleGroup, groundGroup;
-let guardRail = null; 
-let brokenRailMeshes = []; 
-let simTime = 0;
-let massProps = null;
-let wheelOffsets = null;
-let vehicleCorners = null;
-let isRunning = false;
-let chartInstance = null;
-const maxDataPoints = 200; 
-let chartUpdateCounter = 0;
-const dt = 1/240; 
-
-// Rail Break State
-let railBroken = false;
-let railBreakLocation = { x: 0, y: 0 };
-let railBreakVisualUpdated = false;
-
-// Tire Presets
-const tirePresets = {
-  sports: { k: 1200, c: 60 },
-  sedan: { k: 800, c: 40 },
-  truck: { k: 600, c: 35 },
-  offroad: { k: 400, c: 25 },
-  drift: { k: 800, c: 5 }
-};
-
-const state = {
-  x: 0, y: 0, z: 40, 
-  phi: 0, theta: 0, psi: 0,
-  dx: 0, dy: 0, dz: 0, 
-  dphi: 0, dtheta: 0, dpsi: 0,
-  zw: { FL:30, FR:30, RL:30, RR:30 },
-  dzw: { FL:0, FR:0, RL:0, RR:0 },
-  ddz: 0, ddphi: 0, ddtheta: 0, ddx: 0, ddy: 0, ddpsi: 0
-};
-
-init();
-initChart();
-buildVehicle();
-setupAutoUpdate();
-animate();
-
-function init() {
-  const container = document.getElementById('viewer');
-  scene = new THREE.Scene();
-  scene.background = new THREE.Color(0xffffff);
-  scene.fog = new THREE.Fog(0xffffff, 500, 4000);
-  THREE.Object3D.DEFAULT_UP.set(0,0,1);
-  camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 1, 10000);
-  camera.position.set(400, -800, 500);
-  renderer = new THREE.WebGLRenderer({antialias:true});
-  renderer.setSize(container.clientWidth, container.clientHeight);
-  renderer.shadowMap.enabled = true;
-  container.appendChild(renderer.domElement);
-  controls = new OrbitControls(camera, renderer.domElement);
-  controls.enableDamping = true;
-  
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x888888, 0.8));
-  const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
-  dirLight.position.set(100, -300, 500);
-  dirLight.castShadow = true;
-  dirLight.shadow.mapSize.width = 2048; 
-  dirLight.shadow.mapSize.height = 2048;
-  scene.add(dirLight);
-  
-  groundGroup = new THREE.Group();
-  scene.add(groundGroup);
-  vehicleGroup = new THREE.Group();
-  scene.add(vehicleGroup);
-  
-  const floor = new THREE.Mesh(
-    new THREE.PlaneGeometry(10000, 10000), 
-    new THREE.MeshStandardMaterial({ color: 0xe8e8e8, depthWrite: false })
-  );
-  floor.receiveShadow = true;
-  groundGroup.add(floor);
-  
-  const grid = new THREE.GridHelper(10000, 100, 0x999999, 0xcccccc);
-  grid.rotation.x = Math.PI/2;
-  groundGroup.add(grid);
-  
-  window.addEventListener('resize', () => {
-    const w = container.clientWidth;
-    const h = container.clientHeight;
-    camera.aspect = w / h;
-    camera.updateProjectionMatrix();
-    renderer.setSize(w, h);
-  });
-}
-
-function initChart() {
-  const ctx = document.getElementById('accelChart').getContext('2d');
-  const commonOptions = { pointRadius: 0, borderWidth: 1.5, tension: 0.2 };
-  chartInstance = new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels: [],
-      datasets: [
-        { label: 'X Accel (G)', borderColor: '#e74c3c', ...commonOptions, borderWidth: 2 },
-        { label: 'Y Accel (G)', borderColor: '#3498db', ...commonOptions, borderWidth: 2 },
-        { label: 'Z Accel (G)', borderColor: '#2ecc71', ...commonOptions, borderWidth: 2 }
-      ]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false, animation: false,
-      scales: {
-        x: { display: false },
-        y: { suggestedMin: -2, suggestedMax: 2, title: { display: true, text: 'G-Force' } }
-      }
-    }
-  });
-}
-
-function updateChartLogic(t) {
-  chartUpdateCounter++;
-  if(chartUpdateCounter < 5) return;
-  chartUpdateCounter = 0;
-  
-  const g = getVal('veh_g'); 
-  const ax = state.ddx / g;
-  const ay = state.ddy / g;
-  const az = state.ddz / g;
-  
-  const chart = chartInstance;
-  chart.data.labels.push(t.toFixed(2));
-  chart.data.datasets[0].data.push(ax);
-  chart.data.datasets[1].data.push(ay);
-  chart.data.datasets[2].data.push(az);
-  
-  if(chart.data.labels.length > maxDataPoints) {
-    chart.data.labels.shift();
-    chart.data.datasets.forEach(ds => ds.data.shift());
-  }
-  chart.options.plugins.title = { display: true, text: `Accel (G): X:${ax.toFixed(2)} Y:${ay.toFixed(2)} Z:${az.toFixed(2)}` };
-  chart.update();
-}
-
-function packState(s) {
-  return [
-    s.x, s.y, s.z, s.phi, s.theta, s.psi,
-    s.dx, s.dy, s.dz, s.dphi, s.dtheta, s.dpsi,
-    s.zw.FL, s.zw.FR, s.zw.RL, s.zw.RR,
-    s.dzw.FL, s.dzw.FR, s.dzw.RL, s.dzw.RR
-  ];
-}
-
-function getVal(id) { 
-  const el = document.getElementById(id);
-  if (!el) return 0;
-  return parseFloat(el.value) || 0; 
-}
-function setVal(id, val) { document.getElementById(id).value = val; }
-
-function setupAutoUpdate() {
-  const inputs = document.querySelectorAll('.auto-update-group input');
-  inputs.forEach(input => {
-    input.addEventListener('input', () => { 
-        if(input.id === 'k_lat' || input.id === 'c_lat') {
-            document.getElementById('tire_preset').value = 'custom';
-        }
-        buildVehicle(true); 
-    });
-  });
-  
-  document.getElementById('tire_preset').addEventListener('change', (e) => {
-      const key = e.target.value;
-      if(key !== 'custom' && tirePresets[key]) {
-          setVal('k_lat', tirePresets[key].k);
-          setVal('c_lat', tirePresets[key].c);
-          buildVehicle(true);
-      }
-  });
-  
-  document.getElementById('rail_y').addEventListener('input', buildGuardRail);
-  document.getElementById('rail_angle').addEventListener('input', buildGuardRail);
-  document.getElementById('rail_height').addEventListener('input', buildGuardRail);
-}
-
-document.getElementById('solveBtn').onclick = () => { isRunning = true; };
-document.getElementById('stopBtn').onclick = () => { isRunning = false; };
-document.getElementById('updateBtn').onclick = () => buildVehicle(false);
-
-function buildVehicle(isAutoUpdate = false) {
-  if(!isAutoUpdate) {
-    isRunning = false;
-    simTime = 0;
-    if(chartInstance) {
-      chartInstance.data.labels = [];
-      chartInstance.data.datasets.forEach(ds => ds.data = []);
-      chartInstance.update();
-    }
-  }
-  vehicleGroup.clear();
-  
-  const L1 = getVal('box1_L'), W1 = getVal('box1_W'), H1 = getVal('box1_H');
-  const L2 = getVal('box2_L'), W2 = getVal('box2_W'), H2 = getVal('box2_H');
-  const dY = getVal('box2_dY'); 
-  const R  = getVal('wheel_D') / 2;
-  const g = getVal('veh_g');
-  const m1 = getVal('box1_Wt') / g;
-  const m2 = getVal('box2_Wt') / g;
-  const M = m1 + m2;
-  
-  const c1 = { x:0, y: -L1/2, z: H1/2 + R };
-  const c2 = { x:0, y: dY - L2/2, z: H1 + H2/2 + R };
-  const CG = {
-    x: (m1*c1.x + m2*c2.x) / M,
-    y: (m1*c1.y + m2*c2.y) / M,
-    z: (m1*c1.z + m2*c2.z) / M
+  <script>
+  /* materials */
+  const mats = {
+    Al:{k:167, rho:2700, cp:896},
+    Cu:{k:401, rho:8960, cp:385},
+    Steel:{k:50, rho:7850, cp:470},
+    FR4:{k:0.3, rho:1900, cp:1200}
   };
-  
-  document.getElementById('cg_height_display').textContent = CG.z.toFixed(1);
-  
-  const Ixx = (m1/12)*(L1*L1 + H1*H1) + m1*((c1.y-CG.y)**2 + (c1.z-CG.z)**2) + (m2/12)*(L2*L2 + H2*H2) + m2*((c2.y-CG.y)**2 + (c2.z-CG.z)**2);
-  const Iyy = (m1/12)*(W1*W1 + H1*H1) + m1*((c1.x-CG.x)**2 + (c1.z-CG.z)**2) + (m2/12)*(W2*W2 + H2*H2) + m2*((c2.x-CG.x)**2 + (c2.z-CG.z)**2);
-  const Izz = (m1/12)*(W1*W1 + L1*L1) + m1*((c1.x-CG.x)**2 + (c1.y-CG.y)**2) + (m2/12)*(W2*W2 + L2*L2) + m2*((c2.x-CG.x)**2 + (c2.y-CG.y)**2);
-  
-  massProps = { M, CG, Ixx, Iyy, Izz };
-  
-  vehicleCorners = [
-    { name: 'FL', x: c1.x - W1/2 - CG.x, y: c1.y + L1/2 - CG.y },
-    { name: 'FR', x: c1.x + W1/2 - CG.x, y: c1.y + L1/2 - CG.y },
-    { name: 'RL', x: c1.x - W1/2 - CG.x, y: c1.y - L1/2 - CG.y },
-    { name: 'RR', x: c1.x + W1/2 - CG.x, y: c1.y - L1/2 - CG.y }
-  ];
-  
-  const b1 = new THREE.Mesh(new THREE.BoxGeometry(W1, L1, H1), new THREE.MeshStandardMaterial({color: 0x2d5f8f}));
-  b1.position.set(c1.x - CG.x, c1.y - CG.y, c1.z - CG.z);
-  b1.castShadow = true;
-  vehicleGroup.add(b1);
-  
-  const b2 = new THREE.Mesh(new THREE.BoxGeometry(W2, L2, H2), new THREE.MeshStandardMaterial({color: 0x4a9eff}));
-  b2.position.set(c2.x - CG.x, c2.y - CG.y, c2.z - CG.z);
-  b2.castShadow = true;
-  vehicleGroup.add(b2);
-  
-  const wheelGeo = new THREE.CylinderGeometry(R, R, W1*0.2, 24);
-  wheelGeo.rotateZ(Math.PI/2);
-  const wheelMat = new THREE.MeshStandardMaterial({color: 0x1a1a1a, metalness: 0.3, roughness: 0.7});
-  const yF = getVal('wheel_Yf');
-  const yR = yF - getVal('wheel_dYr');
-  const xW = W1/2; 
-  const wheels = [ {n:'FL', x: -xW, y: yF}, {n:'FR', x: xW, y: yF}, {n:'RL', x: -xW, y: yR}, {n:'RR', x: xW, y: yR} ];
-  wheelOffsets = wheels.map(w => ({ name: w.n, x: w.x - CG.x, y: w.y - CG.y }));
-  wheels.forEach(w => {
-    const mesh = new THREE.Mesh(wheelGeo, wheelMat);
-    mesh.name = "W_" + w.n;
-    mesh.position.set(w.x - CG.x, w.y - CG.y, R - CG.z); 
-    mesh.castShadow = true;
-    vehicleGroup.add(mesh);
-  });
-  
-  state.x = 0; state.y = 0; state.z = CG.z + 5; 
-  state.phi = 0; state.theta = 0; state.psi = 0;
-  state.dx = 0; state.dy = getVal('veh_v'); state.dz = 0; 
-  state.dphi = 0; state.dtheta = 0; state.dpsi = 0;
-  state.zw.FL = CG.z; state.zw.FR = CG.z; state.zw.RL = CG.z; state.zw.RR = CG.z;
-  state.dzw.FL=0; state.dzw.FR=0; state.dzw.RL=0; state.dzw.RR=0;
-  state.ddz=0; state.ddphi=0; state.ddtheta=0; state.ddx=0; state.ddy=0; state.ddpsi=0;
-  
-  // Reset Breakage State
-  railBroken = false;
-  railBreakVisualUpdated = false;
-  // CLEAR DEBRIS MESHES FROM PREVIOUS RUN
-  if(brokenRailMeshes.length > 0) {
-      brokenRailMeshes.forEach(m => groundGroup.remove(m));
-      brokenRailMeshes = [];
-  }
-  
-  buildGuardRail();
-}
 
-function buildGuardRail() {
-  if(guardRail && guardRail.mesh) { groundGroup.remove(guardRail.mesh); }
-  
-  const railY = getVal('rail_y');
-  const angleDeg = getVal('rail_angle');
-  const angleRad = angleDeg * Math.PI / 180;
-  const railHeight = getVal('rail_height');
-  const W = getVal('box1_W');
-  
-  const width = 1000; // Always wide enough to cover path
-  const thickness = 12;
-  
-  const geom = new THREE.BoxGeometry(width, thickness, railHeight);
-  const mesh = new THREE.Mesh(geom, new THREE.MeshStandardMaterial({ color: 0xff6b35, metalness: 0.7, roughness: 0.3 }));
-  
-  mesh.position.set(0, railY, railHeight/2);
-  mesh.rotation.z = angleRad; // Rotate around center (0, railY)
-  mesh.castShadow = true; mesh.receiveShadow = true;
-  groundGroup.add(mesh);
-  
-  // Pre-calculate Normal Vector based on angle
-  // Normal vector rotates with the mesh. 0 deg = (0, -1)
-  const nx = Math.sin(angleRad);
-  const ny = -Math.cos(angleRad);
-  
-  // Direction vector (along the rail)
-  const dx = Math.cos(angleRad);
-  const dy = Math.sin(angleRad);
-  
-  guardRail = { 
-      mesh: mesh, y: railY, height: railHeight, width: width, thickness: thickness, 
-      normalX: nx, normalY: ny,
-      dirX: dx, dirY: dy,
-      angle: angleRad
-  };
-}
+  /* state */
+  const cv = document.getElementById('cv');
+  const ctx = cv.getContext('2d');
 
-function updateBrokenRailVisuals() {
-  if(!guardRail || !guardRail.mesh) return;
-  
-  const breakW = getVal('box1_W') * 1.2; 
-  const bx = railBreakLocation.x;
-  const by = railBreakLocation.y;
-  
-  groundGroup.remove(guardRail.mesh); 
-  
-  const mat = new THREE.MeshStandardMaterial({ color: 0xff6b35, metalness: 0.7, roughness: 0.3 });
-  
-  // Find break pos in Local X
-  const dx = bx - 0;
-  const dy = by - guardRail.y;
-  const localPos = dx * guardRail.dirX + dy * guardRail.dirY;
-  
-  const halfW = guardRail.width / 2;
-  const leftBound = -halfW;
-  const rightBound = halfW;
-  
-  const gapStart = localPos - breakW/2;
-  const gapEnd = localPos + breakW/2;
-  
-  if(gapStart > leftBound) {
-      const len1 = gapStart - leftBound;
-      const centerLocal1 = leftBound + len1/2;
-      const m1 = new THREE.Mesh(new THREE.BoxGeometry(len1, guardRail.thickness, guardRail.height), mat);
-      
-      const wx1 = 0 + centerLocal1 * guardRail.dirX;
-      const wy1 = guardRail.y + centerLocal1 * guardRail.dirY;
-      
-      m1.position.set(wx1, wy1, guardRail.height/2);
-      m1.rotation.z = guardRail.angle;
-      groundGroup.add(m1);
-      brokenRailMeshes.push(m1);
-  }
-  
-  if(gapEnd < rightBound) {
-      const len2 = rightBound - gapEnd;
-      const centerLocal2 = gapEnd + len2/2;
-      const m2 = new THREE.Mesh(new THREE.BoxGeometry(len2, guardRail.thickness, guardRail.height), mat);
-      
-      const wx2 = 0 + centerLocal2 * guardRail.dirX;
-      const wy2 = guardRail.y + centerLocal2 * guardRail.dirY;
-      
-      m2.position.set(wx2, wy2, guardRail.height/2);
-      m2.rotation.z = guardRail.angle;
-      groundGroup.add(m2);
-      brokenRailMeshes.push(m2);
-  }
-}
+  /* FIX: explicit reference to topline element */
+  const toplineEl = document.getElementById('topline');
 
-function getRailHeightAt(x, y) {
-  if(!guardRail) return 0;
-  
-  const dx = x - 0;
-  const dy = y - guardRail.y;
-  const localX = dx * guardRail.dirX + dy * guardRail.dirY;
-  const perpDist = dx * guardRail.normalX + dy * guardRail.normalY;
-  
-  const halfThick = guardRail.thickness / 2;
-  const halfWidth = guardRail.width / 2;
-  
-  if (Math.abs(perpDist) < halfThick && Math.abs(localX) < halfWidth) {
-      if(railBroken) {
-          const breakDx = railBreakLocation.x - 0;
-          const breakDy = railBreakLocation.y - guardRail.y;
-          const breakLocalX = breakDx * guardRail.dirX + breakDy * guardRail.dirY;
-          
-          const gapW = getVal('box1_W') * 1.2;
-          if(Math.abs(localX - breakLocalX) < gapW/2) return 0; 
-      }
-      return guardRail.height;
-  }
-  return 0;
-}
+  let grid=null;
+  let sources=[];              // {rect:{x0,y0,x1,y1}, W:number, cells:int[]}
+  let drawing=false, p0=null;
 
-function checkGuardRailCollision(x, y, z, psi, dx, dy, dpsi) {
-  if(!guardRail || !vehicleCorners || !massProps || !wheelOffsets) return { Fx: 0, Fy: 0, Fz: 0, Tx: 0, Ty: 0, Tz: 0 };
-  
-  if(railBroken) {
-      const dx_cg = x - 0;
-      const dy_cg = y - guardRail.y;
-      const localX = dx_cg * guardRail.dirX + dy_cg * guardRail.dirY;
-      
-      const bdx = railBreakLocation.x - 0;
-      const bdy = railBreakLocation.y - guardRail.y;
-      const breakLocalX = bdx * guardRail.dirX + bdy * guardRail.dirY;
-      
-      const gapW = getVal('box1_W') * 1.1;
-      if(Math.abs(localX - breakLocalX) < gapW/2) {
-          return { Fx: 0, Fy: 0, Fz: 0, Tx: 0, Ty: 0, Tz: 0 };
-      }
+  /* convective h: Churchill–Chu, vertical plate, one-sided */
+  function hChurchillChu(dT,L){
+    const k=0.026, nu=1.5e-5, alpha=2.2e-5, Pr=0.71, beta=1/300, g=9.81;
+    const DT=Math.max(1e-6,dT), Le=Math.max(1e-6,L);
+    const Ra=g*beta*DT*Math.pow(Le,3)/(nu*alpha);
+    const Nu=0.68 + (0.670*Math.pow(Ra,0.25))/Math.pow(1+Math.pow(0.492/Pr,9/16),4/9);
+    return Nu*k/Le;
   }
-  
-  const k_rail = getVal('k_rail');
-  const k_bumper = getVal('k_bumper'); 
-  const c_critical = 2 * Math.sqrt(((k_rail+k_bumper)/2) * massProps.M);
-  const MAX_PENETRATION = 5.0; 
-  
-  const cosPsi = Math.cos(psi), sinPsi = Math.sin(psi);
-  const railBreakLoad = getVal('rail_break');
-  const railHeight = guardRail.height;
-  const cgZ = state.z;
-  const mu_v = getVal('rail_mu');
-  
-  let Fx_total=0, Fy_total=0, Fz_total=0, Tx_total=0, Ty_total=0, Tz_total=0;
-  
-  const H1 = getVal('box1_H');
-  const R = getVal('wheel_D') / 2;
-  const chassisBottom = R; 
-  const chassisTop = R + H1;
-  
-  if(railHeight >= chassisBottom) { 
-    const contactPoints = vehicleCorners;
-    
-    for(let pt of contactPoints) {
-        const cx_world = x + cosPsi * pt.x - sinPsi * pt.y;
-        const cy_world = y + sinPsi * pt.x + cosPsi * pt.y;
-        
-        // Plane Distance Logic
-        const pdx = cx_world - 0;
-        const pdy = cy_world - guardRail.y;
-        const dist = pdx * guardRail.normalX + pdy * guardRail.normalY;
-        const localX = pdx * guardRail.dirX + pdy * guardRail.dirY;
-        
-        // dist < 0 means car has crossed the face defined by Normal
-        if(dist < 0 && Math.abs(localX) < guardRail.width/2) {
-            let penetration = -dist;
-            penetration = Math.min(penetration, MAX_PENETRATION);
-            
-            const vx_pt = dx - dpsi * pt.y;
-            const vy_pt = dy + dpsi * pt.x;
-            const v_normal = -(vx_pt * guardRail.normalX + vy_pt * guardRail.normalY);
-            
-            const F_damp = c_critical * v_normal * Math.min(penetration/2, 1.0);
-            let F_contact = k_rail * penetration + F_damp;
-            
-            let F_mag = Math.abs(F_contact);
-            
-            if(F_mag > railBreakLoad) {
-                F_contact = railBreakLoad; // Impulse
-                if(!railBroken) {
-                    railBroken = true;
-                    railBreakLocation = { x: x, y: y }; 
-                }
-            } 
-            
-            const F_applied = Math.abs(F_contact); 
-            
-            const Fx = F_applied * guardRail.normalX;
-            const Fy = F_applied * guardRail.normalY;
-            
-            Fx_total += Fx;
-            Fy_total += Fy;
-            
-            const armX = cx_world - x;
-            const armY = cy_world - y;
-            Tz_total += armX * Fy - armY * Fx;
-            
-            const z_contact = Math.min(railHeight, chassisTop);
-            const dz = z_contact - cgZ; 
-            
-            Tx_total -= dz * Fy;
-            Ty_total += dz * Fx;
-            
-            const Fz_fric = -Math.sign(state.dz) * F_applied * mu_v;
-            Fz_total += Fz_fric;
-        }
+
+  /* grid */
+  function setupGrid(){
+    const Wm=+widthM.value, Hm=+heightM.value;
+    const aspect=Math.max(0.1,Hm/Wm), baseW=720;
+    cv.width=baseW; cv.height=Math.max(240,Math.round(baseW*aspect));
+
+    const nxCells=(+nx.value|0);
+    const ny=Math.max(1,Math.round(nxCells*Hm/Wm));
+    const dx=Wm/nxCells, dy=Hm/ny, N=nxCells*ny;
+
+    const T0=+ambientT.value;
+    const m=mats[material.value];
+
+    grid={
+      nx:nxCells, ny, dx, dy,
+      widthM:Wm, heightM:Hm,
+      k:m.k, rho:m.rho, cp:m.cp,
+      t:+thicknessM.value,
+      Ta:T0, h:5.0,
+      T:new Float32Array(N).fill(T0)
+    };
+
+    // keep sources but their cell lists depend on grid; rebuild at solve time
+    document.getElementById('legend').style.display='block';
+    draw(); topline('grid');
+  }
+  setupGrid();
+  setup.onclick=setupGrid;
+
+  /* sources helpers */
+  function rectToCells(rect){
+    const {nx,ny}=grid, cw=cv.width, ch=cv.height;
+    let x0=Math.floor(Math.min(rect.x0,rect.x1)/cw*nx);
+    let x1=Math.floor(Math.max(rect.x0,rect.x1)/cw*nx);
+    let y0=Math.floor(Math.min(rect.y0,rect.y1)/ch*ny);
+    let y1=Math.floor(Math.max(rect.y0,rect.y1)/ch*ny);
+    x0=Math.max(0,Math.min(nx-1,x0)); x1=Math.max(0,Math.min(nx-1,x1));
+    y0=Math.max(0,Math.min(ny-1,y0)); y1=Math.max(0,Math.min(ny-1,y1));
+    const out=[]; for(let j=y0;j<=y1;j++) for(let i=x0;i<=x1;i++) out.push(j*nx+i);
+    return out;
+  }
+  function addSource(rect){
+    const W=+defaultW.value;
+    sources.push({rect, W, cells:[]});  // cells projected at solve time
+    updateSourcesUI(); draw();
+  }
+  function updateSourcesUI(){
+    const box=document.getElementById('sourcesList'); box.innerHTML='';
+    if(sources.length===0){
+      const d=document.createElement('div'); d.className='hint';
+      d.textContent='No sources yet. Drag a rectangle on the canvas. Each row is editable and has a Remove button.';
+      box.appendChild(d); return;
     }
-  }
-  
-  return { Fx: Fx_total, Fy: Fy_total, Fz: Fz_total, Tx: Tx_total, Ty: Ty_total, Tz: Tz_total };
-}
-
-function getDerivatives(t, s_arr) {
-  if(!massProps || !wheelOffsets) return Array(20).fill(0);
-  
-  const x=s_arr[0], y=s_arr[1], z=s_arr[2], phi=s_arr[3], theta=s_arr[4], psi=s_arr[5];
-  const dx=s_arr[6], dy=s_arr[7], dz=s_arr[8], dphi=s_arr[9], dtheta=s_arr[10], dpsi=s_arr[11];
-  
-  const g = getVal('veh_g');
-  const wm = getVal('wheel_Wt') / g;
-  const k_lat = getVal('k_lat');
-  const c_lat = getVal('c_lat');
-  
-  let FzBody=0, FxBody=0, FyBody=0, Tx=0, Ty=0, Tz=0;
-  const ddzw = [0,0,0,0];
-  const R = getVal('wheel_D')/2;
-  const wheelDia = R*2;
-  
-  ['FL','FR','RL','RR'].forEach((n, i) => {
-    const wOff = wheelOffsets[i];
-    const zw = s_arr[12+i];
-    const zb = z - phi*wOff.x + theta*wOff.y;
-    const dzb = dz - dphi*wOff.x + dtheta*wOff.y;
-    const k_s = n.startsWith('F') ? getVal('k_sf') : getVal('k_sr');
-    const c_s = n.startsWith('F') ? getVal('c_sf') : getVal('c_sr');
-    const comp = 25 - (zb - zw);
-    const F_susp = Math.max(0, k_s * comp + c_s * (s_arr[16+i]-dzb));
-    FzBody += F_susp;
-    Tx += F_susp * wOff.y;
-    Ty -= F_susp * wOff.x;
-    
-    const cosPsi = Math.cos(psi), sinPsi = Math.sin(psi);
-    const wx_world = x + cosPsi * wOff.x - sinPsi * wOff.y;
-    const wy_world = y + sinPsi * wOff.x + cosPsi * wOff.y;
-    
-    let roadZ = 0; 
-    const railH = getRailHeightAt(wx_world, wy_world);
-    if(railH > 0 && railH < wheelDia) {
-        roadZ = railH;
-    }
-    
-    const pen = roadZ - (zw - R);
-    const k_t = n.startsWith('F') ? getVal('k_tf') : getVal('k_tr');
-    const F_tire_z = (pen > 0) ? k_t * pen : 0;
-    
-    const vx_tire = dx - dpsi * wOff.y;
-    const F_tire_x = (pen>0) ? -(k_lat * vx_tire * 0.1) : 0; 
-    
-    const Fx_world = F_tire_x * cosPsi;
-    const Fy_world = F_tire_x * sinPsi;
-    
-    FxBody += Fx_world;
-    FyBody += Fy_world;
-    
-    Tz += -wOff.y * F_tire_x;
-    
-    ddzw[i] = (F_tire_z - F_susp - wm*g) / wm;
-  });
-  
-  const railF = checkGuardRailCollision(x, y, z, psi, dx, dy, dpsi);
-  FxBody += railF.Fx;
-  FyBody += railF.Fy;
-  FzBody += railF.Fz;
-  Tx += railF.Tx;
-  Ty += railF.Ty;
-  Tz += railF.Tz;
-  
-  const ddx = FxBody / massProps.M;
-  const ddy = FyBody / massProps.M; 
-  const ddz = (FzBody - massProps.M*g) / massProps.M;
-  const ddphi = Ty / massProps.Iyy;
-  const ddtheta = Tx / massProps.Ixx;
-  const ddpsi = Tz / massProps.Izz;
-  
-  return [ dx, dy, dz, dphi, dtheta, dpsi, ddx, ddy, ddz, ddphi, ddtheta, ddpsi, s_arr[16], s_arr[17], s_arr[18], s_arr[19], ddzw[0], ddzw[1], ddzw[2], ddzw[3] ];
-}
-
-function stepRK4(dt) {
-  const s = packState(state);
-  const t = simTime;
-  const k1 = getDerivatives(t, s);
-  const s2 = s.map((v,i) => v + k1[i]*dt*0.5);
-  const k2 = getDerivatives(t+dt*0.5, s2);
-  const s3 = s.map((v,i) => v + k2[i]*dt*0.5);
-  const k3 = getDerivatives(t+dt*0.5, s3);
-  const s4 = s.map((v,i) => v + k3[i]*dt);
-  const k4 = getDerivatives(t+dt, s4);
-  const fin = s.map((v,i) => v + (dt/6)*(k1[i] + 2*k2[i] + 2*k3[i] + k4[i]));
-  
-  state.x=fin[0]; state.y=fin[1]; state.z=fin[2]; state.phi=fin[3]; state.theta=fin[4]; state.psi=fin[5];
-  state.dx=fin[6]; state.dy=fin[7]; state.dz=fin[8]; state.dphi=fin[9]; state.dtheta=fin[10]; state.dpsi=fin[11];
-  state.zw.FL=fin[12]; state.zw.FR=fin[13]; state.zw.RL=fin[14]; state.zw.RR=fin[15];
-  state.dzw.FL=fin[16]; state.dzw.FR=fin[17]; state.dzw.RL=fin[18]; state.dzw.RR=fin[19];
-  
-  state.ddx = k1[6]; state.ddy = k1[7]; state.ddz = k1[8]; 
-  state.ddphi = k1[9]; state.ddtheta = k1[10]; state.ddpsi = k1[11];
-  
-  simTime += dt;
-}
-
-function animate() {
-  requestAnimationFrame(animate);
-  if(isRunning && massProps) {
-    const timeScale = getVal('time_scale');
-    stepRK4(dt * timeScale);
-    updateChartLogic(simTime);
-    
-    if(railBroken && !railBreakVisualUpdated) {
-        updateBrokenRailVisuals();
-        railBreakVisualUpdated = true;
-    }
-  }
-  
-  vehicleGroup.position.set(state.x, state.y, state.z);
-  vehicleGroup.rotation.set(state.theta, state.phi, state.psi);
-  groundGroup.position.y = 0; 
-  
-  if(wheelOffsets) {
-    ['FL','FR','RL','RR'].forEach(n => {
-      const mesh = vehicleGroup.getObjectByName("W_"+n);
-      if(mesh) mesh.position.z = state.zw[n] - state.z;
+    sources.forEach((s,idx)=>{
+      const row=document.createElement('div'); row.className='srcRow';
+      const tag=document.createElement('span'); tag.className='pill'; tag.textContent='S'+(idx+1);
+      const wl=document.createElement('label'); wl.textContent='W:'; wl.style.width='20px'; wl.style.textAlign='right';
+      const w=document.createElement('input'); w.type='number'; w.step='0.1'; w.value=s.W; w.style.width='90px';
+      w.onchange=()=>{ s.W=+w.value||0; };
+      const rm=document.createElement('button'); rm.textContent='Remove';
+      rm.onclick=()=>{ sources.splice(idx,1); updateSourcesUI(); draw(); topline(); };
+      row.appendChild(tag); row.appendChild(wl); row.appendChild(w); row.appendChild(rm);
+      box.appendChild(row);
     });
   }
-  
-  controls.target.set(state.x, state.y, 40); 
-  controls.update();
-  renderer.render(scene, camera);
-}
+  document.getElementById('clearAll').onclick=()=>{ sources=[]; updateSourcesUI(); draw(); topline(); };
 
+  /* add rectangles by mouse */
+  cv.addEventListener('mousedown', e=>{
+    if(!grid) return; drawing=true;
+    const r=cv.getBoundingClientRect();
+    p0={x:e.clientX-r.left, y:e.clientY-r.top};
+  });
+  cv.addEventListener('mousemove', e=>{
+    if(!drawing) return;
+    const r=cv.getBoundingClientRect();
+    const rect={x0:p0.x,y0:p0.y,x1:e.clientX-r.left,y1:e.clientY-r.top};
+    draw(rect);
+  });
+  cv.addEventListener('mouseup', e=>{
+    if(!drawing) return; drawing=false;
+    const r=cv.getBoundingClientRect();
+    const rect={x0:p0.x,y0:p0.y,x1:e.clientX-r.left,y1:e.clientY-r.top};
+    if(Math.abs(rect.x1-rect.x0)>4 && Math.abs(rect.y1-rect.y0)>4) addSource(rect);
+    topline();
+  });
+
+  /* KISS steady-state solver: FVM + SOR, Picard on h */
+  function solve(){
+    if(!grid) setupGrid();
+
+    // 1) project rectangles to current grid cells
+    for(const s of sources) s.cells = rectToCells(s.rect);
+
+    const {nx,ny,dx,dy,k,t} = grid;
+    const N = nx*ny;
+    const A = dx*dy;                 // cell area
+
+    // 2) build per-cell Watts
+    const Q = new Float32Array(N);
+    for(const s of sources){
+      const cells=s.cells, per=(cells.length? s.W/cells.length : 0);
+      for(const c of cells) Q[c]+=per;
+    }
+
+    // 3) outer Picard on h (one-sided Churchill–Chu)
+    const maxOuter=40, tolH=0.01;
+    for(let outer=0; outer<maxOuter; outer++){
+      // coefficients (per-area balance)
+      const aw = k*t/(dx*dx), ae=aw;
+      const as = k*t/(dy*dy), an=as;
+      const aP = aw+ae+as+an + grid.h;          // NOTE: + h (one-sided)
+      const rhsTa = grid.h * grid.Ta;
+
+      // SOR
+      const omega=1.85, tol=1e-5, maxIt=6000;
+      for(let it=0; it<maxIt; it++){
+        let maxDelta=0;
+        for(let j=0;j<ny;j++){
+          for(let i=0;i<nx;i++){
+            const idx=j*nx+i, T=grid.T;
+            const Te=(i<nx-1)?T[idx+1]:T[idx];
+            const Tw=(i>0)?T[idx-1]:T[idx];
+            const Tn=(j<ny-1)?T[idx+nx]:T[idx];
+            const Ts=(j>0)?T[idx-nx]:T[idx];
+
+            const b = rhsTa + Q[idx]/A;        // W/A term
+            const Tnew = (aw*Tw + ae*Te + as*Ts + an*Tn + b)/aP;
+            const upd = T[idx] + omega*(Tnew - T[idx]);
+            const d = Math.abs(upd - T[idx]);
+            if(d>maxDelta) maxDelta=d;
+            T[idx]=upd;
+          }
+        }
+        if(maxDelta<tol) break;
+      }
+
+      // refresh h from average ΔT
+      const Tavg = avg(grid.T);
+      const hNew = hChurchillChu(Math.max(0,Tavg-grid.Ta), grid.heightM);
+      const rel = Math.abs(hNew-grid.h)/Math.max(1e-6,grid.h);
+      grid.h = 0.5*grid.h + 0.5*hNew;
+      if(rel<tolH) break;
+    }
+
+    draw(); topline('solved');
+  }
+  document.getElementById('solve').onclick=solve;
+
+  /* misc UI */
+  document.getElementById('reset').onclick=()=>{
+    if(!grid) return;
+    grid.T.fill(grid.Ta);
+    draw();
+    topline('reset');
+  };
+
+  function avg(a){ let s=0; for(let i=0;i<a.length;i++) s+=a[i]; return s/a.length; }
+  function energyResidual(){
+    if(!grid) return 0;
+    const {dx,dy,h,Ta,T}=grid;
+    let Qin=0; for(const s of sources) Qin+=s.W;
+    let Qout=0, A=dx*dy;
+    for(let i=0;i<T.length;i++) Qout += h*A*Math.max(0,T[i]-Ta);
+    const den=Math.max(1e-6,Math.abs(Qin)+Math.abs(Qout));
+    return Math.abs(Qin-Qout)/den;
+  }
+
+  function topline(){
+    if(!grid){
+      if(toplineEl) toplineEl.textContent='—';
+      return;
+    }
+    const A=(grid.widthM*grid.heightM).toFixed(3);
+    const res=(energyResidual()*100).toFixed(2);
+    const Tavg=avg(grid.T).toFixed(1);
+    let Tmax=-Infinity; for(const v of grid.T) if(v>Tmax) Tmax=v;
+
+    if(toplineEl){
+      toplineEl.textContent =
+        `n×m=${grid.nx}×${grid.ny} • one-sided • h≈ ${grid.h.toFixed(2)} W/m²K • `+
+        `A≈ ${A} m² • ΣW≈ ${sources.reduce((s,x)=>s+x.W,0).toFixed(2)} W • `+
+        `residual≈ ${res}% • Tavg≈ ${Tavg} °C • Tmax≈ ${Tmax.toFixed(1)} °C`;
+    }
+  }
+
+  /* draw */
+  function draw(tempRect=null){
+    if(!grid){ ctx.clearRect(0,0,cv.width,cv.height); return; }
+    const {nx,ny,T}=grid;
+    let tmin=+Infinity,tmax=-Infinity;
+    for(const v of T){ if(v<tmin)tmin=v; if(v>tmax)tmax=v; }
+    const img=ctx.createImageData(cv.width,cv.height), d=img.data;
+
+    for(let py=0;py<cv.height;py++){
+      const gy=(py+0.5)/cv.height*ny-0.5;
+      const j0=Math.max(0,Math.min(ny-1,Math.floor(gy)));
+      const j1=Math.min(ny-1,j0+1);
+      const fy=Math.min(1,Math.max(0,gy-j0));
+      for(let px=0;px<cv.width;px++){
+        const gx=(px+0.5)/cv.width*nx-0.5;
+        const i0=Math.max(0,Math.min(nx-1,Math.floor(gx)));
+        const i1=Math.min(nx-1,i0+1);
+        const fx=Math.min(1,Math.max(0,gx-i0));
+        const t00=T[j0*nx+i0], t10=T[j0*nx+i1], t01=T[j1*nx+i0], t11=T[j1*nx+i1];
+        const t0=t00*(1-fx)+t10*fx, t1=t01*(1-fx)+t11*fx;
+        const t=t0*(1-fy)+t1*fy;
+        const n=(t-tmin)/Math.max(1e-9,tmax-tmin);
+        const R=Math.floor(255*Math.min(1,Math.max(0,2*n)));
+        const B=Math.floor(255*Math.min(1,Math.max(0,2*(1-n))));
+        const G=Math.floor(255*Math.max(0,1-2*Math.abs(n-0.5)));
+        const kk=(py*cv.width+px)*4; d[kk]=R; d[kk+1]=G; d[kk+2]=B; d[kk+3]=255;
+      }
+    }
+    ctx.putImageData(img,0,0);
+
+    // overlays
+    ctx.save(); ctx.globalAlpha=0.35; ctx.fillStyle="#ff7700";
+    sources.forEach(s=>{
+      const r=s.rect;
+      ctx.fillRect(Math.min(r.x0,r.x1), Math.min(r.y0,r.y1),
+                   Math.abs(r.x1-r.x0), Math.abs(r.y1-r.y0));
+    });
+    if(tempRect){
+      ctx.fillStyle="rgba(0,200,0,0.35)";
+      ctx.fillRect(Math.min(tempRect.x0,tempRect.x1), Math.min(tempRect.y0,tempRect.y1),
+                   Math.abs(tempRect.x1-tempRect.x0), Math.abs(tempRect.y1-tempRect.y0));
+    }
+    ctx.restore();
+
+    // axes
+    if(showGrid.checked) drawGrid();
+    tMaxLbl.textContent=tmax.toFixed(1)+'°C';
+    tMinLbl.textContent=tmin.toFixed(1)+'°C';
+  }
+
+  function niceStep(x){
+    const p=Math.pow(10,Math.floor(Math.log10(x)));
+    const n=x/p;
+    const s=(n<1.5)?1:(n<3)?2:(n<7)?5:10;
+    return s*p;
+  }
+
+  function drawGrid(){
+    const {widthM,heightM}=grid;
+    ctx.save();
+    ctx.strokeStyle='#000'; ctx.lineWidth=1;
+    ctx.strokeRect(0.5,0.5,cv.width-1,cv.height-1);
+    const target=8, sx=niceStep(widthM/target), sy=niceStep(heightM/target);
+    ctx.fillStyle='#000'; ctx.font='12px system-ui';
+
+    for(let x=0;x<=widthM+1e-12;x+=sx){
+      const px=x/widthM*cv.width;
+      ctx.beginPath(); ctx.moveTo(px,cv.height-8); ctx.lineTo(px,cv.height); ctx.stroke();
+      ctx.fillText(x.toFixed(3), px-14, cv.height-10);
+      ctx.strokeStyle='#eee'; ctx.beginPath(); ctx.moveTo(px,0); ctx.lineTo(px,cv.height); ctx.stroke(); ctx.strokeStyle='#000';
+    }
+
+    for(let y=0;y<=heightM+1e-12;y+=sy){
+      const py=y/heightM*cv.height;
+      ctx.beginPath(); ctx.moveTo(0,py); ctx.lineTo(8,py); ctx.stroke();
+      ctx.fillText(y.toFixed(3), 10, py-2);
+      ctx.strokeStyle='#eee'; ctx.beginPath(); ctx.moveTo(0,py); ctx.lineTo(cv.width,py); ctx.stroke(); ctx.strokeStyle='#000';
+    }
+
+    ctx.fillText('W = '+widthM.value+' m', cv.width-120, cv.height-24);
+    ctx.rotate(-Math.PI/2);
+    ctx.fillText('H = '+heightM.value+' m', -cv.height+6, 12);
+    ctx.rotate(Math.PI/2);
+    ctx.restore();
+  }
+ 
 // ==================== EXPORT/IMPORT FUNCTIONS ====================
 
-// Helper function to get formatted timestamp
-function getTimestamp() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  const hours = String(now.getHours()).padStart(2, '0');
-  const minutes = String(now.getMinutes()).padStart(2, '0');
-  const seconds = String(now.getSeconds()).padStart(2, '0');
-  return `${year}${month}${day}_${hours}${minutes}${seconds}`;
-}
+  // Helper function to get formatted timestamp
+  function getTimestamp() {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const seconds = String(now.getSeconds()).padStart(2, '0');
+    return `${year}${month}${day}_${hours}${minutes}${seconds}`;
+  }
 
-// 1. EXPORT JSON BUTTON
-document.getElementById('exportJsonBtn').onclick = () => {
-  const data = {
-    timestamp: new Date().toISOString(),
-    moduleType: 'guardrail_impact',
-    box1: {
-      length: getVal('box1_L'),
-      width: getVal('box1_W'),
-      height: getVal('box1_H'),
-      weight: getVal('box1_Wt')
-    },
-    box2: {
-      length: getVal('box2_L'),
-      width: getVal('box2_W'),
-      height: getVal('box2_H'),
-      weight: getVal('box2_Wt'),
-      frontOffset: getVal('box2_dY')
-    },
-    wheels: {
-      diameter: getVal('wheel_D'),
-      weight: getVal('wheel_Wt'),
-      frontY: getVal('wheel_Yf'),
-      rearSpacing: getVal('wheel_dYr')
-    },
-    guardRail: {
-      centerY: getVal('rail_y'),
-      angle: getVal('rail_angle'),
-      height: getVal('rail_height')
-    },
-    contact: {
-      railStiffness: getVal('k_rail'),
-      bumperStiffness: getVal('k_bumper'),
-      railBreakLoad: getVal('rail_break'),
-      frictionVert: getVal('rail_mu')
-    },
-    lateralDynamics: {
-      tirePreset: document.getElementById('tire_preset').value,
-      lateralK: getVal('k_lat'),
-      lateralC: getVal('c_lat')
-    },
-    suspension: {
-      frontK: getVal('k_sf'),
-      frontC: getVal('c_sf'),
-      rearK: getVal('k_sr'),
-      rearC: getVal('c_sr')
-    },
-    tires: {
-      frontK: getVal('k_tf'),
-      rearK: getVal('k_tr')
-    },
-    simulation: {
-      speed: getVal('veh_v'),
-      gravity: getVal('veh_g'),
-      timeScale: getVal('time_scale')
+  // 1. EXPORT JSON BUTTON
+  document.getElementById('exportJsonBtn').onclick = () => {
+    const data = {
+      timestamp: new Date().toISOString(),
+      moduleType: 'vertical_plate_heatsink',
+      geometry: {
+        widthM: +widthM.value,
+        heightM: +heightM.value,
+        thicknessM: +thicknessM.value,
+        material: material.value
+      },
+      simulation: {
+        ambientT: +ambientT.value,
+        nx: +nx.value,
+        showGrid: showGrid.checked
+      },
+      sources: sources.map(s => ({
+        rect: s.rect,
+        W: s.W
+      })),
+      defaultPower: +defaultW.value
+    };
+    
+    const jsonStr = JSON.stringify(data, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `heatsink_config_${getTimestamp()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // 2. IMPORT JSON BUTTON
+  document.getElementById('importJsonBtn').onclick = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const data = JSON.parse(event.target.result);
+          
+          // Geometry
+          if (data.geometry) {
+            widthM.value = data.geometry.widthM;
+            heightM.value = data.geometry.heightM;
+            thicknessM.value = data.geometry.thicknessM;
+            material.value = data.geometry.material;
+          }
+          
+          // Simulation
+          if (data.simulation) {
+            ambientT.value = data.simulation.ambientT;
+            nx.value = data.simulation.nx;
+            showGrid.checked = data.simulation.showGrid !== undefined ? data.simulation.showGrid : true;
+          }
+          
+          // Default Power
+          if (data.defaultPower !== undefined) {
+            defaultW.value = data.defaultPower;
+          }
+          
+          // Sources
+          if (data.sources) {
+            sources = data.sources.map(s => ({
+              rect: s.rect,
+              W: s.W,
+              cells: [] // Will be recalculated on solve
+            }));
+            updateSourcesUI();
+          }
+          
+          // Rebuild grid
+          setupGrid();
+          
+          alert('Configuration loaded successfully!');
+        } catch (err) {
+          alert('Error loading JSON file: ' + err.message);
+        }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
+  };
+
+  // 3. EXPORT CSV BUTTON
+  document.getElementById('exportCsvBtn').onclick = () => {
+    if (!grid || !grid.T) {
+      alert('No simulation data to export. Setup grid and solve first.');
+      return;
+    }
+    
+    const { nx, ny, dx, dy, widthM, heightM, T } = grid;
+    
+    // Create CSV header
+    let csv = 'X (m),Y (m),Temperature (°C)\n';
+    
+    // Add data rows
+    for (let j = 0; j < ny; j++) {
+      for (let i = 0; i < nx; i++) {
+        const idx = j * nx + i;
+        const x = (i + 0.5) * dx;
+        const y = (j + 0.5) * dy;
+        const temp = T[idx];
+        csv += `${x.toFixed(6)},${y.toFixed(6)},${temp.toFixed(4)}\n`;
+      }
+    }
+    
+    // Download CSV
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `heatsink_temperature_${getTimestamp()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // 4. EXPORT ZIP BUTTON (CSV + Images)
+  document.getElementById('exportZipBtn').onclick = async () => {
+    if (!grid || !grid.T) {
+      alert('No simulation data to export. Setup grid and solve first.');
+      return;
+    }
+    
+    if (typeof JSZip === 'undefined') {
+      alert('JSZip library not loaded. Please refresh the page.');
+      return;
+    }
+    
+    const zip = new JSZip();
+    const timestamp = getTimestamp();
+    
+    // 1. Add CSV file
+    const { nx, ny, dx, dy, widthM, heightM, T } = grid;
+    let csv = 'X (m),Y (m),Temperature (°C)\n';
+    for (let j = 0; j < ny; j++) {
+      for (let i = 0; i < nx; i++) {
+        const idx = j * nx + i;
+        const x = (i + 0.5) * dx;
+        const y = (j + 0.5) * dy;
+        const temp = T[idx];
+        csv += `${x.toFixed(6)},${y.toFixed(6)},${temp.toFixed(4)}\n`;
+      }
+    }
+    zip.file(`temperature_data_${timestamp}.csv`, csv);
+    
+    // 2. Add heat map image (current canvas)
+    const heatmapDataUrl = cv.toDataURL('image/png');
+    const heatmapBase64 = heatmapDataUrl.split(',')[1];
+    zip.file(`heatmap_${timestamp}.png`, heatmapBase64, { base64: true });
+    
+    // 3. Add heat map without grid overlay
+    const gridWasChecked = showGrid.checked;
+    showGrid.checked = false;
+    draw();
+    const cleanHeatmapDataUrl = cv.toDataURL('image/png');
+    const cleanHeatmapBase64 = cleanHeatmapDataUrl.split(',')[1];
+    zip.file(`heatmap_clean_${timestamp}.png`, cleanHeatmapBase64, { base64: true });
+    
+    // Restore grid state
+    showGrid.checked = gridWasChecked;
+    draw();
+    
+    // 4. Add configuration JSON
+    const config = {
+      timestamp: new Date().toISOString(),
+      moduleType: 'vertical_plate_heatsink',
+      geometry: {
+        widthM: +widthM.value,
+        heightM: +heightM.value,
+        thicknessM: +thicknessM.value,
+        material: material.value
+      },
+      simulation: {
+        ambientT: +ambientT.value,
+        nx: +nx.value,
+        showGrid: showGrid.checked
+      },
+      results: {
+        h_convective: grid.h.toFixed(2) + ' W/m²K',
+        area_m2: (widthM * heightM).toFixed(6),
+        total_power_W: sources.reduce((s, x) => s + x.W, 0).toFixed(2),
+        avg_temp_C: avg(grid.T).toFixed(2),
+        max_temp_C: Math.max(...grid.T).toFixed(2),
+        energy_residual_percent: (energyResidual() * 100).toFixed(2)
+      },
+      sources: sources.map(s => ({
+        rect: s.rect,
+        W: s.W
+      }))
+    };
+    zip.file(`config_${timestamp}.json`, JSON.stringify(config, null, 2));
+    
+    // 5. Add README
+    const readme = `Heat Sink Simulation Export
+Generated: ${new Date().toLocaleString()}
+
+Contents:
+- temperature_data_${timestamp}.csv: Temperature field data (X, Y, Temperature)
+- heatmap_${timestamp}.png: Heat map visualization with grid
+- heatmap_clean_${timestamp}.png: Heat map visualization without grid overlay
+- config_${timestamp}.json: Complete simulation configuration and results
+
+Simulation Parameters:
+- Plate dimensions: ${widthM.value} m × ${heightM.value} m × ${thicknessM.value} m
+- Material: ${material.value}
+- Grid resolution: ${nx} × ${ny} cells
+- Ambient temperature: ${ambientT.value} °C
+- Number of heat sources: ${sources.length}
+- Total power: ${sources.reduce((s, x) => s + x.W, 0).toFixed(2)} W
+
+Results:
+- Convective coefficient h: ${grid.h.toFixed(2)} W/m²K
+- Average temperature: ${avg(grid.T).toFixed(2)} °C
+- Maximum temperature: ${Math.max(...grid.T).toFixed(2)} °C
+- Energy balance residual: ${(energyResidual() * 100).toFixed(2)}%
+`;
+    zip.file('README.txt', readme);
+    
+    // Generate and download ZIP
+    try {
+      const content = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(content);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `heatsink_export_${timestamp}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert('Error creating ZIP file: ' + err.message);
     }
   };
-  
-  const jsonStr = JSON.stringify(data, null, 2);
-  const blob = new Blob([jsonStr], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `guardrail_impact_${getTimestamp()}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
-};
 
-// 2. IMPORT JSON BUTTON
-document.getElementById('importJsonBtn').onclick = () => {
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = '.json';
-  input.onchange = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const data = JSON.parse(event.target.result);
-        
-        // Box 1
-        if (data.box1) {
-          setVal('box1_L', data.box1.length);
-          setVal('box1_W', data.box1.width);
-          setVal('box1_H', data.box1.height);
-          setVal('box1_Wt', data.box1.weight);
-        }
-        
-        // Box 2
-        if (data.box2) {
-          setVal('box2_L', data.box2.length);
-          setVal('box2_W', data.box2.width);
-          setVal('box2_H', data.box2.height);
-          setVal('box2_Wt', data.box2.weight);
-          setVal('box2_dY', data.box2.frontOffset);
-        }
-        
-        // Wheels
-        if (data.wheels) {
-          setVal('wheel_D', data.wheels.diameter);
-          setVal('wheel_Wt', data.wheels.weight);
-          setVal('wheel_Yf', data.wheels.frontY);
-          setVal('wheel_dYr', data.wheels.rearSpacing);
-        }
-        
-        // Guard Rail
-        if (data.guardRail) {
-          setVal('rail_y', data.guardRail.centerY);
-          setVal('rail_angle', data.guardRail.angle);
-          setVal('rail_height', data.guardRail.height);
-        }
-        
-        // Contact Parameters
-        if (data.contact) {
-          setVal('k_rail', data.contact.railStiffness);
-          setVal('k_bumper', data.contact.bumperStiffness);
-          setVal('rail_break', data.contact.railBreakLoad);
-          setVal('rail_mu', data.contact.frictionVert);
-        }
-        
-        // Lateral Dynamics
-        if (data.lateralDynamics) {
-          document.getElementById('tire_preset').value = data.lateralDynamics.tirePreset || 'custom';
-          setVal('k_lat', data.lateralDynamics.lateralK);
-          setVal('c_lat', data.lateralDynamics.lateralC);
-        }
-        
-        // Suspension
-        if (data.suspension) {
-          setVal('k_sf', data.suspension.frontK);
-          setVal('c_sf', data.suspension.frontC);
-          setVal('k_sr', data.suspension.rearK);
-          setVal('c_sr', data.suspension.rearC);
-        }
-        
-        // Tires
-        if (data.tires) {
-          setVal('k_tf', data.tires.frontK);
-          setVal('k_tr', data.tires.rearK);
-        }
-        
-        // Simulation
-        if (data.simulation) {
-          setVal('veh_v', data.simulation.speed);
-          setVal('veh_g', data.simulation.gravity);
-          setVal('time_scale', data.simulation.timeScale);
-        }
-        
-        // Rebuild vehicle with new parameters
-        buildVehicle(false);
-        
-        alert('Configuration loaded successfully!');
-      } catch (err) {
-        alert('Error loading JSON file: ' + err.message);
-      }
-    };
-    reader.readAsText(file);
-  };
-  input.click();
-};
 
-// 3. EXPORT CSV BUTTON
-document.getElementById('exportCsvBtn').onclick = () => {
-  if (!chartInstance || chartInstance.data.labels.length === 0) {
-    alert('No data to export. Run a simulation first.');
-    return;
-  }
-  
-  const labels = chartInstance.data.labels;
-  const datasets = chartInstance.data.datasets;
-  
-  // Create CSV header
-  let csv = 'Time (s),X Accel (G),Y Accel (G),Z Accel (G)\n';
-  
-  // Add data rows
-  for (let i = 0; i < labels.length; i++) {
-    const row = [
-      labels[i],
-      datasets[0].data[i].toFixed(4),
-      datasets[1].data[i].toFixed(4),
-      datasets[2].data[i].toFixed(4)
-    ].join(',');
-    csv += row + '\n';
-  }
-  
-  // Download CSV
-  const blob = new Blob([csv], { type: 'text/csv' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `guardrail_impact_accel_${getTimestamp()}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
-};
-
-</script>
+ </script>
 </body>
 </html>
+
 
 
 
