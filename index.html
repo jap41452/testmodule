@@ -1,994 +1,897 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Bonded Rubber — Axisymmetric Linear FE (cylinder / cones) + Geom-Updated UL</title>
-<style>
-  :root{--ink:#111;--muted:#555;--bd:#e5e5e5;--accent:#0b73c8;--bg:#fafafa;--r:12px;--pad:14px;--gap:14px}
-  *{box-sizing:border-box;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
-  body{margin:0;background:var(--bg);color:var(--ink)}
-  header{padding:18px var(--pad) 6px;font-weight:600;font-size:18px}
-  main{display:grid;grid-template-columns:minmax(330px,360px) 1fr;gap:18px;padding:0 var(--pad) var(--pad)}
-  .card{background:#fff;border:1px solid var(--bd);border-radius:var(--r);padding:var(--pad)}
-  label{display:block;font-size:12px;color:var(--muted);margin:10px 0 6px}
-  input,select,button{height:34px}
-  input,select{width:100%;padding:6px 10px;border:1px solid var(--bd);border-radius:10px;font-size:14px}
-  .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-  button{border:0;background:var(--accent);color:#fff;border-radius:999px;padding:0 14px;font-weight:600;cursor:pointer}
-  .kpi{font-size:13px;margin-top:8px}
-  canvas{display:block;width:100%;background:#fff;border:1px solid var(--bd);border-radius:12px}
-  input:disabled{background:#f5f7fa;color:#888;border-color:#e6e6e6}
-  #geom{height:240px}
-  #plot{height:280px;margin-top:12px}
-  #cvFD{height:280px;margin-top:12px}
-  .krow{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-  small{color:var(--muted)}
-  .sliderRow{display:grid;grid-template-columns:1fr 90px;gap:8px;align-items:center}
-  input[type=range]{height:34px}
-  #legend{font-size:12px;margin-top:8px;color:#333;text-align:center}
-  .hr{height:1px;background:var(--bd);margin:10px 0}
+<meta charset="UTF-8" />
+<title>Vehicle Dynamics - 3D Rough Road Fixed</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+  body { margin:0; font-family:sans-serif; background:#eaeaea; overflow: hidden; }
+  #container { display:flex; height:100vh; width: 100vw; flex-direction: column; }
+  #top-section { display: flex; flex: 1; min-height: 0; }
+  
+  #ui { width:340px; padding:10px; background:#f5f5f5; border-right:1px solid #ccc; overflow-y:auto; flex-shrink: 0; box-shadow: 2px 0 5px rgba(0,0,0,0.1); z-index: 10; height: 100%; box-sizing: border-box;}
+  #viewer { flex-grow:1; position:relative; background: #ccc; }
+  
+  #chart-container { 
+    height: 200px; 
+    background: #fff; 
+    border-top: 1px solid #999; 
+    padding: 10px; 
+    flex-shrink: 0;
+    z-index: 20;
+    display: flex;
+  }
+  
+  h3 { margin:15px 0 5px 0; font-size:12px; border-bottom:1px solid #aaa; padding-bottom: 2px; text-transform: uppercase; letter-spacing: 0.5px; color: #444; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:6px 10px; }
+  label { font-size:11px; display:block; color: #666; }
+  input[type="number"], select { width:100%; padding:4px; font-size:11px; border:1px solid #ccc; border-radius: 3px; box-sizing: border-box;}
+  .units { float:right; font-size:9px; color:#999; }
+  
+  button { width:100%; margin-top:5px; padding:8px; font-size:11px; cursor:pointer; background: #e0e0e0; border: 1px solid #bbb; border-radius: 3px; transition: background 0.2s; }
+  button:hover { background: #d0d0d0; }
+  
+  #solveBtn { background: #d4edda; border-color: #c3e6cb; color: #155724; font-weight: bold; }
+  #solveBtn:hover { background: #c3e6cb; }
+  
+  #stopBtn { background: #f8d7da; border-color: #f5c6cb; color: #721c24; font-weight: bold; }
+  #stopBtn:hover { background: #f5c6cb; }
+  
+  #addFeatureBtn { background: #d0e8ff; border-color: #b8daff; color: #004085; font-weight: bold; margin-top: 10px;}
+  #addFeatureBtn:hover { background: #b8daff; }
+
+  #featureList div { background: #fff; padding: 4px; border: 1px solid #ddd; margin-top: 4px; font-size: 11px; display: flex; justify-content: space-between; align-items: center; }
+  #featureList button { width: auto; margin: 0; padding: 2px 6px; font-size: 10px; height: auto; background: #eee; border:1px solid #ccc; }
 </style>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
 </head>
 
 <body>
-<header>Axisymmetric Linear FE — Near-Incompressible Rubber (Cylinder / Straight Cone / Curved Cone)</header>
-<main>
-  <!-- Left controls -->
-  <section class="card">
+<div id="container">
+  
+  <div id="top-section">
+    <div id="ui">
+      <div class="auto-update-group">
+        <h3>Box 1 (Chassis)</h3>
+        <div class="grid2">
+          <label>Length (Y) <span class="units">in</span><input id="box1_L" type="number" value="120"></label>
+          <label>Width (X)  <span class="units">in</span><input id="box1_W" type="number" value="72"></label>
+          <label>Height (Z) <span class="units">in</span><input id="box1_H" type="number" value="24"></label>
+          <label>Weight     <span class="units">lb</span><input id="box1_Wt" type="number" value="2500"></label>
+        </div>
 
-<div class="krow" style="margin-bottom:8px">
-  <button id="solveBtn">Solve</button>
-  <span id="solveBadge" class="kpi">Ready.</span>
-</div>
+        <h3>Box 2 (Cab/Cargo)</h3>
+        <div class="grid2">
+          <label>Length (Y) <span class="units">in</span><input id="box2_L" type="number" value="60"></label>
+          <label>Width (X)  <span class="units">in</span><input id="box2_W" type="number" value="60"></label>
+          <label>Height (Z) <span class="units">in</span><input id="box2_H" type="number" value="20"></label>
+          <label>Weight     <span class="units">lb</span><input id="box2_Wt" type="number" value="800"></label>
+          <label>Front Offset (Y) <span class="units">in</span><input id="box2_dY" type="number" value="0"></label>
+        </div>
 
-<div style="margin-top:8px;font-weight:600;font-size:13px;color:var(--muted)">Data Management</div>
-<div class="krow" style="margin-top:6px;gap:6px">
-  <button id="exportJsonBtn" style="background:#6b7280;font-size:12px;height:32px;padding:0 10px">Export JSON</button>
-  <button id="importJsonBtn" style="background:#6b7280;font-size:12px;height:32px;padding:0 10px">Import JSON</button>
-  <button id="exportCsvBtn" style="background:#6b7280;font-size:12px;height:32px;padding:0 10px">Export CSV</button>
-  <button id="exportPackageBtn" style="background:#6b7280;font-size:12px;height:32px;padding:0 10px">Export ZIP</button>
+        <h3>Wheels</h3>
+        <div class="grid2">
+          <label>Diameter <span class="units">in</span><input id="wheel_D" type="number" value="32"></label>
+          <label>Weight   <span class="units">lb</span><input id="wheel_Wt" type="number" value="120"></label>
+          <label>Front Y  <span class="units">in</span><input id="wheel_Yf" type="number" value="-20"></label>
+          <label>Rear Spacing <span class="units">in</span><input id="wheel_dYr" type="number" value="80"></label>
+        </div>
+      </div>
+
+      <h3>Suspension</h3>
+      <div class="grid2">
+        <label>Front K <span class="units">lb/in</span><input id="k_sf" type="number" value="300"></label>
+        <label>Front C <span class="units">lb·s/in</span><input id="c_sf" type="number" value="25"></label>
+        <label>Rear K <span class="units">lb/in</span><input id="k_sr" type="number" value="350"></label>
+        <label>Rear C <span class="units">lb·s/in</span><input id="c_sr" type="number" value="30"></label>
+      </div>
+
+      <h3>Tires</h3>
+      <div class="grid2">
+        <label>Front K <span class="units">lb/in</span><input id="k_tf" type="number" value="1200"></label>
+        <label>Rear K <span class="units">lb/in</span><input id="k_tr" type="number" value="1400"></label>
+      </div>
+
+      <h3>Simulation</h3>
+      <div class="grid2">
+        <label>Speed <span class="units">in/s</span><input id="veh_v" type="number" value="300"></label>
+        <label>Gravity <span class="units">in/s²</span><input id="veh_g" type="number" value="386.1"></label>
+      </div>
+      
+<div class="grid2" style="margin-top:10px;">
+  <button id="solveBtn">► Solve</button>
+  <button id="stopBtn">■ Stop</button>
 </div>
+<button id="updateBtn">Reset / Center Vehicle</button>
+
+<h3 style="margin-top:15px;">Data Management</h3>
+<div class="grid2">
+  <button id="exportJsonBtn" style="background:#e8f4f8;border-color:#c3dce5;">Export JSON</button>
+  <button id="importJsonBtn" style="background:#e8f4f8;border-color:#c3dce5;">Import JSON</button>
+</div>
+<button id="exportCsvBtn" style="background:#e8f4f8;border-color:#c3dce5;margin-top:5px;">Export CSV</button>
 <input type="file" id="jsonFileInput" accept=".json" style="display:none;" />
 
-    <label>Units</label>
-    <select id="units">
-      <option value="us">lbs & in</option>
-      <option value="si">N & mm</option>
-    </select>
 
-    <div class="row">
-      <div>
-        <label>Rubber Shear Modulus G</label>
-        <input id="G" type="number" step="any" value="120">
+      
+      <h3>Analysis Point</h3>
+      <div class="grid2">
+        <label>User X <span class="units">in</span><input id="user_X" type="number" value="0"></label>
+        <label>User Y <span class="units">in</span><input id="user_Y" type="number" value="60"></label>
       </div>
-      <div>
-        <label>Bulk Modulus K</label>
-        <input id="K" type="number" step="any" value="180000">
+
+      <h3>Road Feature Settings</h3>
+      <div class="grid2">
+        <label style="grid-column: 1 / span 2;">Type
+          <select id="feat_Type">
+            <option value="full">Full Speed Bump</option>
+            <option value="half_L">1/2 Bump (Left)</option>
+            <option value="half_R">1/2 Bump (Right)</option>
+            <option value="rough">Rough Dirt Road</option>
+          </select>
+        </label>
+        <label>Height/Roughness <span class="units">in</span><input id="feat_H" type="number" value="3"></label>
+        <label>Length Y <span class="units">in</span><input id="feat_W" type="number" value="200"></label>
+        <label>Location Y <span class="units">in</span><input id="feat_Y" type="number" value="100"></label>
       </div>
+      <button id="addFeatureBtn">+ Add Feature</button>
+      
+      <div id="featureList"></div>
     </div>
 
-    <div class="row">
-      <div>
-        <label>Geometry</label>
-        <select id="geomType">
-          <option value="cyl">Cylinder</option>
-          <option value="cone">Straight cone (t may vary)</option>
-          <option value="curved">Curved cone (t may vary)</option>
-        </select>
-      </div>
-      <div></div>
-    </div>
+    <div id="viewer"></div>
+  </div>
 
-    <div class="row">
-      <div>
-        <label>Part OD @ z=0</label>
-        <input id="OD0" type="number" step="any" value="4">
-      </div>
-      <div>
-        <label>Part OD @ z=H</label>
-        <input id="OD1" type="number" step="any" value="4">
-      </div>
-    </div>
+  <div id="chart-container">
+    <canvas id="accelChart"></canvas>
+  </div>
 
-    <div class="row">
-      <div>
-        <label>Part ID @ z=0</label>
-        <input id="ID0" type="number" step="any" value="0.5">
-      </div>
-      <div>
-        <label>Part ID @ z=H</label>
-        <input id="ID1" type="number" step="any" value="0.5">
-      </div>
-    </div>
+</div>
 
-    <div class="row">
-      <div class="krow" style="gap:8px;align-items:center">
-        <input id="isHollow" type="checkbox" checked>
-        <label for="isHollow" style="margin:0">Inner hole present (ID &gt; 0)</label>
-      </div>
-      <div></div>
-    </div>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-    <div class="row">
-      <div>
-        <label>Outer curvature k_out (curved)</label>
-        <div class="sliderRow">
-          <input id="koutSlider" type="range" min="-1" max="1" step="0.01" value="0">
-          <input id="kout" type="number" step="any" value="0">
-        </div>
-      </div>
-      <div>
-        <label>Inner curvature k_in (curved)</label>
-        <div class="sliderRow">
-          <input id="kinSlider" type="range" min="-1" max="1" step="0.01" value="0">
-          <input id="kin" type="number" step="any" value="0">
-        </div>
-      </div>
-    </div>
+// --- GLOBALS ---
+let scene, camera, renderer, controls;
+let vehicleGroup, groundGroup;
+let roadFeatures = [];
+let nextFeatureId = 1;
+let simTime = 0;
+let massProps = null;
+let wheelOffsets = null;
+let isRunning = false;
 
-    <div class="row">
-      <div>
-        <label>Part Height H</label>
-        <input id="H" type="number" step="any" value="0.5">
-      </div>
-      <div>
-        <label>Imposed Δ (top uz = −Δ)</label>
-        <input id="disp" type="number" step="any" value="0.01">
-      </div>
-    </div>
+let chartInstance = null;
+const maxDataPoints = 200; 
+let chartUpdateCounter = 0;
 
-    <div class="row">
-      <div>
-        <label>Mesh nr (radial)</label>
-        <input id="nr" type="number" step="1" value="24">
-      </div>
-      <div>
-        <label>Mesh nz (axial)</label>
-        <input id="nz" type="number" step="1" value="8">
-      </div>
-    </div>
+const dt = 1/120; 
 
-    <div class="row">
-      <div>
-        <label>Radial BC (top & bottom)</label>
-        <select id="urMode">
-          <option value="fix" selected>ur = 0 at z=0 & z=H (bonded)</option>
-          <option value="free">ur free at z=0 & z=H</option>
-        </select>
-        <small>Axis symmetry enforces ur = 0 on r = 0 (when ID = 0).</small>
-      </div>
-      <div></div>
-    </div>
+// Physics State
+const state = {
+  z: 40, phi: 0, theta: 0,
+  dz: 0, dphi: 0, dtheta: 0,
+  zw: { FL:30, FR:30, RL:30, RR:30 },
+  dzw: { FL:0, FR:0, RL:0, RR:0 }
+};
 
-    <div class="row">
-      <div>
-        <label>Deflection scale (visual)</label>
-        <div class="sliderRow">
-          <input id="scaleSlider" type="range" min="0" max="50" step="0.5" value="10">
-          <input id="scale" type="number" step="any" value="10">
-        </div>
-      </div>
-      <div>
-        <label>Poisson ν (from G & K)</label>
-        <input id="nuBox" type="text" value="—" disabled>
-      </div>
-    </div>
+// --- INITIALIZATION ---
+init();
+initChart();
+buildVehicle();
+setupAutoUpdate();
+animate();
 
-    <div class="row">
-      <div>
-        <label>Solve mode</label>
-        <select id="solveMode">
-          <option value="single" selected>Single linear (one shot)</option>
-          <option value="ul">Incremental UL (geom-updated)</option>
-        </select>
-      </div>
-      <div>
-        <label>Incremental steps (UL)</label>
-        <input id="ulSteps" type="number" step="1" value="10">
-      </div>
-    </div>
+function init() {
+  const container = document.getElementById('viewer');
+  
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0xd0d0d0);
+  scene.fog = new THREE.Fog(0xd0d0d0, 500, 4000);
+  THREE.Object3D.DEFAULT_UP.set(0,0,1);
 
-    <div class="kpi" id="kpi">—</div>
+  camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 1, 10000);
+  camera.position.set(400, -800, 500);
 
-    <div class="hr"></div>
-    <div class="krow" style="justify-content:space-between">
-      <button id="animBtn" style="background:#10b981">Animate</button>
-      <button id="animStopBtn" style="background:#ef4444">Stop</button>
-      <span id="animBadge" class="kpi">Idle.</span>
-    </div>
-  </section>
+  renderer = new THREE.WebGLRenderer({antialias:true});
+  renderer.setSize(container.clientWidth, container.clientHeight);
+  renderer.shadowMap.enabled = true;
+  container.appendChild(renderer.domElement);
 
-  <!-- Right visuals -->
-  <section class="card">
-    <div style="font-weight:600;margin-bottom:6px">Geometry preview (r–z) with mesh</div>
-    <canvas id="geom"></canvas>
+  controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 0.6));
+  const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+  dirLight.position.set(100, -300, 500);
+  dirLight.castShadow = true;
+  dirLight.shadow.mapSize.width = 2048; 
+  dirLight.shadow.mapSize.height = 2048;
+  dirLight.shadow.camera.top = 500; dirLight.shadow.camera.bottom = -500;
+  dirLight.shadow.camera.left = -500; dirLight.shadow.camera.right = 500;
+  scene.add(dirLight);
 
-    <div style="font-weight:600;margin:14px 0 6px">Deformed shape (scaled) with γ<sub>rz</sub> contours</div>
-    <canvas id="plot"></canvas>
-    <div id="legend"></div>
+  groundGroup = new THREE.Group();
+  scene.add(groundGroup);
+  vehicleGroup = new THREE.Group();
+  scene.add(vehicleGroup);
 
-    <div style="font-weight:600;margin:14px 0 6px">Force–Deflection (cumulative; origin included)</div>
-    <canvas id="cvFD"></canvas>
-    <div style="font-size:12px;color:#555;margin-top:6px">
-      Dots correspond to UL steps. Compression is +Δ (to the right), tension is −Δ (to the left).
-    </div>
-  </section>
-</main>
+  const floor = new THREE.Mesh(
+    new THREE.PlaneGeometry(10000, 10000), 
+    new THREE.MeshStandardMaterial({ color: 0xbbbbbb, depthWrite: false })
+  );
+  floor.receiveShadow = true;
+  groundGroup.add(floor);
 
-<script>
-(function(){
-  const $ = id=>document.getElementById(id);
-  const must=id=>{const el=$(id);if(!el)throw Error('#'+id+' missing');return el;};
-  const gauss2=[-1/Math.SQRT2, 1/Math.SQRT2];
+  const grid = new THREE.GridHelper(10000, 100, 0x999999, 0xcccccc);
+  grid.rotation.x = Math.PI/2;
+  groundGroup.add(grid);
 
-  let lastMesh=null,lastU=null,lastShearMin=0,lastShearMax=0;
-  let shearCumNodal=null;
+  window.addEventListener('resize', () => {
+    const w = container.clientWidth;
+    const h = container.clientHeight;
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    renderer.setSize(w, h);
+  });
+}
 
-  /* -------- Animation state (single place) -------- */
-  let animFrames = [],   // [{mesh, u, shearCum, F, dx}]
-      animPts    = [],   // [{dx,F}] cumulative for FD
-      animTimer  = null,
-      animIdx    = 0,
-      animPlaying= false,
-      animDir    = 1;    // ping-pong direction
+function initChart() {
+  const ctx = document.getElementById('accelChart').getContext('2d');
+  
+  const commonOptions = {
+    pointRadius: 0,
+    borderWidth: 1.5,
+    tension: 0.2
+  };
 
-  /* ---------- Materials ---------- */
-  function matFromGK(G,K){ return {mu:G, lambda: K - 2*G/3}; }
-  function nuFromGK(G,K){ return (3*K-2*G)/(2*(3*K+G)); }
-
-  /* ---------- Shapes ---------- */
-  function shapeQ4(xi,eta){
-    const N=[0.25*(1-xi)*(1-eta), 0.25*(1+xi)*(1-eta), 0.25*(1+xi)*(1+eta), 0.25*(1-xi)*(1+eta)];
-    const dNdxi=[-0.25*(1-eta), 0.25*(1-eta), 0.25*(1+eta), -0.25*(1+eta)];
-    const dNdeta=[-0.25*(1-xi), -0.25*(1+xi), 0.25*(1+xi), 0.25*(1-xi)];
-    return {N,dNdxi,dNdeta};
-  }
-
-  /* ---------- Geometry ---------- */
-  const lerp=(a,b,t)=>a+(b-a)*t;
-  function roFunc(z,H,OD0,OD1,k){ const r0=OD0/2, r1=OD1/2; const t=H>0?z/H:0; if(Math.abs(k)>0){ const mid = lerp(r0,r1,t); const bulge = k*(t*(1-t)); return mid + bulge*(r0||1);} return lerp(r0,r1,t); }
-  function riFunc(z,H,ID0,ID1,k){ const r0=ID0/2, r1=ID1/2; const t=H>0?z/H:0; if(Math.abs(k)>0){ const mid=lerp(r0,r1,t); const bulge=k*(t*(1-t)); return mid + bulge*(r0||1);} return lerp(r0,r1,t); }
-
-  function buildMeshProfiles(params){
-    const {nr,nz,H,OD0,OD1,ID0,ID1,geomType,kout,kin,isHollow}=params;
-    const nodes=[]; const conn=[]; const cols=nr+1;
-    for(let j=0;j<=nz;j++){
-      const z=H*(j/nz);
-      const useKout = (geomType === 'curved') ? +kout : 0;
-      const useKin  = (geomType === 'curved') ? +kin  : 0;
-      const ro = roFunc(z,H,OD0,OD1, useKout);
-      let riIn = isHollow ? riFunc(z,H,ID0,ID1, useKin) : 0;
-      riIn = Math.max(0, Math.min(riIn, ro));
-      const width = Math.max(ro-riIn, 1e-9);
-      for(let i=0;i<=nr;i++){
-        const r = riIn + width*(i/nr);
-        nodes.push({r,z});
-      }
-    }
-    for(let j=0;j<nz;j++){
-      for(let i=0;i<nr;i++){
-        const n0=j*cols+i, n1=n0+1, n3=(j+1)*cols+i, n2=n3+1;
-        conn.push([n0,n1,n2,n3]);
-      }
-    }
-    return {nodes,conn,nr,nz,H};
-  }
-
-  /* ---------- Assembly (reduced/selective integration) ---------- */
-  function assemble(mesh, mat){
-    const n=mesh.nodes.length, ndof=2*n; const K=new Float64Array(ndof*ndof);
-    const {mu,lambda}=mat;
-    const addKe=(Ke,e)=>{ const id=[2*e[0],2*e[0]+1,2*e[1],2*e[1]+1,2*e[2],2*e[2]+1,2*e[3],2*e[3]+1];
-      for(let a=0;a<8;a++) for(let b=0;b<8;b++) K[id[a]*ndof+id[b]]+=Ke[a*8+b];
-    };
-
-    for(const e of mesh.conn){
-      const i0=e[0],i1=e[1],i2=e[2],i3=e[3];
-      const r=[mesh.nodes[i0].r, mesh.nodes[i1].r, mesh.nodes[i2].r, mesh.nodes[i3].r];
-      const z=[mesh.nodes[i0].z, mesh.nodes[i1].z, mesh.nodes[i2].z, mesh.nodes[i3].z];
-
-      // deviatoric (2x2), lambda→0
-      const Ke_dev=new Float64Array(64);
-      for(const xi of gauss2){
-        for(const eta of gauss2){
-          const {N,dNdxi,dNdeta}=shapeQ4(xi,eta);
-          let Jr=0,Jz=0,Kr=0,Kz=0, rbar=0;
-          for(let i=0;i<4;i++){ Jr+=dNdxi[i]*r[i]; Jz+=dNdxi[i]*z[i]; Kr+=dNdeta[i]*r[i]; Kz+=dNdeta[i]*z[i]; rbar+=N[i]*r[i]; }
-          const det=Jr*Kz - Jz*Kr; if(!(det>0)) continue;
-          const inv=1/det;
-          const dNdr=new Array(4), dNdz=new Array(4);
-          for(let i=0;i<4;i++){ dNdr[i]=(dNdxi[i]*Kz - dNdeta[i]*Jz)*inv; dNdz[i]=(-dNdxi[i]*Kr + dNdeta[i]*Jr)*inv; }
-          const ri = Math.max(rbar,1e-8);
-          const B=[new Float64Array(8),new Float64Array(8),new Float64Array(8),new Float64Array(8)];
-          for(let i=0;i<4;i++){
-            const ur=2*i, uz=2*i+1;
-            B[0][ur]=dNdr[i];             // ε_r
-            B[1][uz]=dNdz[i];             // ε_z
-            B[2][ur]=N[i]/ri;             // ε_θ
-            B[3][ur]=dNdz[i]; B[3][uz]=dNdr[i]; // γ_rz
-          }
-          const weight = det*2*Math.PI*ri;
-          const Ddev=[[2*mu,0,0,0],[0,2*mu,0,0],[0,0,2*mu,0],[0,0,0,mu]];
-          const DB=[new Float64Array(8),new Float64Array(8),new Float64Array(8),new Float64Array(8)];
-          for(let i=0;i<4;i++) for(let j=0;j<4;j++){ const Dij=Ddev[i][j]; if(!Dij) continue; for(let k=0;k<8;k++) DB[i][k]+=Dij*B[j][k]; }
-          for(let a=0;a<8;a++) for(let b=0;b<8;b++){ let s=0; for(let i=0;i<4;i++) s+=B[i][a]*DB[i][b]; Ke_dev[a*8+b]+=s*weight; }
+  chartInstance = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [
+        { label: 'CG', borderColor: 'black', ...commonOptions, borderWidth: 3 },
+        { label: 'FL', borderColor: 'red', ...commonOptions },
+        { label: 'FR', borderColor: 'blue', ...commonOptions },
+        { label: 'RL', borderColor: 'orange', ...commonOptions },
+        { label: 'RR', borderColor: 'green', ...commonOptions },
+        { label: 'User', borderColor: 'purple', ...commonOptions, borderDash: [5, 5], borderWidth: 2 }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      plugins: {
+        title: { display: true, text: 'Vertical Acceleration (G)' },
+        legend: { position: 'right', labels: { boxWidth: 10 } }
+      },
+      scales: {
+        x: { display: false },
+        y: { 
+          title: { display: true, text: 'G-Force' },
+          suggestedMin: -2, suggestedMax: 2 
         }
       }
-      // volumetric (1x1 center)
-      const Ke_vol=new Float64Array(64);
-      {
-        const xi=0, eta=0; const {N,dNdxi,dNdeta}=shapeQ4(xi,eta);
-        let Jr=0,Jz=0,Kr=0,Kz=0, rbar=0;
-        for(let i=0;i<4;i++){ Jr+=dNdxi[i]*r[i]; Jz+=dNdxi[i]*z[i]; Kr+=dNdeta[i]*r[i]; Kz+=dNdeta[i]*z[i]; rbar+=N[i]*r[i]; }
-        const det=Jr*Kz - Jz*Kr; if(det>0){
-          const inv=1/det, dNdr=new Array(4), dNdz=new Array(4);
-          for(let i=0;i<4;i++){ dNdr[i]=(dNdxi[i]*Kz - dNdeta[i]*Jz)*inv; dNdz[i]=(-dNdxi[i]*Kr + dNdeta[i]*Jr)*inv; }
-          const ri=Math.max(rbar,1e-8);
-          const V=new Float64Array(8);
-          for(let i=0;i<4;i++){ V[2*i]+=dNdr[i]+N[i]/ri; V[2*i+1]+=dNdz[i]; }
-          const w=det*2*Math.PI*ri;
-          for(let a=0;a<8;a++) for(let b=0;b<8;b++) Ke_vol[a*8+b]+=mat.lambda*V[a]*V[b]*w;
-        }
-      }
-      const Ke=new Float64Array(64); for(let i=0;i<64;i++) Ke[i]=Ke_dev[i]+Ke_vol[i];
-      addKe(Ke,e);
-    }
-    return K;
-  }
-
-  /* ---------- Shear helpers ---------- */
-  function nodalShearFromStep(mesh, u){
-    const nN = mesh.nodes.length;
-    const shearStep = new Float64Array(nN);
-    const wStep = new Float64Array(nN);
-    for (const e of mesh.conn){
-      const r = e.map(i=>mesh.nodes[i].r);
-      const z = e.map(i=>mesh.nodes[i].z);
-      for (const xi of gauss2){
-        for (const eta of gauss2){
-          const {N,dNdxi,dNdeta} = shapeQ4(xi,eta);
-          let Jr=0,Jz=0,Kr=0,Kz=0;
-          for(let i=0;i<4;i++){ Jr+=dNdxi[i]*r[i]; Jz+=dNdxi[i]*z[i]; Kr+=dNdeta[i]*r[i]; Kz+=dNdeta[i]*z[i]; }
-          const det=Jr*Kz - Jz*Kr; if(!(det>0)) continue;
-          const inv=1/det, dNdr=new Array(4), dNdz=new Array(4);
-          for(let i=0;i<4;i++){ dNdr[i]=(dNdxi[i]*Kz - dNdeta[i]*Jz)*inv; dNdz[i]=(-dNdxi[i]*Kr + dNdeta[i]*Jr)*inv; }
-          let g=0; for(let a=0;a<4;a++){ const ur=u[2*e[a]], uz=u[2*e[a]+1]; g += dNdz[a]*ur + dNdr[a]*uz; }
-          for(let a=0;a<4;a++){ const idx=e[a], w=Math.max(0,N[a]); shearStep[idx]+=g*w; wStep[idx]+=w; }
-        }
-      }
-    }
-    for(let i=0;i<nN;i++) if(wStep[i]>0) shearStep[i]/=wStep[i];
-    return shearStep;
-  }
-
-  /* ---------- Preview + Drawing ---------- */
-  function clamp(v,a,b){ return Math.min(b,Math.max(a,v)); }
-  function colorMapBlueRed(t){ t=clamp(t,0,1); const r=Math.floor(255*t), b=Math.floor(255*(1-t)); return `rgb(${r},0,${b})`; }
-  function updateLegend(){ $('legend').innerHTML=`γ<sub>rz</sub> min=${lastShearMin.toExponential(3)} max=${lastShearMax.toExponential(3)}<br><div style='background:linear-gradient(to right,blue,red);height:10px;margin:4px 0;border-radius:5px'></div>`; }
-
-  function drawPreview(){
-    const c=must('geom'); const ctx=c.getContext('2d');
-    const w=c.clientWidth|0, h=c.clientHeight|0; if(c.width!==w) c.width=w; if(c.height!==h) c.height=h; ctx.clearRect(0,0,w,h);
-    const H=+$('H').value||0.5, OD0=+$('OD0').value||4, OD1=+$('OD1').value||4, ID0=+$('ID0').value||0, ID1=+$('ID1').value||0.5;
-    const type=$('geomType').value; const kout=+$('kout').value||0, kin=+$('kin').value||0;
-    const nr=Math.max(2, +$('nr').value|0), nz=Math.max(2, +$('nz').value|0);
-    const params={nr,nz,H,OD0,OD1,ID0,ID1,geomType:type,kout,kin,isHollow: $('isHollow').checked};
-    const mesh=buildMeshProfiles(params);
-    let rmax=-Infinity; for(const n of mesh.nodes){ if(n.r>rmax) rmax=n.r; }
-    const pad=16; const sx=(w-2*pad)/Math.max(rmax,1e-9), sz=(h-2*pad)/Math.max(H,1e-9); const s=Math.min(sx,sz);
-    ctx.save(); ctx.translate(pad,h-pad); ctx.scale(1,-1);
-    ctx.strokeStyle='#999'; ctx.lineWidth=0.8; ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(rmax*s,0); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(0,H*s); ctx.stroke();
-    ctx.save(); ctx.scale(1,-1); ctx.fillStyle='#333'; ctx.font='12px Inter,system-ui,sans-serif'; ctx.fillText('r', Math.max(rmax*s-10, 6), -12); ctx.fillText('z', 6, -(H*s-6)); ctx.restore();
-    ctx.strokeStyle='#6875f5'; ctx.lineWidth=0.6; ctx.globalAlpha=0.9;
-    for(const e of mesh.conn){ const ids=[e[0],e[1],e[2],e[3],e[0]]; ctx.beginPath(); for(let k=0;k<ids.length;k++){ const i=ids[k]; const n=mesh.nodes[i]; const x=n.r*s, y=n.z*s; if(k===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);} ctx.stroke(); }
-    ctx.globalAlpha=1; ctx.restore();
-  }
-
-  function drawShearContoursFromNodal(ctx, mesh, nodal, scale, rmin,zmin,s){
-    let vmin=Infinity,vmax=-Infinity;
-    for(let i=0;i<nodal.length;i++){ const v=nodal[i]; if(v<vmin)vmin=v; if(v>vmax)vmax=v; }
-    if(!isFinite(vmin)||!isFinite(vmax)||Math.abs(vmax-vmin)<1e-20){ vmin=0; vmax=1e-12; }
-    lastShearMin=vmin; lastShearMax=vmax;
-
-    const su=10, sv=6;
-    for(const e of mesh.conn){
-      const i0=e[0],i1=e[1],i2=e[2],i3=e[3];
-      const R=[mesh.nodes[i0].r+scale*lastU[2*i0], mesh.nodes[i1].r+scale*lastU[2*i1], mesh.nodes[i2].r+scale*lastU[2*i2], mesh.nodes[i3].r+scale*lastU[2*i3]];
-      const Z=[mesh.nodes[i0].z+scale*lastU[2*i0+1], mesh.nodes[i1].z+scale*lastU[2*i1+1], mesh.nodes[i2].z+scale*lastU[2*i2+1], mesh.nodes[i3].z+scale*lastU[2*i3+1]];
-      const pAt=(xi,eta)=>{ const {N}=shapeQ4(xi,eta); let rr=0,zz=0; for(let a=0;a<4;a++){ rr+=N[a]*R[a]; zz+=N[a]*Z[a]; } return [(rr-rmin)*s,(zz-zmin)*s]; };
-      const gAt=(xi,eta)=>{ const {N}=shapeQ4(xi,eta); return N[0]*nodal[i0]+N[1]*nodal[i1]+N[2]*nodal[i2]+N[3]*nodal[i3]; };
-
-      for(let iu=0; iu<su; iu++){
-        const xi0=-1+2*(iu/su), xi1=-1+2*((iu+1)/su);
-        for(let iv=0; iv<sv; iv++){
-          const eta0=-1+2*(iv/sv), eta1=-1+2*((iv+1)/sv);
-          const vavg=0.25*(gAt(xi0,eta0)+gAt(xi1,eta0)+gAt(xi1,eta1)+gAt(xi0,eta1));
-          const t=(vavg-vmin)/(vmax-vmin);
-          const p00=pAt(xi0,eta0), p10=pAt(xi1,eta0), p11=pAt(xi1,eta1), p01=pAt(xi0,eta1);
-          ctx.fillStyle=colorMapBlueRed(t);
-          ctx.beginPath(); ctx.moveTo(p00[0],p00[1]); ctx.lineTo(p10[0],p10[1]); ctx.lineTo(p11[0],p11[1]); ctx.lineTo(p01[0],p01[1]); ctx.closePath(); ctx.fill();
-        }
-      }
-    }
-  }
-
-  function drawDeformed(mesh,u,scale){
-    const c=must('plot'); const ctx=c.getContext('2d');
-    const w=c.clientWidth|0, h=c.clientHeight|0; if(c.width!==w) c.width=w; if(c.height!==h) c.height=h; ctx.clearRect(0,0,w,h);
-    let rmin=Infinity,rmax=-Infinity,zmin=Infinity,zmax=-Infinity;
-    for(let i=0;i<mesh.nodes.length;i++){
-      const n=mesh.nodes[i];
-      const rd=n.r + scale*u[2*i]; const zd=n.z + scale*u[2*i+1];
-      rmin=Math.min(rmin,n.r,rd); rmax=Math.max(rmax,n.r,rd);
-      zmin=Math.min(zmin,n.z,zd); zmax=Math.max(zmax,n.z,zd);
-    }
-    const pad=16; const sx=(w-2*pad)/Math.max(rmax-rmin,1e-9), sz=(h-2*pad)/Math.max(zmax-zmin,1e-9); const s=Math.min(sx,sz);
-    ctx.save(); ctx.translate(pad,h-pad); ctx.scale(1,-1);
-    ctx.strokeStyle='#c9c9c9'; ctx.lineWidth=0.8;
-    for(const e of mesh.conn){ const ids=[e[0],e[1],e[2],e[3],e[0]]; ctx.beginPath(); for(let k=0;k<ids.length;k++){ const i=ids[k]; const n=mesh.nodes[i]; const x=(n.r-rmin)*s, y=(n.z-zmin)*s; if(k===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);} ctx.stroke(); }
-    drawShearContoursFromNodal(ctx, mesh, shearCumNodal || new Float64Array(mesh.nodes.length), scale, rmin,zmin,s);
-    ctx.strokeStyle='#111'; ctx.lineWidth=0.8;
-    for(const e of mesh.conn){ const ids=[e[0],e[1],e[2],e[3],e[0]]; ctx.beginPath(); for(let k=0;k<ids.length;k++){ const i=ids[k]; const n=mesh.nodes[i]; const x=(n.r+scale*u[2*i]-rmin)*s, y=(n.z+scale*u[2*i+1]-zmin)*s; if(k===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);} ctx.stroke(); }
-    ctx.restore();
-    updateLegend();
-  }
-
-  /* ---------- Solver utilities ---------- */
-  function cholSolve(A,b,n){
-    for(let i=0;i<n;i++) A[i*n+i]+=1e-12;
-    const L=new Float64Array(n*n);
-    for(let i=0;i<n;i++){
-      for(let j=0;j<=i;j++){
-        let s=A[i*n+j]; for(let k=0;k<j;k++) s-=L[i*n+k]*L[j*n+k];
-        if(i===j) L[i*n+i]=Math.sqrt(Math.max(s,1e-18)); else L[i*n+j]=s/L[j*n+j];
-      }
-    }
-    const y=new Float64Array(n); for(let i=0;i<n;i++){ let s=b[i]; for(let k=0;k<i;k++) s-=L[i*n+k]*y[k]; y[i]=s/L[i*n+i]; }
-    const x=new Float64Array(n); for(let i=n-1;i>=0;i--){ let s=y[i]; for(let k=i+1;k<n;k++) s-=L[k*n+i]*x[k]; x[i]=s/L[i*n+i]; }
-    return x;
-  }
-
-  function solveOneLinearStep(mesh, mat, dispStep, fixURTopBottom){
-    const K = assemble(mesh, mat);
-    const ndof = 2*mesh.nodes.length;
-
-    const fixed=[], val=[]; const add=(d,v)=>{ const i=fixed.indexOf(d); if(i<0){ fixed.push(d); val.push(v); } };
-    const eps=1e-12, Hcur = mesh.H;
-    for(let i=0;i<mesh.nodes.length;i++){
-      const {r,z}=mesh.nodes[i];
-      if(Math.abs(r) < eps) add(2*i, 0);
-      if(Math.abs(z) < eps){ if(fixURTopBottom) add(2*i, 0); add(2*i+1, 0); }
-      if(Math.abs(z - Hcur) < eps){ if(fixURTopBottom) add(2*i, 0); add(2*i+1, -dispStep); }
-    }
-
-    const isFix=new Uint8Array(ndof); for(const d of fixed) isFix[d]=1;
-    const map=new Int32Array(ndof).fill(-1); let nU=0; for(let i=0;i<ndof;i++) if(!isFix[i]) map[i]=nU++;
-    const KU=new Float64Array(nU*nU), rhs=new Float64Array(nU);
-    const valOf=d=>{const k=fixed.indexOf(d);return k>=0?val[k]:0;};
-
-    for(let i=0;i<ndof;i++) for(let j=0;j<ndof;j++){
-      const kij=K[i*ndof+j];
-      if(!isFix[i] && !isFix[j]) KU[map[i]*nU+map[j]]+=kij;
-      else if(!isFix[i] && isFix[j]) rhs[map[i]]-=kij*valOf(j);
-    }
-
-    const uU = cholSolve(KU, rhs, nU);
-    const u  = new Float64Array(ndof);
-    for(let i=0;i<ndof;i++) u[i]=isFix[i]?valOf(i):uU[map[i]];
-
-    // reactions
-    const R=new Float64Array(ndof);
-    for(let i=0;i<ndof;i++){ let s=0; for(let j=0;j<ndof;j++) s += K[i*ndof+j]*u[j]; R[i]=s; }
-    let Finc=0;
-    for(let i=0;i<mesh.nodes.length;i++){ if(Math.abs(mesh.nodes[i].z - Hcur) < 1e-12) Finc += -R[2*i+1]; }
-    return {u,Finc};
-  }
-
-  function updateGeometryInPlace(mesh, u){
-    for(let i=0;i<mesh.nodes.length;i++){ mesh.nodes[i].r += u[2*i]; mesh.nodes[i].z += u[2*i+1]; }
-    let zmin=Infinity, zmax=-Infinity; for(const nd of mesh.nodes){ if(nd.z<zmin) zmin=nd.z; if(nd.z>zmax) zmax=nd.z; }
-    const shift=-zmin; for(const nd of mesh.nodes) nd.z += shift;
-    mesh.H = zmax - zmin;
-  }
-
-  /* ---------- Force–Deflection (pretty axes) ---------- */
-  function drawForceDeflectionUL(cv, pts, units){
-    const ctx = cv.getContext('2d');
-
-    const W = cv.width  = cv.clientWidth|0;
-    const H = cv.height = cv.clientHeight|0;
-    ctx.clearRect(0,0,W,H);
-
-    const series = [{dx:0, F:0}].concat(pts);
-    const xs = series.map(p=>p.dx), ys = series.map(p=>p.F);
-
-    function nice(min,max,n){
-      const span=(max-min)||1, raw=span/n, p10=Math.pow(10,Math.floor(Math.log10(raw)));
-      const cand=[1,2,2.5,5,10].map(c=>c*p10);
-      const step=cand.find(c=>raw<=c)||cand[cand.length-1];
-      const lo=Math.floor(min/step)*step, hi=Math.ceil(max/step)*step, ticks=[];
-      for(let t=lo;t<=hi+1e-12;t+=step) ticks.push(+t.toFixed(12));
-      return {lo,hi,ticks,step};
-    }
-    function fmt(v){
-      const a=Math.abs(v);
-      if(a===0) return '0.0';
-      if(a<1e-3||a>1e4) return v.toExponential(2).replace('+','');
-      if(a<1)   return v.toFixed(4).replace(/\.?0+$/,'');
-      if(a<10)  return v.toFixed(3).replace(/\.?0+$/,'');
-      if(a<100) return v.toFixed(2).replace(/\.?0+$/,'');
-      return v.toFixed(1).replace(/\.?0+$/,'');
-    }
-
-    const xR=nice(Math.min(...xs,0),Math.max(...xs,0),6);
-    const yR=nice(Math.min(...ys,0),Math.max(...ys,0),8);
-
-    ctx.fillStyle='#374151';
-    ctx.font='12px Inter,system-ui,sans-serif';
-
-    const widest=Math.max(...yR.ticks.map(t=>ctx.measureText(fmt(t)).width));
-    const gutterL=28;
-    const pad={ l:Math.max(72,Math.ceil(14+widest)), r:36, t:28, b:56 };
-
-    const gx=pad.l+gutterL, w=Math.max(1,W-gx-pad.r), h=Math.max(1,H-pad.t-pad.b);
-    const X=x=>gx+w*((x-xR.lo)/Math.max(1e-30,(xR.hi-xR.lo)));
-    const Y=y=>pad.t+h*(1-(y-yR.lo)/Math.max(1e-30,(yR.hi-yR.lo)));
-
-    // grid
-    ctx.strokeStyle='#e5e7eb'; ctx.lineWidth=1; ctx.beginPath();
-    for(const xt of xR.ticks){ ctx.moveTo(X(xt),pad.t); ctx.lineTo(X(xt),pad.t+h); }
-    for(const yt of yR.ticks){ ctx.moveTo(gx,Y(yt)); ctx.lineTo(gx+w,Y(yt)); }
-    ctx.stroke();
-
-    // axes
-    ctx.strokeStyle='#9ca3af'; ctx.lineWidth=1.2; ctx.beginPath();
-    ctx.moveTo(gx,pad.t); ctx.lineTo(gx,pad.t+h);
-    ctx.moveTo(gx,pad.t+h); ctx.lineTo(gx+w,pad.t+h);
-    ctx.stroke();
-
-    // ticks
-    ctx.textAlign='center'; ctx.textBaseline='top';
-    for(const xt of xR.ticks) ctx.fillText(fmt(xt),X(xt),pad.t+h+6);
-    ctx.textAlign='right';  ctx.textBaseline='middle';
-    for(const yt of yR.ticks) ctx.fillText(fmt(yt),pad.l-6,Y(yt));
-
-    // titles
-    ctx.fillStyle='#111827';
-    ctx.textAlign='center'; ctx.textBaseline='top';
-    ctx.fillText(`Deflection ${units.dx}`, gx+w/2, H-20);
-    ctx.save(); ctx.translate(pad.l-36, pad.t+h/2); ctx.rotate(-Math.PI/2);
-    ctx.fillText(`Force ${units.F}`, 0, 0);
-    ctx.restore();
-
-    // series
-    ctx.strokeStyle='#2563eb'; ctx.lineWidth=2; ctx.beginPath();
-    ctx.moveTo(X(series[0].dx),Y(series[0].F));
-    for(let i=1;i<series.length;i++) ctx.lineTo(X(series[i].dx),Y(series[i].F));
-    ctx.stroke();
-
-    // points
-    ctx.fillStyle='#ef4444';
-    for(const p of series){ ctx.beginPath(); ctx.arc(X(p.dx),Y(p.F),3,0,2*Math.PI); ctx.fill(); }
-  }
-
-  /* ---------- Solvers ---------- */
-  function solveSingleLinear(){
-    const G=+$('G').value||120, Kbulk=+$('K').value||180000;
-    const H=+$('H').value||0.5, disp=+$('disp').value||0.01;
-    const nr=Math.max(2, +$('nr').value|0), nz=Math.max(2, +$('nz').value|0);
-
-    const params={nr,nz,H,OD0:+$('OD0').value||4, OD1:+$('OD1').value||4, ID0:+$('ID0').value||0, ID1:+$('ID1').value||0.5, geomType:$('geomType').value, kout:+$('kout').value||0, kin:+$('kin').value||0, isHollow:$('isHollow').checked};
-    const mesh=buildMeshProfiles(params);
-    const mat=matFromGK(G,Kbulk); $('nuBox').value=nuFromGK(G,Kbulk).toFixed(6);
-
-    const K = assemble(mesh,mat);
-    const ndof=2*mesh.nodes.length; const u=new Float64Array(ndof);
-
-    const fixURTopBottom = ($('urMode').value === 'fix');
-    const fixed=[], val=[]; const add=(d,v)=>{const i=fixed.indexOf(d); if(i<0){fixed.push(d); val.push(v);} };
-    const eps=1e-12;
-    for(let i=0;i<mesh.nodes.length;i++){
-      const {r,z}=mesh.nodes[i];
-      if(Math.abs(r) < eps) add(2*i, 0);
-      if(Math.abs(z) < eps){ if(fixURTopBottom) add(2*i, 0); add(2*i+1, 0); }
-      if(Math.abs(z - H) < eps){ if(fixURTopBottom) add(2*i, 0); add(2*i+1, -disp); }
-    }
-
-    const isFix=new Uint8Array(ndof); for(const d of fixed) isFix[d]=1; const map=new Int32Array(ndof).fill(-1); let nU=0; for(let i=0;i<ndof;i++) if(!isFix[i]) map[i]=nU++;
-    const KU=new Float64Array(nU*nU), rhs=new Float64Array(nU);
-    const valOf = d => { const k=fixed.indexOf(d); return k>=0?val[k]:0; };
-    for(let i=0;i<ndof;i++) for(let j=0;j<ndof;j++){
-      const kij=K[i*ndof+j];
-      if(!isFix[i]&&!isFix[j]) KU[map[i]*nU+map[j]]+=kij;
-      else if(!isFix[i]&&isFix[j]) rhs[map[i]]-=kij*valOf(j);
-    }
-    const uU=cholSolve(KU,rhs,nU); for(let i=0;i<ndof;i++) u[i]=isFix[i]?valOf(i):uU[map[i]];
-
-    const R=new Float64Array(ndof); for(let i=0;i<ndof;i++){ let s=0; for(let j=0;j<ndof;j++) s+=K[i*ndof+j]*u[j]; R[i]=s; }
-    let F=0; for(let i=0;i<mesh.nodes.length;i++){ if(Math.abs(mesh.nodes[i].z-H)<1e-12) F += -R[2*i+1]; }
-    const k=F/disp; $('kpi').textContent=`k = ${k.toExponential(4)} (force/disp)`; $('solveBadge').textContent='Solved.';
-
-    lastMesh=mesh; lastU=u;
-    // per-frame linear interpolation for animation
-    shearCumNodal = nodalShearFromStep(mesh, u);
-
-    // Build animation frames: 30 linear frames on original mesh
-    animFrames=[]; animPts=[];
-    const nFrames=30;
-    for(let f=1; f<=nFrames; f++){
-      const t=f/nFrames;
-      const uF=new Float64Array(u.length); for(let i=0;i<u.length;i++) uF[i]=u[i]*t;
-      animFrames.push({mesh: cloneMesh(mesh), u: uF, shearCum: nodalShearFromStep(mesh, uF), F: F*t, dx: disp*t});
-      animPts.push({dx:disp*t, F:F*t});
-    }
-
-    const units = ($('units').value==='si') ? {F:'N', dx:'mm', k:'N/mm'} : {F:'lbf', dx:'in', k:'lbf/in'};
-    drawDeformed(mesh,u,+$('scale').value||10);
-    drawForceDeflectionUL($('cvFD'), [{dx:disp, F:F}], units);
-  }
-
-  function solveIncrementalUL(){
-    const G= +$('G').value || 120;
-    const K= +$('K').value || 180000;
-    const H0= +$('H').value || 0.5;
-    const dTot = +$('disp').value || 0;
-    let nSteps = Math.max(1, (+$('ulSteps').value|0) || 5);
-    const fixURTopBottom = ($('urMode').value === 'fix');
-
-    const maxStepStrain = 0.02;
-    nSteps = Math.max(nSteps, Math.ceil(Math.abs(dTot)/Math.max(1e-12, maxStepStrain*H0)));
-
-    const mat = matFromGK(G, K);
-    const params={nr:Math.max(2, +$('nr').value|0), nz:Math.max(2, +$('nz').value|0), H:H0, OD0:+$('OD0').value||4, OD1:+$('OD1').value||4, ID0:+$('ID0').value||0, ID1:+$('ID1').value||0.5, geomType:$('geomType').value, kout:+$('kout').value||0, kin:+$('kin').value||0, isHollow:$('isHollow').checked};
-    let mesh = buildMeshProfiles(params); mesh.H = H0;
-
-    const dStep = dTot / nSteps;
-    let Ftot = 0, xtot = 0;
-    const units = ($('units').value==='si') ? {F:'N', dx:'mm', k:'N/mm'} : {F:'lbf', dx:'in', k:'lbf/in'};
-
-    shearCumNodal = new Float64Array(mesh.nodes.length);
-    animFrames=[]; animPts=[];
-
-    for(let s=0; s<nSteps; s++){
-      const {u, Finc} = solveOneLinearStep(mesh, mat, dStep, fixURTopBottom);
-      const shearStep = nodalShearFromStep(mesh, u);
-      for(let i=0;i<shearCumNodal.length;i++) shearCumNodal[i] += shearStep[i];
-
-      Ftot += Finc; xtot += dStep;
-
-      // snapshot BEFORE geometry update for end-of-step
-      animFrames.push({mesh: cloneMesh(mesh), u: u.slice(), shearCum: shearCumNodal.slice(), F: Ftot, dx: xtot});
-      animPts.push({dx: xtot, F: Ftot});
-
-      updateGeometryInPlace(mesh, u);
-      lastMesh = mesh; lastU = u;
-    }
-
-    $('solveBadge').textContent='Solved.';
-    const sc= +$('scale').value || +$('scaleSlider').value || 10; $('scaleSlider').value=sc; $('scale').value=sc;
-    drawDeformed(lastMesh,lastU,sc);
-    drawForceDeflectionUL($('cvFD'), animPts, units);
-
-    const kEff = (Math.abs(dTot)>1e-30) ? (Ftot/dTot) : 0;
-    $('kpi').textContent = `UL: k ≈ ${kEff.toExponential(4)} (force/disp), steps=${nSteps}`;
-  }
-
-  /* ---------- Animation controls ---------- */
-  function cloneMesh(mesh){
-    return { H: mesh.H, nr: mesh.nr, nz: mesh.nz,
-      nodes: mesh.nodes.map(n=>({r:n.r, z:n.z})),
-      conn: mesh.conn.map(e=>e.slice()) };
-  }
-
-  function playAnimation(){
-    if(!animFrames.length){ $('animBadge').textContent='No frames. Solve first.'; return; }
-    stopAnimation(true);
-    animPlaying=true; animIdx=0; animDir=1; $('animBadge').textContent='Playing…';
-
-    const units = ($('units').value==='si') ? {F:'N', dx:'mm'} : {F:'lbf', dx:'in'};
-    const fps = 30, dt = 1000/fps;
-
-    animTimer = setInterval(()=>{
-      // draw current frame
-      const f = animFrames[Math.min(Math.max(animIdx,0), animFrames.length-1)];
-      lastMesh = f.mesh; lastU = f.u; shearCumNodal = f.shearCum;
-      drawDeformed(f.mesh, f.u, +$('scale').value || 10);
-
-      // FD up to this index (clamped)
-      const showTo = Math.min(Math.max(animIdx,0), animPts.length-1);
-      drawForceDeflectionUL($('cvFD'), animPts.slice(0, showTo+1), units);
-
-      // advance with ping-pong reflection
-      animIdx += animDir;
-      if (animIdx >= animFrames.length) { animIdx = animFrames.length - 2; animDir = -1; }
-      else if (animIdx < 0)            { animIdx = 1;                  animDir = 1;  }
-    }, dt);
-  }
-
-  function stopAnimation(quiet=false){
-    if(animTimer) clearInterval(animTimer);
-    animTimer=null; animPlaying=false;
-    $('animBadge').textContent = quiet ? 'Ready.' : 'Stopped.';
-  }
-
-  /* ---------- UI wiring ---------- */
-  function syncPair(slider, box){
-    const s=$(slider), b=$(box); if(!s||!b) return;
-    const apply=()=>{ b.value=s.value; if(lastMesh&&lastU) drawDeformed(lastMesh,lastU,+s.value||0); };
-    const back =()=>{ s.value=b.value; if(lastMesh&&lastU) drawDeformed(lastMesh,lastU,+b.value||0); };
-    s.addEventListener('input', apply); b.addEventListener('input', back);
-  }
-
-  function toggleKControls(){
-    const curved = $('geomType').value === 'curved';
-    ['kout','koutSlider','kin','kinSlider'].forEach(id=>{ const el=$(id); if(!el) return; el.disabled=!curved; el.style.opacity=curved?'1':'0.5'; });
-  }
-
-  function toggleGeomLocks(){
-    const type=$('geomType').value; const cyl=(type==='cyl');
-    ['OD1','ID1'].forEach(id=> { $(id).disabled = cyl; });
-    if(cyl){ $('OD1').value = $('OD0').value; $('ID1').value = $('ID0').value; }
-    const hollow = $('isHollow').checked; const id0=$('ID0'), id1=$('ID1');
-    if(!hollow){ if(!id0.dataset.prev) id0.dataset.prev=id0.value; if(!id1.dataset.prev) id1.dataset.prev=id1.value; id0.value=0; id1.value=0; } else { if(id0.dataset.prev){ id0.value=id0.dataset.prev; delete id0.dataset.prev; } if(id1.dataset.prev){ id1.value=id1.dataset.prev; delete id1.dataset.prev; } }
-    [id0,id1].forEach(el=>{ el.disabled=!hollow; el.style.opacity=hollow?'1':'0.6'; });
-  }
-
-  $('solveBtn').addEventListener('click', ()=>{
-    try{
-      stopAnimation(true);
-      $('solveBadge').textContent='Solving…';
-      $('nuBox').value = nuFromGK(+$('G').value||120, +$('K').value||180000).toFixed(6);
-      if($('solveMode').value==='ul') solveIncrementalUL();
-      else solveSingleLinear();
-      $('animBadge').textContent='Ready.';
-    }catch(err){
-      console.error(err);
-      $('solveBadge').textContent='Error';
     }
   });
+}
 
-  $('animBtn').addEventListener('click', playAnimation);
-  $('animStopBtn').addEventListener('click', ()=>stopAnimation(false));
+function updateChartLogic(t, s) {
+  chartUpdateCounter++;
+  if(chartUpdateCounter < 5) return;
+  chartUpdateCounter = 0;
 
-  ;['geomType','OD0','OD1','ID0','ID1','H','nr','nz','isHollow','kout','kin']
-    .forEach(id=> $(id).addEventListener('input', ()=>{ toggleKControls(); toggleGeomLocks(); drawPreview(); }));
+  const d = getDerivatives(t, packState(s));
+  const ddz = d[3];
+  const ddphi = d[4];
+  const ddtheta = d[5];
 
-  ;['koutSlider','kinSlider'].forEach((sid,i)=>{
-    const bid=i===0?'kout':'kin'; const s=$(sid), b=$(bid); if(!s||!b) return;
-    s.addEventListener('input', ()=>{ b.value=s.value; drawPreview(); });
-    b.addEventListener('input', ()=>{ s.value=b.value; drawPreview(); });
+  const getAcc = (x, y) => ddz - ddphi*x + ddtheta*y;
+  const g = getVal('veh_g'); 
+  const toG = (val) => val / g;
+
+  const aCG = toG(ddz);
+
+  const L = getVal('box1_L');
+  const W = getVal('box1_W');
+  const c1x = 0 - massProps.CG.x; 
+  const c1y = (-L/2) - massProps.CG.y;
+  
+  const FL = toG(getAcc(c1x - W/2, c1y + L/2));
+  const FR = toG(getAcc(c1x + W/2, c1y + L/2));
+  const RL = toG(getAcc(c1x - W/2, c1y - L/2));
+  const RR = toG(getAcc(c1x + W/2, c1y - L/2));
+
+  const ux = getVal('user_X') - massProps.CG.x;
+  const uy = getVal('user_Y') - massProps.CG.y;
+  const aUser = toG(getAcc(ux, uy));
+
+  const lbl = t.toFixed(2);
+  const chart = chartInstance;
+  
+  chart.data.labels.push(lbl);
+  chart.data.datasets[0].data.push(aCG);
+  chart.data.datasets[1].data.push(FL);
+  chart.data.datasets[2].data.push(FR);
+  chart.data.datasets[3].data.push(RL);
+  chart.data.datasets[4].data.push(RR);
+  chart.data.datasets[5].data.push(aUser);
+
+  if(chart.data.labels.length > maxDataPoints) {
+    chart.data.labels.shift();
+    chart.data.datasets.forEach(ds => ds.data.shift());
+  }
+
+  chart.update();
+}
+
+function packState(s) {
+  return [
+    s.z, s.phi, s.theta,
+    s.dz, s.dphi, s.dtheta,
+    s.zw.FL, s.zw.FR, s.zw.RL, s.zw.RR,
+    s.dzw.FL, s.dzw.FR, s.dzw.RL, s.dzw.RR
+  ];
+}
+
+function getVal(id) { return parseFloat(document.getElementById(id).value) || 0; }
+function setVal(id, val) { document.getElementById(id).value = val; }
+
+function setupAutoUpdate() {
+  const inputs = document.querySelectorAll('.auto-update-group input');
+  inputs.forEach(input => {
+    input.addEventListener('input', () => {
+      buildVehicle(true); 
+    });
+  });
+}
+
+document.getElementById('solveBtn').onclick = () => { isRunning = true; };
+document.getElementById('stopBtn').onclick = () => { isRunning = false; };
+document.getElementById('updateBtn').onclick = () => buildVehicle(false);
+
+function buildVehicle(isAutoUpdate = false) {
+  if(!isAutoUpdate) {
+    isRunning = false;
+    simTime = 0;
+    if(chartInstance) {
+      chartInstance.data.labels = [];
+      chartInstance.data.datasets.forEach(ds => ds.data = []);
+      chartInstance.update();
+    }
+  }
+  
+  vehicleGroup.clear();
+  
+  const L1 = getVal('box1_L'), W1 = getVal('box1_W'), H1 = getVal('box1_H');
+  const L2 = getVal('box2_L'), W2 = getVal('box2_W'), H2 = getVal('box2_H');
+  const dY = getVal('box2_dY'); 
+  const R  = getVal('wheel_D') / 2;
+  
+  const g = getVal('veh_g');
+  const m1 = getVal('box1_Wt') / g;
+  const m2 = getVal('box2_Wt') / g;
+  const M = m1 + m2;
+
+  const c1 = { x:0, y: -L1/2,      z: H1/2 + R };
+  const c2 = { x:0, y: dY - L2/2,  z: H1 + H2/2 + R };
+  
+  const CG = {
+    x: (m1*c1.x + m2*c2.x) / M,
+    y: (m1*c1.y + m2*c2.y) / M,
+    z: (m1*c1.z + m2*c2.z) / M
+  };
+
+  const Ixx1 = (m1/12)*(L1*L1 + H1*H1);
+  const Ixx2 = (m2/12)*(L2*L2 + H2*H2);
+  const dy1 = c1.y-CG.y, dz1 = c1.z-CG.z;
+  const dy2 = c2.y-CG.y, dz2 = c2.z-CG.z;
+  const Ixx = (Ixx1 + m1*(dy1*dy1 + dz1*dz1)) + (Ixx2 + m2*(dy2*dy2 + dz2*dz2));
+
+  const Iyy1 = (m1/12)*(W1*W1 + H1*H1);
+  const Iyy2 = (m2/12)*(W2*W2 + H2*H2);
+  const dx1 = c1.x-CG.x;
+  const dx2 = c2.x-CG.x;
+  const Iyy = (Iyy1 + m1*(dx1*dx1 + dz1*dz1)) + (Iyy2 + m2*(dx2*dx2 + dz2*dz2));
+
+  massProps = { M, CG, Ixx, Iyy };
+
+  const b1 = new THREE.Mesh(new THREE.BoxGeometry(W1, L1, H1), new THREE.MeshStandardMaterial({color: 0x5577aa}));
+  b1.position.set(c1.x - CG.x, c1.y - CG.y, c1.z - CG.z);
+  b1.castShadow = true;
+  vehicleGroup.add(b1);
+
+  const b2 = new THREE.Mesh(new THREE.BoxGeometry(W2, L2, H2), new THREE.MeshStandardMaterial({color: 0x88aabb}));
+  b2.position.set(c2.x - CG.x, c2.y - CG.y, c2.z - CG.z);
+  b2.castShadow = true;
+  vehicleGroup.add(b2);
+
+  const wheelGeo = new THREE.CylinderGeometry(R, R, W1*0.2, 24);
+  wheelGeo.rotateZ(Math.PI/2);
+  const wheelMat = new THREE.MeshStandardMaterial({color: 0x222222});
+
+  const yF = getVal('wheel_Yf');
+  const yR = yF - getVal('wheel_dYr');
+  const xW = W1/2; 
+
+  const wheels = [
+    {n:'FL', x: -xW, y: yF}, {n:'FR', x: xW, y: yF},
+    {n:'RL', x: -xW, y: yR}, {n:'RR', x: xW, y: yR}
+  ];
+
+  wheelOffsets = wheels.map(w => ({
+    name: w.n,
+    x: w.x - CG.x,
+    y: w.y - CG.y
+  }));
+
+  wheels.forEach(w => {
+    const mesh = new THREE.Mesh(wheelGeo, wheelMat);
+    mesh.name = "W_" + w.n;
+    mesh.position.set(w.x - CG.x, w.y - CG.y, R - CG.z); 
+    mesh.castShadow = true;
+    vehicleGroup.add(mesh);
   });
 
-  syncPair('scaleSlider','scale');
-  window.addEventListener('resize', ()=>{ drawPreview(); if(lastMesh&&lastU){ drawDeformed(lastMesh,lastU,+$('scale').value||10); }});
+  if(!isAutoUpdate || simTime === 0) {
+    state.z = CG.z + 20; 
+    state.phi = 0; state.theta = 0;
+    state.dz = 0; state.dphi = 0; state.dtheta = 0;
+    state.zw.FL = state.zw.FR = state.zw.RL = state.zw.RR = CG.z;
+  }
+}
 
-  // init
-  toggleKControls();
-  toggleGeomLocks();
-  $('nuBox').value = nuFromGK(+$('G').value||120, +$('K').value||180000).toFixed(6);
-  drawPreview();
+// --- ROAD FEATURES ---
+function addFeatureMesh(geom, color, x, y) {
+  const mesh = new THREE.Mesh(geom, new THREE.MeshStandardMaterial({color}));
+  mesh.position.set(x, y, 0);
+  mesh.receiveShadow = true;
+  groundGroup.add(mesh);
+  return mesh;
+}
+
+document.getElementById('addFeatureBtn').onclick = () => {
+  const type = document.getElementById('feat_Type').value;
+  const h = getVal('feat_H');
+  const w = getVal('feat_W'); 
+  const y = getVal('feat_Y');
+  
+  if (type === 'full') {
+    addSpeedBump(h, w, y);
+  } else if (type === 'half_L') {
+    addHalfSpeedBump(h, w, y, 'left');
+  } else if (type === 'half_R') {
+    addHalfSpeedBump(h, w, y, 'right');
+  } else if (type === 'rough') {
+    addRoughPatch(h, w, y);
+  }
+  
+  setVal('feat_Y', y + (type==='rough' ? w + 50 : 100));
+};
+
+function addSpeedBump(h, w, y) {
+  const carWidth = getVal('box1_W');
+  const W = carWidth * 3; 
+  const r = w/2;
+  const shape = new THREE.Shape();
+  shape.moveTo(-r,0); shape.absarc(0,0,r,0,Math.PI,false); shape.lineTo(r,0);
+  const geom = new THREE.ExtrudeGeometry(shape, {depth:W, bevelEnabled:false});
+  geom.translate(0, 0, -W/2);
+  geom.rotateX(Math.PI/2); geom.rotateZ(Math.PI/2);
+  const mesh = addFeatureMesh(geom, 0x888888, 0, y);
+  roadFeatures.push({id: nextFeatureId++, type:'bump', params:{h,w,y}, mesh});
+  refreshFeatures();
+}
+
+function addHalfSpeedBump(h, w, y, side) {
+  const carWidth = getVal('box1_W');
+  const trackX = carWidth / 2;
+  const bumpLatWidth = carWidth * 0.4; 
+  const r = w/2;
+  const shape = new THREE.Shape();
+  shape.moveTo(-r,0); shape.absarc(0,0,r,0,Math.PI,false); shape.lineTo(r,0);
+  const geom = new THREE.ExtrudeGeometry(shape, {depth:bumpLatWidth, bevelEnabled:false});
+  geom.translate(0, 0, -bumpLatWidth/2);
+  geom.rotateX(Math.PI/2); geom.rotateZ(Math.PI/2);
+  const xOff = (side==='left' ? -trackX : trackX);
+  const mesh = addFeatureMesh(geom, 0x777777, xOff, y);
+  roadFeatures.push({id: nextFeatureId++, type:'half-bump', params:{h,w,y,side}, mesh});
+  refreshFeatures();
+}
+
+function addRoughPatch(h, w, y) {
+  const carWidth = getVal('box1_W');
+  const width = carWidth * 3; 
+  
+  // FIX: Do NOT rotate -90. Plane is already XY (Ground)
+  const segmentsW = 20;
+  const segmentsH = Math.max(5, Math.floor(w / 10));
+  const geom = new THREE.PlaneGeometry(width, w, segmentsW, segmentsH);
+  
+  const pos = geom.attributes.position;
+  for(let i=0; i<pos.count; i++) {
+    const z = pos.getZ(i);
+    // Perturb Z (Height)
+    pos.setZ(i, z + (Math.random()-0.5)*2.0);
+  }
+  geom.computeVertexNormals();
+  
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0x8B4513, 
+    roughness: 1.0, 
+    flatShading: true
+  });
+  const mesh = new THREE.Mesh(geom, mat);
+  
+  mesh.position.set(0, y, 0.5);
+  groundGroup.add(mesh);
+  
+  roadFeatures.push({id: nextFeatureId++, type:'rough', params:{h,w,y}, mesh});
+  refreshFeatures();
+}
+
+function refreshFeatures() {
+  const div = document.getElementById('featureList');
+  div.innerHTML = roadFeatures.map((f,i) => {
+    let desc = f.type;
+    if(f.type==='half-bump') desc = f.params.side==='left' ? '½L' : '½R';
+    if(f.type==='rough') desc = 'Rough';
+    return `<div>
+       <span><b>${desc}</b> @${f.params.y.toFixed(0)}</span>
+       <button onclick="window.delFeat(${i})">x</button>
+     </div>`;
+  }).join('');
+}
+
+window.delFeat = (i) => {
+  groundGroup.remove(roadFeatures[i].mesh);
+  roadFeatures.splice(i,1);
+  refreshFeatures();
+};
+
+function getRoadZ(x, y) {
+  let z = 0;
+  for(let f of roadFeatures) {
+    
+    // ROUGH PATCH
+    if(f.type === 'rough') {
+      const w = f.params.w; // Road Length
+      const startY = f.params.y - w/2;
+      const endY = f.params.y + w/2;
+      
+      if (y >= startY && y <= endY) {
+        // Deterministic Noise
+        const rough = f.params.h * (
+          0.5 * Math.sin(0.1 * y) * Math.sin(0.1 * x) +
+          0.3 * Math.sin(0.3 * y + 1.2) +
+          0.2 * Math.sin(0.5 * x + 0.5 * y)
+        );
+        z = rough;
+      }
+      continue;
+    }
+
+    // BUMPS
+    const dy = y - f.params.y;
+    const r = f.params.w/2;
+    if(Math.abs(dy) < r) {
+      if(f.type === 'half-bump') {
+        if(f.params.side === 'left' && x > 0) continue;
+        if(f.params.side === 'right' && x < 0) continue;
+      }
+      const bumpH = f.params.h * Math.sqrt(1 - (dy*dy)/(r*r));
+      z = Math.max(z, bumpH);
+    }
+  }
+  return z;
+}
+
+// --- PHYSICS ENGINE (RK4) ---
+function getDerivatives(t, s_arr) {
+  if(!massProps || !wheelOffsets) return Array(14).fill(0);
+
+  const z=s_arr[0], phi=s_arr[1], theta=s_arr[2];
+  const dz=s_arr[3], dphi=s_arr[4], dtheta=s_arr[5];
+  
+  const v = getVal('veh_v');
+  const g = getVal('veh_g');
+  const wm = getVal('wheel_Wt') / g;
+  
+  let FzBody=0, Tx=0, Ty=0;
+  const ddzw = [0,0,0,0];
+
+  const names = ['FL','FR','RL','RR'];
+  const R = getVal('wheel_D')/2;
+
+  names.forEach((n, i) => {
+    const wOff = wheelOffsets[i];
+    const zw = s_arr[6+i];
+    const dzw = s_arr[10+i];
+
+    const zb = z - phi*wOff.x + theta*wOff.y;
+    const dzb = dz - dphi*wOff.x + dtheta*wOff.y;
+    
+    const isFront = n.startsWith('F');
+    const k_s = isFront ? getVal('k_sf') : getVal('k_sr');
+    const c_s = isFront ? getVal('c_sf') : getVal('c_sr');
+    
+    const freeLen = 25; 
+    const comp = freeLen - (zb - zw);
+    const dcomp = -(dzb - dzw);
+    const F_susp = Math.max(0, k_s * comp + c_s * dcomp);
+    
+    FzBody += F_susp;
+    Tx += F_susp * wOff.y;
+    Ty -= F_susp * wOff.x;
+
+    const roadY = wOff.y + (v * t);
+    const absX = wOff.x + massProps.CG.x;
+    const roadZ = getRoadZ(absX, roadY);
+    
+    const pen = roadZ - (zw - R);
+    const k_t = isFront ? getVal('k_tf') : getVal('k_tr');
+    const F_tire = (pen > 0) ? k_t * pen : 0;
+
+    ddzw[i] = (F_tire - F_susp - wm*g) / wm;
+  });
+
+  const ddz = (FzBody - massProps.M*g) / massProps.M;
+  const ddphi = Ty / massProps.Iyy;
+  const ddtheta = Tx / massProps.Ixx;
+  
+  return [
+    dz, dphi, dtheta,
+    ddz, ddphi, ddtheta,
+    s_arr[10], s_arr[11], s_arr[12], s_arr[13],
+    ddzw[0], ddzw[1], ddzw[2], ddzw[3]
+  ];
+}
+
+function stepRK4(dt) {
+  const s = packState(state);
+  const t = simTime;
+  
+  const k1 = getDerivatives(t, s);
+  const s2 = s.map((v,i) => v + k1[i]*dt*0.5);
+  const k2 = getDerivatives(t+dt*0.5, s2);
+  const s3 = s.map((v,i) => v + k2[i]*dt*0.5);
+  const k3 = getDerivatives(t+dt*0.5, s3);
+  const s4 = s.map((v,i) => v + k3[i]*dt);
+  const k4 = getDerivatives(t+dt, s4);
+  
+  const fin = s.map((v,i) => v + (dt/6)*(k1[i] + 2*k2[i] + 2*k3[i] + k4[i]));
+  
+  state.z=fin[0]; state.phi=fin[1]; state.theta=fin[2];
+  state.dz=fin[3]; state.dphi=fin[4]; state.dtheta=fin[5];
+  state.zw.FL=fin[6]; state.zw.FR=fin[7]; state.zw.RL=fin[8]; state.zw.RR=fin[9];
+  state.dzw.FL=fin[10]; state.dzw.FR=fin[11]; state.dzw.RL=fin[12]; state.dzw.RR=fin[13];
+  
+  simTime += dt;
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  
+  if(isRunning && massProps) {
+    stepRK4(dt);
+    updateChartLogic(simTime, state);
+  }
+  
+  vehicleGroup.position.set(0, 0, state.z);
+  vehicleGroup.rotation.set(state.theta, state.phi, 0);
+
+  const dist = getVal('veh_v') * simTime;
+  groundGroup.position.y = -dist;
+
+  if(wheelOffsets) {
+    const names = ['FL','FR','RL','RR'];
+    names.forEach(n => {
+      const mesh = vehicleGroup.getObjectByName("W_"+n);
+      if(mesh) {
+        mesh.position.z = state.zw[n] - state.z;
+      }
+    });
+  }
+
+  renderer.render(scene, camera);
+}
 
 // ---------- Export/Import Functions ----------
-  function getTimestamp(){
-    const now = new Date();
-    return now.toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  }
+function getTimestamp() {
+  const now = new Date();
+  return now.toISOString().replace(/[:.]/g, '-').slice(0, 19);
+}
 
-  function exportJSON(){
-    const data = {
-      timestamp: new Date().toISOString(),
-      version: "1.0",
-      inputs: {
-        units: $('units').value,
-        G: +$('G').value,
-        K: +$('K').value,
-        geomType: $('geomType').value,
-        OD0: +$('OD0').value,
-        OD1: +$('OD1').value,
-        ID0: +$('ID0').value,
-        ID1: +$('ID1').value,
-        isHollow: $('isHollow').checked,
-        kout: +$('kout').value,
-        kin: +$('kin').value,
-        H: +$('H').value,
-        disp: +$('disp').value,
-        nr: +$('nr').value,
-        nz: +$('nz').value,
-        urMode: $('urMode').value,
-        scale: +$('scale').value,
-        solveMode: $('solveMode').value,
-        ulSteps: +$('ulSteps').value
-      },
-      results: {
-        stiffness: $('kpi').textContent,
-        poisson: $('nuBox').value
+function exportJSON() {
+  const data = {
+    timestamp: new Date().toISOString(),
+    version: "1.0",
+    inputs: {
+      // Box 1
+      box1_L: getVal('box1_L'),
+      box1_W: getVal('box1_W'),
+      box1_H: getVal('box1_H'),
+      box1_Wt: getVal('box1_Wt'),
+      // Box 2
+      box2_L: getVal('box2_L'),
+      box2_W: getVal('box2_W'),
+      box2_H: getVal('box2_H'),
+      box2_Wt: getVal('box2_Wt'),
+      box2_dY: getVal('box2_dY'),
+      // Wheels
+      wheel_D: getVal('wheel_D'),
+      wheel_Wt: getVal('wheel_Wt'),
+      wheel_Yf: getVal('wheel_Yf'),
+      wheel_dYr: getVal('wheel_dYr'),
+      // Suspension
+      k_sf: getVal('k_sf'),
+      c_sf: getVal('c_sf'),
+      k_sr: getVal('k_sr'),
+      c_sr: getVal('c_sr'),
+      // Tires
+      k_tf: getVal('k_tf'),
+      k_tr: getVal('k_tr'),
+      // Simulation
+      veh_v: getVal('veh_v'),
+      veh_g: getVal('veh_g'),
+      // Analysis Point
+      user_X: getVal('user_X'),
+      user_Y: getVal('user_Y')
+    },
+    roadFeatures: roadFeatures.map(f => ({
+      type: f.type,
+      params: f.params
+    }))
+  };
+  
+  const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `vehicle-dynamics-${getTimestamp()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function importJSON(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+      const inp = data.inputs;
+      
+      // Box 1
+      setVal('box1_L', inp.box1_L);
+      setVal('box1_W', inp.box1_W);
+      setVal('box1_H', inp.box1_H);
+      setVal('box1_Wt', inp.box1_Wt);
+      // Box 2
+      setVal('box2_L', inp.box2_L);
+      setVal('box2_W', inp.box2_W);
+      setVal('box2_H', inp.box2_H);
+      setVal('box2_Wt', inp.box2_Wt);
+      setVal('box2_dY', inp.box2_dY);
+      // Wheels
+      setVal('wheel_D', inp.wheel_D);
+      setVal('wheel_Wt', inp.wheel_Wt);
+      setVal('wheel_Yf', inp.wheel_Yf);
+      setVal('wheel_dYr', inp.wheel_dYr);
+      // Suspension
+      setVal('k_sf', inp.k_sf);
+      setVal('c_sf', inp.c_sf);
+      setVal('k_sr', inp.k_sr);
+      setVal('c_sr', inp.c_sr);
+      // Tires
+      setVal('k_tf', inp.k_tf);
+      setVal('k_tr', inp.k_tr);
+      // Simulation
+      setVal('veh_v', inp.veh_v);
+      setVal('veh_g', inp.veh_g);
+      // Analysis Point
+      setVal('user_X', inp.user_X);
+      setVal('user_Y', inp.user_Y);
+      
+      // Clear existing features
+      roadFeatures.forEach(f => groundGroup.remove(f.mesh));
+      roadFeatures = [];
+      nextFeatureId = 1;
+      
+      // Rebuild road features
+      if (data.roadFeatures) {
+        data.roadFeatures.forEach(f => {
+          const p = f.params;
+          if (f.type === 'bump') {
+            addSpeedBump(p.h, p.w, p.y);
+          } else if (f.type === 'half-bump') {
+            addHalfSpeedBump(p.h, p.w, p.y, p.side);
+          } else if (f.type === 'rough') {
+            addRoughPatch(p.h, p.w, p.y);
+          }
+        });
       }
-    };
-    
-    const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `bonded-rubber-ul-${getTimestamp()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  function importJSON(file){
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const data = JSON.parse(e.target.result);
-        const inp = data.inputs;
-        
-        $('units').value = inp.units || 'us';
-        $('G').value = inp.G;
-        $('K').value = inp.K;
-        $('geomType').value = inp.geomType || 'cyl';
-        $('OD0').value = inp.OD0;
-        $('OD1').value = inp.OD1;
-        $('ID0').value = inp.ID0;
-        $('ID1').value = inp.ID1;
-        $('isHollow').checked = inp.isHollow !== undefined ? inp.isHollow : true;
-        $('kout').value = inp.kout || 0;
-        $('kin').value = inp.kin || 0;
-        $('koutSlider').value = inp.kout || 0;
-        $('kinSlider').value = inp.kin || 0;
-        $('H').value = inp.H;
-        $('disp').value = inp.disp;
-        $('nr').value = inp.nr;
-        $('nz').value = inp.nz;
-        $('urMode').value = inp.urMode || 'fix';
-        $('scale').value = inp.scale || 10;
-        $('scaleSlider').value = inp.scale || 10;
-        $('solveMode').value = inp.solveMode || 'single';
-        $('ulSteps').value = inp.ulSteps || 10;
-        
-        toggleKControls();
-        toggleGeomLocks();
-        drawPreview();
-        
-        alert('Configuration imported successfully!');
-      } catch(err) {
-        alert('Error importing JSON: ' + err.message);
-      }
-    };
-    reader.readAsText(file);
-  }
-
-  function exportCSV(){
-    const rows = [
-      ['Bonded Rubber Axisymmetric FE + UL - Results Summary'],
-      ['Timestamp', new Date().toISOString()],
-      [''],
-      ['Input Parameters'],
-      ['Units', $('units').value],
-      ['Shear Modulus G', $('G').value],
-      ['Bulk Modulus K', $('K').value],
-      ['Poisson ν', $('nuBox').value],
-      ['Geometry Type', $('geomType').value],
-      ['Part OD @ z=0', $('OD0').value],
-      ['Part OD @ z=H', $('OD1').value],
-      ['Part ID @ z=0', $('ID0').value],
-      ['Part ID @ z=H', $('ID1').value],
-      ['Inner hole present', $('isHollow').checked],
-      ['Outer curvature k_out', $('kout').value],
-      ['Inner curvature k_in', $('kin').value],
-      ['Part Height H', $('H').value],
-      ['Imposed Δ', $('disp').value],
-      ['Mesh nr (radial)', $('nr').value],
-      ['Mesh nz (axial)', $('nz').value],
-      ['Radial BC', $('urMode').value],
-      ['Deflection scale', $('scale').value],
-      ['Solve mode', $('solveMode').value],
-      ['Incremental steps (UL)', $('ulSteps').value],
-      [''],
-      ['Results'],
-      ['Stiffness', $('kpi').textContent]
-    ];
-    
-    const csvContent = rows.map(row => row.map(cell => {
-      const str = String(cell);
-      return str.includes(',') ? `"${str}"` : str;
-    }).join(',')).join('\n');
-    
-    const blob = new Blob([csvContent], {type: 'text/csv'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `bonded-rubber-ul-results-${getTimestamp()}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  async function exportPackage(){
-    const timestamp = getTimestamp();
-    const zip = new JSZip();
-    
-    // Add CSV
-    const rows = [
-      ['Bonded Rubber Axisymmetric FE + UL - Results Summary'],
-      ['Timestamp', new Date().toISOString()],
-      [''],
-      ['Input Parameters'],
-      ['Units', $('units').value],
-      ['Shear Modulus G', $('G').value],
-      ['Bulk Modulus K', $('K').value],
-      ['Poisson ν', $('nuBox').value],
-      ['Geometry Type', $('geomType').value],
-      ['Part OD @ z=0', $('OD0').value],
-      ['Part OD @ z=H', $('OD1').value],
-      ['Part ID @ z=0', $('ID0').value],
-      ['Part ID @ z=H', $('ID1').value],
-      ['Inner hole present', $('isHollow').checked],
-      ['Outer curvature k_out', $('kout').value],
-      ['Inner curvature k_in', $('kin').value],
-      ['Part Height H', $('H').value],
-      ['Imposed Δ', $('disp').value],
-      ['Mesh nr (radial)', $('nr').value],
-      ['Mesh nz (axial)', $('nz').value],
-      ['Radial BC', $('urMode').value],
-      ['Deflection scale', $('scale').value],
-      ['Solve mode', $('solveMode').value],
-      ['Incremental steps (UL)', $('ulSteps').value],
-      [''],
-      ['Results'],
-      ['Stiffness', $('kpi').textContent]
-    ];
-    
-    const csvContent = rows.map(row => row.map(cell => {
-      const str = String(cell);
-      return str.includes(',') ? `"${str}"` : str;
-    }).join(',')).join('\n');
-    
-    zip.file('results.csv', csvContent);
-    
-    // Add images (3 canvases in this version)
-    const canvases = [
-      {id: 'geom', name: 'geometry-preview.png'},
-      {id: 'plot', name: 'deformed-shape.png'},
-      {id: 'cvFD', name: 'force-deflection.png'}
-    ];
-    
-    for(const {id, name} of canvases){
-      const canvas = $(id);
-      const dataUrl = canvas.toDataURL('image/png');
-      const base64Data = dataUrl.split(',')[1];
-      zip.file(name, base64Data, {base64: true});
+      
+      buildVehicle(false);
+      alert('Configuration imported successfully!');
+    } catch(err) {
+      alert('Error importing JSON: ' + err.message);
+      console.error(err);
     }
-    
-    // Generate and download
-    const blob = await zip.generateAsync({type: 'blob'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `bonded-rubber-ul-package-${timestamp}.zip`;
-    a.click();
-    URL.revokeObjectURL(url);
+  };
+  reader.readAsText(file);
+}
+
+function exportCSV() {
+  if (!chartInstance || chartInstance.data.labels.length === 0) {
+    alert('No data to export. Please run a simulation first.');
+    return;
   }
+  
+  const rows = [
+    ['Vehicle Dynamics - Acceleration Data'],
+    ['Timestamp', new Date().toISOString()],
+    ['Units', 'G-Force (in/s²)'],
+    [''],
+    ['Time (s)', 'CG', 'FL', 'FR', 'RL', 'RR', 'User']
+  ];
+  
+  const chart = chartInstance;
+  const numPoints = chart.data.labels.length;
+  
+  for (let i = 0; i < numPoints; i++) {
+    const row = [
+      chart.data.labels[i],
+      chart.data.datasets[0].data[i]?.toFixed(4) || '',
+      chart.data.datasets[1].data[i]?.toFixed(4) || '',
+      chart.data.datasets[2].data[i]?.toFixed(4) || '',
+      chart.data.datasets[3].data[i]?.toFixed(4) || '',
+      chart.data.datasets[4].data[i]?.toFixed(4) || '',
+      chart.data.datasets[5].data[i]?.toFixed(4) || ''
+    ];
+    rows.push(row);
+  }
+  
+  const csvContent = rows.map(row => row.map(cell => {
+    const str = String(cell);
+    return str.includes(',') ? `"${str}"` : str;
+  }).join(',')).join('\n');
+  
+  const blob = new Blob([csvContent], {type: 'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `vehicle-dynamics-accel-${getTimestamp()}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
-  // Wire up the export/import buttons
-  $('exportJsonBtn').addEventListener('click', exportJSON);
-  $('importJsonBtn').addEventListener('click', () => $('jsonFileInput').click());
-  $('jsonFileInput').addEventListener('change', (e) => {
-    if(e.target.files.length > 0){
-      importJSON(e.target.files[0]);
-      e.target.value = '';
-    }
-  });
-  $('exportCsvBtn').addEventListener('click', exportCSV);
-  $('exportPackageBtn').addEventListener('click', exportPackage);
+// Wire up the export/import buttons
+document.getElementById('exportJsonBtn').onclick = exportJSON;
+document.getElementById('importJsonBtn').onclick = () => document.getElementById('jsonFileInput').click();
+document.getElementById('jsonFileInput').onchange = (e) => {
+  if (e.target.files.length > 0) {
+    importJSON(e.target.files[0]);
+    e.target.value = '';
+  }
+};
+document.getElementById('exportCsvBtn').onclick = exportCSV;
 
-  // init
-
-})();
 </script>
 </body>
 </html>
+
 
 
 
