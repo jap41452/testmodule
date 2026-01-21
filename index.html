@@ -1,948 +1,1091 @@
 <!doctype html>
-<meta charset="utf-8">
-<title>Vertical Plate — KISS steady state + multi sources + fins</title>
+<html>
+<head>
+<meta charset="utf-8" />
+
+<title>2D Heat FD Solver — ADI + warmed air + fins</title>
 <!-- ADD THIS LINE FOR ZIP FUNCTIONALITY -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+
 <style>
-  .app *{ box-sizing:border-box; }
-  .app{ font-family:system-ui,Arial,sans-serif; color:#111; margin:12px; }
-  .panel{ border:1px solid #ddd; border-radius:8px; background:#fff; padding:10px; }
-  .topline{ font-size:14px; margin-bottom:4px; }
+  /* -------- Base & Host-page hardening -------- */
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { font-family: system-ui, Arial, sans-serif; margin: 12px; color:#111; line-height:1.28; }
+  .panel { border:1px solid #ddd; padding:10px; border-radius:8px; background:#fff; }
 
-  .grid{ display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start; }
-  .grid>.col{ min-width:280px; max-width:720px; flex:1 1 720px; }
-  .row{ display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin:8px 0; }
-
-  .app label{
-    display:inline-block !important;
-    width:120px; text-align:right; margin-right:8px;
-    font-size:13px; white-space:nowrap;
+  /* -------- Controls layout -------- */
+  #controls { 
+    display:flex; 
+    gap:16px; 
+    flex-wrap:wrap; 
+    align-items:flex-start; 
   }
-  .app input[type=number], .app select, .app button{
-    height:28px; padding:0 8px; line-height:1;
-  }
-  .app input[type=number]{ width:100px; }
-  #nx{ width:100px; }
 
-  canvas{ border:1px solid #333; background:#fff; cursor:crosshair; }
-  #canvasWrap{ position:relative; display:inline-block; width:100%; }
-  .legend{ position:absolute; right:6px; top:6px; padding:6px; background:rgba(255,255,255,.92); border:1px solid #ddd; border-radius:6px }
-  .legend .bar{ width:12px; height:120px; background:linear-gradient(#f00,#ff0,#0f0,#0bf,#00f); }
-  .legend .ticks{ height:120px; display:flex; flex-direction:column; justify-content:space-between; margin-left:6px; font-size:12px }
-
-  #sourcesList, #finsList{
-    border:1px dashed #c8d;
-    padding:8px;
-    border-radius:8px;
-    background:#faf8ff;
-    max-width:680px;
+  #controls .panel { 
+    margin-bottom: 12px; 
   }
-  .srcRow, .finRow{
-    display:flex;
+
+  /* Three columns that collapse nicely on small widths */
+  #controls > div { 
+    min-width: 280px; 
+    max-width: 700px; 
+    flex: 1 1 700px; 
+  }
+
+  /* -------- KISS form layout -------- */
+/* -------- KISS form layout -------- */
+.row { 
+  display: flex; 
+  flex-wrap: wrap; 
+  align-items: center; 
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+/* Center a row of buttons inside the panel */
+.row.center {
+  justify-content: center;
+  flex-wrap: nowrap;   /* keep both buttons on the same line */
+}
+
+
+  label { 
+    display: inline-block; 
+    width: 120px;           /* fixed width keeps inputs aligned */
+    text-align: right; 
+    margin-right: 8px;      /* space between label and box */
+    font-size: 13px; 
+    white-space: nowrap; 
+  }
+
+  input[type=number], 
+  select, 
+button {
+  display: inline-flex;
+  align-items: center;     /* vertical center */
+  justify-content: center; /* horizontal center */
+  height: 28px;
+  padding: 0 8px;          /* no vertical padding */
+  line-height: 1;          /* don’t rely on font metrics */
+}
+
+
+  /* Specific widths if you want certain boxes tighter */
+  input[type=number] { width: 100px; }
+  #nx, #dt, #probeX, #probeY, #airRho, #airCp, #airMix { width: 110px; }
+  #airVel, #ambientT, #airTin { width: 100px; }
+
+  /* Lists */
+  #sourcesList, #finsList { max-height:160px; overflow:auto; font-size:13px; min-width:260px }
+  .pill{ display:inline-block; padding:2px 6px; border:1px solid #ddd; border-radius:10px; font-size:12px; background:#f7f7f7 }
+  .srcRow,.finRow{ display:flex; gap:6px; align-items:center; margin:4px 0; flex-wrap:wrap }
+
+  /* Warmed-air compact grid (4 columns: label/input pairs) */
+  .airGrid{
+    display:grid;
+    grid-template-columns:auto 120px auto 120px;
+    gap:8px 12px;
     align-items:center;
-    gap:10px;
-    margin:6px 0;
-    flex-wrap:wrap;
+    margin-top:6px;
   }
-  .pill{
-    font-size:12px;
-    padding:2px 6px;
-    background:#eef;
-    border:1px solid #cde;
-    border-radius:10px;
-  }
-  .hint{ font-size:12px; color:#555; }
+  .airGrid label{ margin:0; }
+  .airGrid input[type=number], .airGrid select, .airGrid button{ margin:0; }
 
-  #finViewPanel { margin-top: 10px; }
+  /* Canvas row */
+  #canvasRow { display:flex; gap:16px; align-items:flex-start; }
+  #canvasWrap { position:relative; display:inline-block }
+  canvas { border:1px solid #333; cursor: crosshair; background:#fff; }
+
+  /* Legend */
+  .legend{ position:absolute; right:6px; top:6px; padding:6px; background:rgba(255,255,255,.92); border:1px solid #ddd; border-radius:6px }
+  .legend .bar{ width:12px; height:120px; background:linear-gradient(#f00,#8000,#00f); }
+  .legend .ticks{ display:flex; flex-direction:column; justify-content:space-between; height:120px; margin-left:6px; font-size:12px }
+
+  /* Fin preview */
+  #finPreview { display:flex; flex-direction:column; align-items:center; min-width:190px; }
+  #finSchematic{ border:1px solid #eee; background:#fafafa; width:160px; }
+
+  /* Plot */
+  #plotPanel{ margin-top:10px }
+  #plotCanvas{ border:1px solid #333; background:#fff }
+  .badge{ display:inline-block; padding:2px 6px; background:#eef; border:1px solid #cde; border-radius:6px; font-size:12px; margin-left:8px; }
 </style>
-
-<div class="app">
-  <div id="top" class="topline">—</div>
-
-  <div class="grid panel">
-    <div class="col">
+</head>
+<body>
+  <h1>Forced Air Convection with and without Finned Sections</h1>
+<h1>Multiple Heat Sources, Steady State and Transient</h1>
+  <div id="controls" class="panel">
+    <!-- Column 1 -->
+    <div>
+      <!-- Row 1: Width + Height -->
       <div class="row">
-        <label for="widthM">Width (m)</label><input id="widthM" type="number" value="0.20" step="0.01">
-        <label for="heightM">Height (m)</label><input id="heightM" type="number" value="0.12" step="0.01">
-      </div>
-      <div class="row">
-        <label for="thicknessM">Thickness (m)</label><input id="thicknessM" type="number" value="0.005" step="0.001">
-        <label for="material">Material</label>
-        <select id="material">
-          <option value="Al">Aluminum (6061)</option>
-          <option value="Cu">Copper</option>
-          <option value="Steel">Steel</option>
-          <option value="FR4">FR4</option>
-        </select>
-      </div>
-      <div class="row">
-        <label for="ambientT">Ambient (°C)</label><input id="ambientT" type="number" value="20" step="1">
-        <label for="nx"># cells along width</label><input id="nx" type="number" value="96" min="20" max="400">
+        <label for="widthM">Width (m)</label>
+        <input id="widthM" type="number" value="0.2" step="0.01" />
+        <label for="heightM">Height (m)</label>
+        <input id="heightM" type="number" value="0.12" step="0.01" />
       </div>
 
-<div class="row">
-  <button id="setup">Setup Grid</button>
-  <button id="solve">Solve</button>
-  <button id="reset">Reset to Ambient</button>
-  <label class="hint"><input id="showGrid" type="checkbox" checked> Show grid</label>
-  
-  <!-- ADD THESE FOUR BUTTONS HERE -->
-  <button id="exportJsonBtn" style="background: #fff3cd; border: 1px solid #ffc107; color: #856404; margin-left: 8px; height: 28px; padding: 0 8px;">💾 JSON</button>
-  <button id="importJsonBtn" style="background: #d1ecf1; border: 1px solid #bee5eb; color: #0c5460; height: 28px; padding: 0 8px;">📂 Import</button>
-  <button id="exportCsvBtn" style="background: #d4edda; border: 1px solid #c3e6cb; color: #155724; height: 28px; padding: 0 8px;">📊 CSV</button>
-  <button id="exportZipBtn" style="background: #cfe2ff; border: 1px solid #b6d4fe; color: #084298; height: 28px; padding: 0 8px;">📦 ZIP</button>
-  <!-- END OF NEW BUTTONS -->
-</div>
-     
+      <!-- Row 2: Thickness + Material -->
+      <div class="row">
+        <label for="thicknessM">Thickness (m)</label>
+        <input id="thicknessM" type="number" value="0.005" step="0.001" />
+        <label for="materialSelect">Material</label>
+        <select id="materialSelect"></select>
+      </div>
 
- </div>
+  <!-- With this centered row -->
+  <div class="row center" style="margin-top:6px">
+    <button id="setupBtn" type="button">Setup Grid</button>
+    <button id="resetAmbient" type="button">Reset to Ambient</button>
+  </div>
+
+
+
+      <div id="solverInfo" style="margin-top:6px; font-size:12px; color:#555;">—</div>
+      <div id="steadyInfo" style="margin-top:4px; font-size:12px; color:#555;">—</div>
     </div>
 
-    <div class="col">
+    <!-- Column 2 -->
+    <div>
+      <!-- Row: Airflow + Ambient (same line) -->
       <div class="row">
-        <label>Draw mode</label>
-        <label class="hint" style="width:auto;margin-right:0">
-          <input type="radio" name="drawMode" value="source" checked> Heat sources
-        </label>
-        <label class="hint" style="width:auto;margin-right:0">
-          <input type="radio" name="drawMode" value="fin"> Fin regions
-        </label>
+        <label for="airVel">Airflow (m/s)</label>
+        <input id="airVel" type="number" value="0.5" step="0.1" />
+        <label for="ambientT">Ambient (°C)</label>
+        <input id="ambientT" type="number" value="20" step="1" />
       </div>
 
-      <div class="row">
-        <label for="defaultW">Default power (W)</label><input id="defaultW" type="number" value="10" step="0.1">
-        <button id="clearAll">Clear all sources</button>
-      </div>
-      <div id="sourcesList" class="panel">
-        <div class="hint">
-          No sources yet. Drag a rectangle on the canvas in “Heat sources” mode. Each row is editable and has a Remove button.
+      <div class="panel" style="margin-top:8px; max-width:560px">
+        <div class="row">
+          <input id="useWarmed" type="checkbox" checked />
+          <label for="useWarmed" style="display:inline">Use warmed air (row-wise crossflow)</label>
+        </div>
+
+        <div class="row">
+          <label for="flowDir">Flow direction</label>
+          <select id="flowDir">
+            <option value="LR" selected>Left → Right</option>
+            <option value="RL">Right → Left</option>
+          </select>
+          <input id="bothSides" type="checkbox" />
+          <label for="bothSides" style="display:inline">Same air stream on both sides</label>
+        </div>
+
+<div class="airGrid">
+  <!-- Row 1: Suggest H + Air gap -->
+  <button id="suggestH" type="button">Suggest H</button>
+  <label for="airH">Air gap H (m)</label>
+  <input id="airH" type="number" value="0.005" step="0.001" />
+  <span></span> <!-- filler to end the first row cleanly -->
+
+  <!-- Remaining pairs follow naturally in the grid -->
+  <label for="airRho">ρ_air (kg/m³)</label>   <input id="airRho" type="number" value="1.2"   step="0.01" />
+  <label for="airCp">cp_air (J/kg-K)</label>  <input id="airCp"  type="number" value="1005"  step="1"    />
+  <label for="airTin">Air inlet T_in (°C)</label><input id="airTin" type="number" value="20" step="1"    />
+  <label for="airMix">Lateral mixing λ (0–0.2)</label><input id="airMix" type="number" value="0" step="0.01" min="0" max="0.2" />
+  <span></span><span></span>
+</div>
+
+
+
+        <div class="row" style="margin-top:6px">
+          <input id="showTa" type="checkbox" />
+          <label for="showTa" style="display:inline">Show air Ta heatmap</label>
+          <input id="showGrid" type="checkbox" checked />
+          <label for="showGrid" style="display:inline">Show scale/grid</label>
         </div>
       </div>
+    </div>
+
+    <!-- Column 3 -->
+    <div>
+      <label for="nx"># of cells along width</label>
+      <input id="nx" type="number" value="80" min="10" max="400" />
+      <label for="dt">Time step,s 0 = auto</label>
+      <input id="dt" type="number" value="0" step="0.0001" />
+      
+
+
+<div class="row center" style="margin-top:6px">
+  <button id="solveTransient" type="button">Solve Transient</button>
+  <button id="solveSteady" type="button">Solve Steady</button>
+  <button id="pauseSim" type="button">Pause</button>
+</div>
+
+<!-- ADD THESE FOUR BUTTONS HERE -->
+<div class="row center" style="margin-top:6px; gap:8px;">
+  <button id="exportJsonBtn" type="button" style="background: #fff3cd; border: 1px solid #ffc107; color: #856404;">💾 JSON</button>
+  <button id="importJsonBtn" type="button" style="background: #d1ecf1; border: 1px solid #bee5eb; color: #0c5460;">📂 Import</button>
+  <button id="exportCsvBtn" type="button" style="background: #d4edda; border: 1px solid #c3e6cb; color: #155724;">📊 CSV</button>
+  <button id="exportZipBtn" type="button" style="background: #cfe2ff; border: 1px solid #b6d4fe; color: #084298;">📦 ZIP</button>
+</div>
+<!-- END OF NEW BUTTONS -->
+
+
+
+      <div class="row" style="margin-top:6px">
+        <label for="probeX">Probe X,Y (m)</label>
+        <input id="probeX" type="number" value="0.05" step="0.001" />
+        <input id="probeY" type="number" value="0.03" step="0.001" />
+      </div>
+      <div style="margin-top:4px; font-size:12px; color:#555;">Probe T: <span id="probeT">-</span> °C &nbsp; | &nbsp; t = <span id="simTime">0.000</span> s</div>
 
       <div class="row" style="margin-top:10px">
-        <label for="defaultHf">Fin H (m)</label><input id="defaultHf" type="number" value="0.02" step="0.001">
-        <label for="defaultTf">Fin t (m)</label><input id="defaultTf" type="number" value="0.001" step="0.0005">
-      </div>
-      <div class="row">
-        <label for="defaultSf">Spacing s (m)</label><input id="defaultSf" type="number" value="0.01" step="0.001">
-        <label for="finMaterial">Fin mat</label>
-        <select id="finMaterial">
-          <option value="same">Same as plate</option>
-          <option value="Al">Aluminum (6061)</option>
-          <option value="Cu">Copper</option>
-          <option value="Steel">Steel</option>
-          <option value="FR4">FR4</option>
+        <label for="drawMode">Canvas mode:</label>
+        <select id="drawMode">
+          <option value="source">Draw Sources</option>
+          <option value="fin">Draw Fins</option>
         </select>
+        <button id="clearSources" type="button">Clear sources</button>
+        <button id="clearFins" type="button">Clear fins</button>
       </div>
-      <div class="row">
-        <button id="clearFins">Clear all fins</button>
+
+      <div style="margin-top:8px">
+        <label>Sources</label>
+        <div id="sourcesList"></div>
       </div>
-      <div id="finsList" class="panel">
-        <div class="hint">
-          No fin regions yet. Switch draw mode to “Fin regions” and drag a rectangle on the canvas.
-        </div>
+
+      <div style="margin-top:10px">
+        <label>Finned regions (effective area)</label>
+        <div id="finsList"></div>
       </div>
     </div>
   </div>
 
-  <div id="canvasWrap" class="panel">
-    <canvas id="cv" width="720" height="432"></canvas>
-    <div class="legend" id="legend" style="display:none">
-      <div style="display:flex">
-        <div class="bar"></div>
-        <div class="ticks">
-          <div id="tMaxLbl">—</div><div></div><div id="tMinLbl">—</div>
+  <hr/>
+
+  <div id="canvasRow">
+    <div id="canvasWrap" class="panel">
+      <canvas id="mainCanvas" width="720" height="432"></canvas>
+      <div class="legend" id="legend" style="display:none">
+        <div style="display:flex; align-items:flex-start">
+          <div class="bar"></div>
+          <div class="ticks">
+            <div id="tMaxLbl">—</div>
+            <div> </div>
+            <div id="tMinLbl">—</div>
+          </div>
         </div>
       </div>
     </div>
-    <!-- Probe info moved here, in the grid panel under the canvas -->
-    <div id="probe" class="topline" style="margin-top:6px;">&nbsp;</div>
+
+    <div id="finPreview" class="panel">
+      <strong>Fin end-view</strong>
+      <svg id="finSchematic" width="160" height="432"></svg>
+    </div>
   </div>
 
-  <div id="finViewPanel" class="panel">
-    <strong>Fin region detail (side view)</strong>
-    <br/>
-    <canvas id="finCv" width="720" height="180"></canvas>
+  <div id="plotPanel" class="panel">
+    <div class="row">
+      <strong>Probe T vs time</strong>
+      <span class="badge" id="autoStopMsg" style="display:none">auto-stopped (ΔTmax &lt; 0.5%)</span>
+      <button id="clearPlot" type="button">Clear plot</button>
+      <button id="exportCSV" type="button">Export CSV</button>
+    </div>
+    <canvas id="plotCanvas" width="720" height="160"></canvas>
   </div>
-</div>
 
 <script>
-/* ============================
-   DOM references
-   ============================ */
-const cv          = document.getElementById('cv');
-const ctx         = cv.getContext('2d');
-const showGrid    = document.getElementById('showGrid');
-const topLine     = document.getElementById('top');
-const probeLine   = document.getElementById('probe');
-const tMaxLbl     = document.getElementById('tMaxLbl');
-const tMinLbl     = document.getElementById('tMinLbl');
-const finCv       = document.getElementById('finCv');
-const finCtx      = finCv.getContext('2d');
-
-const widthM      = document.getElementById('widthM');
-const heightM     = document.getElementById('heightM');
-const thicknessM  = document.getElementById('thicknessM');
-const materialSel = document.getElementById('material');
-const ambientT    = document.getElementById('ambientT');
-const nxInput     = document.getElementById('nx');
-
-const setupBtn    = document.getElementById('setup');
-const solveBtn    = document.getElementById('solve');
-const resetBtn    = document.getElementById('reset');
-
-const defaultWInput   = document.getElementById('defaultW');
-const clearAllBtn     = document.getElementById('clearAll');
-const defaultHfInput  = document.getElementById('defaultHf');
-const defaultTfInput  = document.getElementById('defaultTf');
-const defaultSfInput  = document.getElementById('defaultSf');
-const finMaterialSel  = document.getElementById('finMaterial');
-const clearFinsBtn    = document.getElementById('clearFins');
-
-const sourcesListDiv  = document.getElementById('sourcesList');
-const finsListDiv     = document.getElementById('finsList');
-
-/* materials */
-const mats = {
-  Al   : {k:167,  rho:2700, cp:896},
-  Cu   : {k:401,  rho:8960, cp:385},
-  Steel: {k:50,   rho:7850, cp:470},
-  FR4  : {k:0.3,  rho:1900, cp:1200}
+/* ===== Materials ===== */
+const materials = {
+  "Aluminum (6061)": { k: 167, rho: 2700, cp: 896 },
+  "Copper":          { k: 401, rho: 8960, cp: 385 },
+  "FR4 (PCB)":       { k: 0.3, rho: 1900,  cp: 1200 },
+  "Steel":           { k: 50,  rho: 7850,  cp: 470 },
+  "Silicon":         { k: 150, rho: 2330,  cp: 700 }
 };
+const matSel = document.getElementById('materialSelect');
+Object.keys(materials).forEach(name => {
+  const o = document.createElement('option'); o.value = name; o.textContent = name;
+  matSel.appendChild(o);
+});
+matSel.value = "Aluminum (6061)";
 
-/* global state */
-let grid    = null;
-let sources = [];   // {rect:{x0,y0,x1,y1}, W, cells:[]}
-let fins    = [];   // {rect,H,tf,s,mat,cells:[]}
-let drawing = false;
-let p0      = null;
-let drawMode = 'source';
-let activeFinIndex = 0;
+/* ===== Canvases & state ===== */
+const canvas = document.getElementById('mainCanvas');
+const ctx = canvas.getContext('2d');
+const drawModeSel = document.getElementById('drawMode');
 
-/* ============================
-   Correlations
-   ============================ */
+let drawing = false, dragStart = null, dragRect = null;
+const DragMin = 6;
+const sources = []; // {rect, amplitude, type, freq, label, cells:int[]}
+const fins = [];    // {rect, t, L, s, k, label, cells:int[]}
+let lastClickMarker = null;
 
-/* Churchill–Chu, vertical plate, one-sided (used for bare plate h) */
-function hChurchillChu(dT, L){
-  const k = 0.026, nu = 1.5e-5, alpha = 2.2e-5, Pr = 0.71, beta = 1/300, g = 9.81;
-  const DT = Math.max(1e-6, dT), Le = Math.max(1e-6, L);
-  const Ra = g * beta * DT * Math.pow(Le,3) / (nu * alpha);
-  const Nu = 0.68 + (0.670 * Math.pow(Ra,0.25)) /
-             Math.pow(1 + Math.pow(0.492/Pr,9/16), 4/9);
-  return Nu * k / Le;
-}
+const UseF32 = true;
+const Arr = UseF32 ? Float32Array : Float64Array;
 
-/* Channel h between vertical parallel plates (Elenbaas / Bar-Cohen style),
-   with blending to isolated-plate Churchill–Chu at large S. */
-function finChannelH(deltaT, S, L){
-  const k = 0.026, nu = 1.5e-5, alpha = 2.2e-5, beta = 1/300, g = 9.81, Pr = 0.71;
-  const DT   = Math.max(1e-6, deltaT);
-  const Spos = Math.max(1e-6, S);
-  const Lpos = Math.max(1e-6, L);
+let grid = null;
+let simRunning = false, simAnimationId = null, simTime = 0;
 
-  // Rayleigh based on spacing
-  const RaS = g * beta * DT * Math.pow(Spos, 3) / (alpha * nu);
-
-  // Fully developed limit (Elenbaas-type)
-  const Nu_fd = (RaS / 24) * (Spos / Lpos);
-  const h_fd  = Nu_fd * k / Spos;
-
-  // Isolated plate (Churchill–Chu) using plate height L
-  const RaL = g * beta * DT * Math.pow(Lpos, 3) / (alpha * nu);
-  const Nu_iso = 0.68 + (0.670 * Math.pow(RaL, 0.25)) /
-                 Math.pow(1 + Math.pow(0.492/Pr,9/16), 4/9);
-  const h_iso = Nu_iso * k / Lpos;
-
-  // Dimensionless mixed parameter X ~ RaS * S/L
-  const X = RaS * (Spos / Lpos);
-  const logX = Math.log10(Math.max(1e-6, X));
-  // X ≲ 10 → fully developed, X ≳ 100 → isolated plate
-  const w = Math.min(1, Math.max(0, (logX - 1) / (2 - 1))); // map log10(10..100) → 0..1
-
-  return (1 - w) * h_fd + w * h_iso;
-}
-
-/* ============================
-   Grid setup
-   ============================ */
-function setupGrid(){
-  const Wm = +widthM.value;
-  const Hm = +heightM.value;
+/* ===== Layout helpers ===== */
+function resizeCanvasToAspect(){
+  const Wm = parseFloat(document.getElementById('widthM').value);
+  const Hm = parseFloat(document.getElementById('heightM').value);
   const aspect = Math.max(0.1, Hm / Wm);
   const baseW = 720;
-  cv.width  = baseW;
-  cv.height = Math.max(240, Math.round(baseW * aspect));
-
-  const nx = (+nxInput.value | 0);
-  const ny = Math.max(1, Math.round(nx * Hm / Wm));
-  const dx = Wm / nx;
-  const dy = Hm / ny;
-  const N  = nx * ny;
-
-  const T0 = +ambientT.value;
-  const m  = mats[materialSel.value];
-
-  grid = {
-    nx, ny, dx, dy,
-    widthM:  Wm,
-    heightM: Hm,
-    k:  m.k,
-    rho:m.rho,
-    cp: m.cp,
-    t:  +thicknessM.value,
-    Ta: T0,
-    h:  5.0,
-    T:  new Float32Array(N).fill(T0)
-  };
-
-  probeLine.textContent = '';
-  activeFinIndex = 0;
-  document.getElementById('legend').style.display = 'block';
-  draw();
-  topline();
+  canvas.width = baseW;
+  canvas.height = Math.max(240, Math.round(baseW * aspect));
+  const finSvg = document.getElementById('finSchematic');
+  finSvg.setAttribute('height', String(canvas.height));
 }
-setupGrid();
 
-/* ============================
-   Rectangle → cell list
-   ============================ */
-function rectToCells(rect){
-  const {nx,ny} = grid;
-  const cw = cv.width, ch = cv.height;
+/* ===== Setup & reset ===== */
+function setupGrid(){
+  resizeCanvasToAspect();
 
-  let x0 = Math.floor(Math.min(rect.x0, rect.x1)/cw * nx);
-  let x1 = Math.floor(Math.max(rect.x0, rect.x1)/cw * nx);
-  let y0 = Math.floor(Math.min(rect.y0, rect.y1)/ch * ny);
-  let y1 = Math.floor(Math.max(rect.y0, rect.y1)/ch * ny);
+  const widthM = parseFloat(document.getElementById('widthM').value);
+  const heightM = parseFloat(document.getElementById('heightM').value);
+  const nx = parseInt(document.getElementById('nx').value);
+  const ny = Math.max(1, Math.round(nx * (heightM/widthM)));
+  const material = materials[document.getElementById('materialSelect').value];
+  const thickness = parseFloat(document.getElementById('thicknessM').value);
 
-  x0 = Math.max(0, Math.min(nx-1, x0));
-  x1 = Math.max(0, Math.min(nx-1, x1));
-  y0 = Math.max(0, Math.min(ny-1, y0));
-  y1 = Math.max(0, Math.min(ny-1, y1));
+  const dx = widthM / nx;
+  const dy = heightM / ny;
+  const N = nx*ny;
+  const T0 = parseFloat(document.getElementById('ambientT').value);
 
+  const T = new Arr(N).fill(T0);
+  const Ttmp = new Arr(N).fill(T0);
+  const Q = new Arr(N).fill(0);
+  const Aeff = new Arr(N);
+  const Ta2D = new Arr(N).fill(parseFloat(document.getElementById('airTin').value));
+
+  grid = { nx, ny, dx, dy, widthM, heightM, thickness,
+           k: material.k, rho: material.rho, cp: material.cp,
+           T, Ttmp, Q, Aeff, Ta2D };
+  grid.alpha = grid.k / (grid.rho * grid.cp);
+
+  document.getElementById('legend').style.display = 'block';
+  reprojectSourcesToGrid();
+  reprojectFinsToGrid();
+  computeAeff();
+  rebuildTaFromT(grid.T);
+  redraw(); simTime = 0; solverInfo();
+  document.getElementById('steadyInfo').textContent = '—';
+  clearPlotData();
+  updateTaEstimate();
+}
+document.getElementById('setupBtn').addEventListener('click', setupGrid);
+['widthM','heightM'].forEach(id=>document.getElementById(id).addEventListener('change', setupGrid));
+document.getElementById('resetAmbient').addEventListener('click', ()=>{
+  if(!grid) return;
+  const T0 = parseFloat(document.getElementById('ambientT').value);
+  grid.T.fill(T0); grid.Ttmp.fill(T0);
+  const Tin = parseFloat(document.getElementById('airTin').value);
+  grid.Ta2D.fill(Tin);
+  simTime=0; redraw(); updateProbe(); solverInfo(); document.getElementById('steadyInfo').textContent='—'; clearPlotData();
+  updateTaEstimate();
+});
+
+/* ===== Mouse: draw or click-probe ===== */
+canvas.addEventListener('mousedown', (ev) => {
+  drawing = true;
+  const r = canvas.getBoundingClientRect();
+  dragStart = { x: ev.clientX - r.left, y: ev.clientY - r.top };
+});
+canvas.addEventListener('mousemove', (ev) => {
+  if (!drawing) return;
+  const r = canvas.getBoundingClientRect();
+  const mx = ev.clientX - r.left, my = ev.clientY - r.top;
+  dragRect = { x0: dragStart.x, y0: dragStart.y, x1: mx, y1: my };
+  redraw();
+});
+canvas.addEventListener('mouseup', (ev) => {
+  const wasDrawing = drawing; drawing = false;
+  const r = canvas.getBoundingClientRect();
+  const mx = ev.clientX - r.left, my = ev.clientY - r.top;
+
+  if (!wasDrawing) return;
+
+  const dx = Math.abs(mx - dragStart.x), dy = Math.abs(my - dragStart.y);
+  const isClick = (dx < DragMin && dy < DragMin);
+
+  if (isClick) {
+    lastClickMarker = {x: mx, y: my};
+    updateClickProbeOverlay(mx, my);
+    dragRect = null;
+    redraw();
+    return;
+  }
+
+  const rect = {
+    x0: Math.min(dragStart.x, mx), y0: Math.min(dragStart.y, my),
+    x1: Math.max(dragStart.x, mx), y1: Math.max(dragStart.y, my)
+  };
+  dragRect = null;
+
+  if (drawModeSel.value === 'source') {
+    const src = { rect, amplitude: 10.0, type: 'const', freq: 1.0, label: `S${sources.length+1}`, cells: [] };
+    sources.push(src); onSourcesChanged();
+  } else {
+    const fin = { rect, t: 0.0015, L: 0.02, s: 0.005, k: materials["Aluminum (6061)"].k, label: `F${fins.length+1}`, cells: [] };
+    fins.push(fin); updateFinsList();
+  }
+
+  if(grid){ reprojectSourcesToGrid(); reprojectFinsToGrid(); computeAeff(); }
+  redraw();
+});
+
+function updateClickProbeOverlay(cx, cy){
+  if(!grid) return;
+  const i = Math.floor(cx / canvas.width * grid.nx);
+  const j = Math.floor(cy / canvas.height * grid.ny);
+  const idx = j*grid.nx + i;
+  const x = (i+0.5)*grid.dx, y=(j+0.5)*grid.dy;
+  const T = grid.T[idx];
+  const Ta = grid.Ta2D ? grid.Ta2D[idx] : parseFloat(document.getElementById('ambientT').value);
+  lastClickMarker = { x: cx, y: cy, x_m: x, y_m: y, T, Ta };
+}
+
+/* ===== List UIs ===== */
+function updateSourcesList(){
+  const div = document.getElementById('sourcesList'); div.innerHTML = '';
+  sources.forEach((s,i)=>{
+    const row = document.createElement('div'); row.className='srcRow';
+    const lbl = document.createElement('span'); lbl.className='pill'; lbl.textContent = s.label; row.appendChild(lbl);
+    const powLbl = document.createElement('span'); powLbl.textContent = 'Power (W)';
+    const pow = document.createElement('input'); pow.type='number'; pow.step='0.1'; pow.value = s.amplitude; pow.style.width='80px';
+    pow.onchange = ()=>{ s.amplitude = parseFloat(pow.value)||0; updateTaEstimate(); };
+    const typ = document.createElement('select');
+    [{v:'const',t:'const'}, {v:'sine',t:'sine (half-wave)'}].forEach(o=>{ const opt=document.createElement('option'); opt.value=o.v; opt.textContent=o.t; typ.appendChild(opt);});
+    typ.value = s.type; typ.onchange = ()=>{ s.type = typ.value; updateTaEstimate(); };
+    const fLbl = document.createElement('span'); fLbl.textContent = 'f (Hz)';
+    const f = document.createElement('input'); f.type='number'; f.step='0.1'; f.value = s.freq; f.style.width='70px';
+    f.onchange = ()=>{ s.freq = parseFloat(f.value)||0; updateTaEstimate(); };
+    const rem = document.createElement('button'); rem.textContent='Remove';
+    rem.onclick = ()=>{ sources.splice(i,1); onSourcesChanged(); if(grid){ reprojectSourcesToGrid(); } };
+    row.appendChild(powLbl); row.appendChild(pow);
+    row.appendChild(typ); row.appendChild(fLbl); row.appendChild(f); row.appendChild(rem);
+    div.appendChild(row);
+  });
+  if(sources.length===0){ const hint = document.createElement('div'); hint.style.fontSize='12px'; hint.style.color='#555'; hint.textContent='No sources. Drag on canvas to add one.'; div.appendChild(hint); }
+}
+function onSourcesChanged(){ updateSourcesList(); updateTaEstimate(); }
+
+function updateFinsList(){
+  const div = document.getElementById('finsList'); div.innerHTML = '';
+  fins.forEach((fObj,i)=>{
+    const row = document.createElement('div'); row.className='finRow';
+    const lbl=document.createElement('span'); lbl.className='pill'; lbl.textContent=fObj.label; row.appendChild(lbl);
+
+    const tLbl=document.createElement('span'); tLbl.textContent='t(m)'; const tIn=document.createElement('input');
+    tIn.type='number'; tIn.step='0.0001'; tIn.value=fObj.t; tIn.style.width='70px'; tIn.onchange=()=>{ fObj.t=parseFloat(tIn.value)||0.001; computeAeff(); updateFinSchematic(); };
+
+    const LLbl=document.createElement('span'); LLbl.textContent='L(m)'; const LIn=document.createElement('input');
+    LIn.type='number'; LIn.step='0.001'; LIn.value=fObj.L; LIn.style.width='70px'; LIn.onchange=()=>{ fObj.L=parseFloat(LIn.value)||0.01; computeAeff(); updateFinSchematic(); };
+
+    const sLbl=document.createElement('span'); sLbl.textContent='s(m)'; const sIn=document.createElement('input');
+    sIn.type='number'; sIn.step='0.0005'; sIn.value=fObj.s; sIn.style.width='70px'; sIn.onchange=()=>{ fObj.s=parseFloat(sIn.value)||0.002; computeAeff(); updateFinSchematic(); };
+
+    const kLbl=document.createElement('span'); kLbl.textContent='k(W/mK)'; const kIn=document.createElement('input');
+    kIn.type='number'; kIn.step='1'; kIn.value=fObj.k; kIn.style.width='70px'; kIn.onchange=()=>{ fObj.k=parseFloat(kIn.value)||materials["Aluminum (6061)"].k; computeAeff(); updateFinSchematic(); };
+
+    const rem = document.createElement('button'); rem.textContent='Remove';
+    rem.onclick=()=>{ fins.splice(i,1); updateFinsList(); if(grid){ reprojectFinsToGrid(); computeAeff(); } updateFinSchematic(); };
+
+    row.appendChild(tLbl); row.appendChild(tIn);
+    row.appendChild(LLbl); row.appendChild(LIn);
+    row.appendChild(sLbl); row.appendChild(sIn);
+    row.appendChild(kLbl); row.appendChild(kIn);
+    row.appendChild(rem);
+    div.appendChild(row);
+  });
+  if(fins.length===0){ const hint=document.createElement('div'); hint.style.fontSize='12px'; hint.style.color='#555'; hint.textContent='No fins. Switch canvas mode to "Draw Fins" and drag a region.'; div.appendChild(hint); }
+  updateFinSchematic();
+}
+
+/* ===== Mapping helpers ===== */
+function rectToCellIndices(rect){
+  const cw = canvas.width, ch = canvas.height;
+  let x0 = Math.floor((Math.min(rect.x0, rect.x1) / cw) * grid.nx);
+  let x1 = Math.floor((Math.max(rect.x0, rect.x1) / cw) * grid.nx);
+  let y0 = Math.floor((Math.min(rect.y0, rect.y1) / ch) * grid.ny);
+  let y1 = Math.floor((Math.max(rect.y0, rect.y1) / ch) * grid.ny);
+  x0 = Math.max(0, Math.min(grid.nx-1, x0));
+  x1 = Math.max(0, Math.min(grid.nx-1, x1));
+  y0 = Math.max(0, Math.min(grid.ny-1, y0));
+  y1 = Math.max(0, Math.min(grid.ny-1, y1));
   const out = [];
-  for(let j=y0; j<=y1; j++){
-    for(let i=x0; i<=x1; i++){
-      out.push(j*nx + i);
-    }
+  if (x1 < x0 || y1 < y0) {
+    const cx = Math.max(0, Math.min(grid.nx-1, Math.floor(((rect.x0+rect.x1)/2)/cw*grid.nx)));
+    const cy = Math.max(0, Math.min(grid.nx-1, Math.floor(((rect.y0+rect.y1)/2)/ch*grid.ny)));
+    out.push(cy*grid.nx + cx);
+  } else {
+    for(let j=y0;j<=y1;j++) for(let i=x0;i<=x1;i++) out.push(j*grid.nx + i);
   }
   return out;
 }
+function reprojectSourcesToGrid(){ if(!grid) return; sources.forEach(s => { s.cells = rectToCellIndices(s.rect); }); }
+function reprojectFinsToGrid(){ if(!grid) return; fins.forEach(f => { f.cells = rectToCellIndices(f.rect); }); }
 
-/* ============================
-   Sources UI
-   ============================ */
-function addSource(rect){
-  const W = +defaultWInput.value;
-  sources.push({rect, W, cells:[]});
-  updateSourcesUI();
-  draw();
+/* ===== h correlation + fins ===== */
+function estimateHfromVelocity(v){
+  const h = 1.16*(10.45 - v + 10*Math.sqrt(Math.max(0,v)));
+  return Math.max(1.0, Math.min(h, 500));
 }
-function updateSourcesUI(){
-  const box = sourcesListDiv;
-  box.innerHTML = '';
-  if(!sources.length){
-    const d = document.createElement('div');
-    d.className = 'hint';
-    d.textContent =
-      'No sources yet. Drag a rectangle on the canvas in “Heat sources” mode. Each row is editable and has a Remove button.';
-    box.appendChild(d);
-    return;
-  }
-  sources.forEach((s,idx)=>{
-    const row = document.createElement('div');
-    row.className = 'srcRow';
-
-    const tag = document.createElement('span');
-    tag.className = 'pill';
-    tag.textContent = 'S'+(idx+1);
-
-    const wl = document.createElement('label');
-    wl.textContent = 'W:';
-    wl.style.width = '20px';
-    wl.style.textAlign = 'right';
-
-    const w = document.createElement('input');
-    w.type='number'; w.step='0.1'; w.value=s.W; w.style.width='90px';
-    w.onchange = ()=>{ s.W = +w.value || 0; };
-
-    const rm = document.createElement('button');
-    rm.textContent='Remove';
-    rm.onclick = ()=>{
-      sources.splice(idx,1);
-      updateSourcesUI();
-      draw();
-    };
-
-    row.appendChild(tag);
-    row.appendChild(wl);
-    row.appendChild(w);
-    row.appendChild(rm);
-    box.appendChild(row);
-  });
-}
-
-/* ============================
-   Fins UI
-   ============================ */
-function addFin(rect){
-  const H  = +defaultHfInput.value;
-  const tf = +defaultTfInput.value;
-  const s  = +defaultSfInput.value;
-  const fm = finMaterialSel.value;
-  const mat = (fm === 'same') ? materialSel.value : fm;
-
-  fins.push({rect,H,tf,s,mat,cells:[]});
-  if(fins.length===1) activeFinIndex = 0;
-  updateFinsUI();
-  draw();
-}
-function markActiveFinRows(){
-  const rows = finsListDiv.querySelectorAll('.finRow');
-  rows.forEach((row,i)=>{
-    row.style.background = (i===activeFinIndex ? '#e7f1ff' : 'transparent');
-  });
-}
-function setActiveFin(idx){
-  if(idx<0 || idx>=fins.length) return;
-  activeFinIndex = idx;
-  markActiveFinRows();
-  drawFinView();
-}
-function updateFinsUI(){
-  const box = finsListDiv;
-  box.innerHTML = '';
-  if(!fins.length){
-    const d = document.createElement('div');
-    d.className = 'hint';
-    d.textContent =
-      'No fin regions yet. Switch draw mode to “Fin regions” and drag a rectangle on the canvas.';
-    box.appendChild(d);
-    drawFinView();
-    return;
-  }
-  fins.forEach((f,idx)=>{
-    const row = document.createElement('div');
-    row.className = 'finRow';
-
-    const tag = document.createElement('span');
-    tag.className = 'pill';
-    tag.textContent = 'F'+(idx+1);
-
-    const lblH = document.createElement('label');
-    lblH.textContent='H:'; lblH.style.width='20px'; lblH.style.textAlign='right';
-    const inH = document.createElement('input');
-    inH.type='number'; inH.step='0.001'; inH.value=f.H; inH.style.width='70px';
-    inH.onchange = ()=>{ f.H=+inH.value||0; drawFinView(); };
-
-    const lblT = document.createElement('label');
-    lblT.textContent='t:'; lblT.style.width='20px'; lblT.style.textAlign='right';
-    const inT = document.createElement('input');
-    inT.type='number'; inT.step='0.0005'; inT.value=f.tf; inT.style.width='70px';
-    inT.onchange = ()=>{ f.tf=+inT.value||0; drawFinView(); };
-
-    const lblS = document.createElement('label');
-    lblS.textContent='s:'; lblS.style.width='20px'; lblS.style.textAlign='right';
-    const inS = document.createElement('input');
-    inS.type='number'; inS.step='0.001'; inS.value=f.s; inS.style.width='70px';
-    inS.onchange = ()=>{ f.s=+inS.value||0; drawFinView(); };
-
-    const sel = document.createElement('select');
-    ['same','Al','Cu','Steel','FR4'].forEach(key=>{
-      const opt=document.createElement('option');
-      opt.value=key;
-      opt.textContent=(key==='same'?'Same as plate':key);
-      sel.appendChild(opt);
-    });
-    sel.value = (f.mat===materialSel.value?'same':f.mat);
-    sel.onchange = ()=>{
-      const v=sel.value;
-      f.mat = (v==='same')?materialSel.value:v;
-      drawFinView();
-    };
-
-    const rm = document.createElement('button');
-    rm.textContent='Remove';
-    rm.onclick = (ev)=>{
-      ev.stopPropagation();
-      fins.splice(idx,1);
-      if(activeFinIndex>=fins.length) activeFinIndex=Math.max(0,fins.length-1);
-      updateFinsUI();
-      draw();
-    };
-
-    row.addEventListener('click', ev=>{
-      const tn = ev.target.tagName;
-      if(tn==='INPUT'||tn==='SELECT'||tn==='BUTTON'||tn==='LABEL') return;
-      setActiveFin(idx);
-    });
-
-    row.appendChild(tag);
-    row.appendChild(lblH); row.appendChild(inH);
-    row.appendChild(lblT); row.appendChild(inT);
-    row.appendChild(lblS); row.appendChild(inS);
-    row.appendChild(sel);
-    row.appendChild(rm);
-    box.appendChild(row);
-  });
-  markActiveFinRows();
-  drawFinView();
-}
-
-/* ============================
-   Buttons
-   ============================ */
-setupBtn.onclick     = setupGrid;
-solveBtn.onclick     = solve;
-resetBtn.onclick     = ()=>{ if(!grid)return; grid.T.fill(grid.Ta); probeLine.textContent=''; draw(); topline(); };
-clearAllBtn.onclick  = ()=>{ sources=[]; updateSourcesUI(); draw(); };
-clearFinsBtn.onclick = ()=>{ fins=[];    updateFinsUI(); draw(); };
-
-document.querySelectorAll('input[name="drawMode"]').forEach(r=>{
-  r.addEventListener('change',e=>{ drawMode=e.target.value; });
-});
-showGrid.addEventListener('change',()=>draw());
-
-/* ============================
-   Mouse: draw rectangles + probe
-   ============================ */
-cv.addEventListener('mousedown',e=>{
+function computeAeff(){
   if(!grid) return;
-  drawing = true;
-  const r=cv.getBoundingClientRect();
-  p0={x:e.clientX-r.left, y:e.clientY-r.top};
-});
-cv.addEventListener('mousemove',e=>{
-  if(!drawing) return;
-  const r=cv.getBoundingClientRect();
-  const rect={
-    x0:p0.x,
-    y0:p0.y,
-    x1:e.clientX-r.left,
-    y1:e.clientY-r.top
+  const {nx, ny, dx, dy, Aeff} = grid;
+  const v = parseFloat(document.getElementById('airVel').value);
+  const h = estimateHfromVelocity(v);
+  const both = document.getElementById('bothSides')?.checked;
+  const Abase = (both ? 2 : 1) * dx * dy;
+  for(let idx=0; idx<nx*ny; idx++) Aeff[idx] = Abase;
+
+  fins.forEach(f=>{
+    const p = (f.t + f.s); if(p <= 1e-9) return;
+    const NperCell = Math.max(0, dx / p);
+    const m = Math.sqrt( Math.max(0, 2*h / Math.max(1e-12, f.k * f.t)) );
+    const eta = (m*f.L > 1e-9) ? (Math.tanh(m*f.L)/(m*f.L)) : 1.0;
+    f.cells.forEach(idx=>{
+      Aeff[idx] += eta * (2 * f.L * dy * NperCell);
+    });
+  });
+  updateFinSchematic();
+}
+
+/* ===== Fin schematic (scaled to grid) ===== */
+function updateFinSchematic(){
+  const svg = document.getElementById('finSchematic'); if (!svg || !grid) return;
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+  const W = +svg.getAttribute('width') || 160;
+  const H = +svg.getAttribute('height') || canvas.height;
+  const margin = 12;
+
+  const rect = (x,y,w,h,fill,stroke)=>{
+    const r=document.createElementNS('http://www.w3.org/2000/svg','rect');
+    r.setAttribute('x',x); r.setAttribute('y',y); r.setAttribute('width',w); r.setAttribute('height',h);
+    if(fill) r.setAttribute('fill',fill); if(stroke) r.setAttribute('stroke',stroke);
+    svg.appendChild(r);
   };
-  draw(rect);
-});
-cv.addEventListener('mouseup',e=>{
-  if(!grid || !drawing) return;
-  drawing=false;
-  const r=cv.getBoundingClientRect();
-  const x1=e.clientX-r.left;
-  const y1=e.clientY-r.top;
-  const rect={x0:p0.x,y0:p0.y,x1,y1};
-  const dx=Math.abs(rect.x1-rect.x0);
-  const dy=Math.abs(rect.y1-rect.y0);
-  if(dx>4 && dy>4){
-    if(drawMode==='source') addSource(rect);
-    else addFin(rect);
-  }else{
-    draw();
-    probeAtCanvas(x1,y1);
-  }
-});
 
-/* probe helper: bilinear interp at canvas (x,y) */
-function probeAtCanvas(x,y){
+  rect(0,0,W,H,'#fff','#ddd');      // bg
+  const plateX = margin;
+  rect(plateX, margin, 10, H-2*margin, '#eee', '#bbb'); // plate edge
+
+  const ppmY = canvas.height / grid.heightM;  // px/m vertical
+  const ppmX = canvas.width  / grid.widthM;   // px/m horizontal
+  const bandW = W - (plateX + 10) - margin;
+
+  fins.forEach(f=>{
+    const ch = canvas.height;
+    const y0r = Math.min(f.rect.y0, f.rect.y1)/ch;
+    const y1r = Math.max(f.rect.y0, f.rect.y1)/ch;
+    const sy0 = margin + (H-2*margin) * y0r;
+    const sy1 = margin + (H-2*margin) * y1r;
+
+    rect(plateX+10, sy0, bandW, Math.max(2, sy1-sy0), '#eef6ff', '#cfe5ff');
+
+    const t_px = Math.max(1, Math.round((f.t || 0.001) * ppmY));
+    const s_px = Math.max(1, Math.round((f.s || 0.002) * ppmY));
+    const pitch_px = t_px + s_px;
+    const L_px = Math.max(4, Math.min(bandW - 4, Math.round((f.L || 0.01) * ppmX)));
+
+    const x0 = plateX + 10 + 2;
+    let y = Math.round(sy0 + 2);
+    while (y + t_px <= sy1 - 2) {
+      rect(x0, y, L_px, t_px, '#2680eb', '#1460b8');
+      y += pitch_px;
+    }
+  });
+}
+
+/* ===== Sources & air ===== */
+function rebuildQ(t){
   if(!grid) return;
-  const {nx,ny,widthM,heightM,T} = grid;
-
-  const xM = x/cv.width  * widthM;
-  const yM = y/cv.height * heightM;
-
-  const gx = (x+0.5)/cv.width  * nx - 0.5;
-  const gy = (y+0.5)/cv.height * ny - 0.5;
-  const i0 = Math.max(0,Math.min(nx-1,Math.floor(gx)));
-  const j0 = Math.max(0,Math.min(ny-1,Math.floor(gy)));
-  const i1 = Math.min(nx-1,i0+1);
-  const j1 = Math.min(ny-1,j0+1);
-  const fx = Math.min(1,Math.max(0,gx-i0));
-  const fy = Math.min(1,Math.max(0,gy-j0));
-
-  const t00=T[j0*nx+i0], t10=T[j0*nx+i1];
-  const t01=T[j1*nx+i0], t11=T[j1*nx+i1];
-  const t0=t00*(1-fx)+t10*fx;
-  const t1=t01*(1-fy)+t11*fy;
-  const Tv=t0*(1-fy)+t1*fy;
-
-  probeLine.textContent =
-    `Probe: x ≈ ${xM.toFixed(4)} m, y ≈ ${yM.toFixed(4)} m, T ≈ ${Tv.toFixed(2)} °C`;
-}
-
-/* ============================
-   Solver (FVM + SOR + Picard on h)
-   with Option C fin model
-   ============================ */
-function solve(){
-  if(!grid) setupGrid();
-
-  for(const s of sources) s.cells = rectToCells(s.rect);
-  for(const f of fins)    f.cells = rectToCells(f.rect);
-
-  const {nx,ny,dx,dy,k,t} = grid;
-  const N = nx*ny;
-  const A = dx*dy;
-
-  const Q = new Float32Array(N);
+  grid.Q.fill(0);
   for(const s of sources){
-    const per = s.cells.length ? s.W/s.cells.length : 0;
-    for(const c of s.cells) Q[c]+=per;
+    if(!s.cells || s.cells.length===0) continue;
+    let timeFactor = 1;
+    if(s.type === 'sine'){ timeFactor = Math.max(0, Math.sin(2*Math.PI*(s.freq||0)*t)); }
+    const perCell = (s.amplitude * timeFactor) / s.cells.length;
+    for(const idx of s.cells) grid.Q[idx] += perCell;
   }
-
-  const maxOuter=40, tolH=0.01;
-  for(let outer=0; outer<maxOuter; outer++){
-    const hExtra = new Float32Array(N);
-
-    // characteristic ΔT for fin correlations: use global Tavg - Ta
-    const TavgAll = avg(grid.T);
-    const dTchar  = Math.max(1.0, TavgAll - grid.Ta);
-
-    if (fins.length) {
-      for (const f of fins) {
-        const Hf = Math.max(0, f.H);
-        const tf = Math.max(1e-6, f.tf);
-        const S  = Math.max(1e-6, f.s);
-        if (Hf <= 0) continue;
-
-        // air-side channel h between fins
-        const h_ch = finChannelH(dTchar, S, grid.heightM);
-
-        // fin conduction & efficiency
-        const matKey = f.mat || materialSel.value;
-        const mf = mats[matKey] || mats[materialSel.value];
-        const kf = mf.k;
-        const mFin = Math.sqrt(2 * h_ch / Math.max(1e-9, kf * tf));
-        const mH   = mFin * Hf;
-        const eta  = (mH > 1e-6) ? Math.tanh(mH)/mH : 1.0;
-
-        // effective area ratio for the region: R_A ≈ η * 2Hf / (S + tf)
-        const dH = h_ch * eta * (2 * Hf) / (S + tf);
-
-        for (const idx of f.cells) {
-          hExtra[idx] += dH;
-        }
-      }
-    }
-
-    const aw = k*t/(dx*dx);
-    const ae = aw;
-    const as = k*t/(dy*dy);
-    const an = as;
-    const omega=1.85, tol=1e-5, maxIt=6000;
-
-    for(let it=0; it<maxIt; it++){
-      let maxDelta=0;
-      for(let j=0;j<ny;j++){
-        for(let i=0;i<nx;i++){
-          const idx=j*nx+i;
-          const T=grid.T;
-          const Te=(i<nx-1)?T[idx+1]:T[idx];
-          const Tw=(i>0   )?T[idx-1]:T[idx];
-          const Tn=(j<ny-1)?T[idx+nx]:T[idx];
-          const Ts=(j>0   )?T[idx-nx]:T[idx];
-
-          const hEff = grid.h + hExtra[idx];
-          const aP   = aw+ae+as+an+hEff;
-          const b    = hEff*grid.Ta + Q[idx]/A;
-          const Tnew = (aw*Tw+ae*Te+as*Ts+an*Tn+b)/aP;
-
-          const upd  = T[idx] + omega*(Tnew-T[idx]);
-          const d    = Math.abs(upd-T[idx]);
-          if(d>maxDelta) maxDelta=d;
-          T[idx]=upd;
-        }
-      }
-      if(maxDelta<tol) break;
-    }
-
-    const Tavg = avg(grid.T);
-    const hNew = hChurchillChu(Math.max(0,Tavg-grid.Ta), grid.heightM);
-    const rel  = Math.abs(hNew-grid.h)/Math.max(1e-6,grid.h);
-    grid.h = 0.5*grid.h + 0.5*hNew;
-    if(rel<tolH) break;
-  }
-
-  draw();
-  topline();
 }
 
-/* ============================
-   Diagnostics + drawing
-   ============================ */
-function avg(a){ let s=0; for(let i=0;i<a.length;i++) s+=a[i]; return s/a.length; }
+function rebuildTaFromT(T){
+  if(!grid) return;
+  const {nx, ny, Aeff} = grid;
+  const use   = document.getElementById('useWarmed').checked;
+  const v     = parseFloat(document.getElementById('airVel').value);
+  const rhoA  = parseFloat(document.getElementById('airRho').value);
+  const cpA   = parseFloat(document.getElementById('airCp').value);
+  const Hgap  = parseFloat(document.getElementById('airH').value);
+  const TinC  = parseFloat(document.getElementById('airTin').value);
+  const gamma = 0.0;
+  const dir   = document.getElementById('flowDir').value;
+  const mix   = Math.max(0, Math.min(0.2, parseFloat(document.getElementById('airMix').value)||0));
 
-function energyResidual(){
-  if(!grid) return 0;
-  const {dx,dy,Ta,T,nx,ny} = grid;
-  const N = nx*ny;
-  const A = dx*dy;
+  const h     = estimateHfromVelocity(v);
 
-  const hEff = new Float32Array(N);
-  for(let i=0;i<N;i++) hEff[i]=grid.h;
-
-  const TavgAll = avg(T);
-  const dTchar  = Math.max(1.0, TavgAll - Ta);
-
-  if (fins.length) {
-    for (const f of fins) {
-      const Hf = Math.max(0, f.H);
-      const tf = Math.max(1e-6, f.tf);
-      const S  = Math.max(1e-6, f.s);
-      if (Hf <= 0) continue;
-
-      const h_ch = finChannelH(dTchar, S, grid.heightM);
-
-      const matKey = f.mat || materialSel.value;
-      const mf = mats[matKey] || mats[materialSel.value];
-      const kf = mf.k;
-      const mFin = Math.sqrt(2 * h_ch / Math.max(1e-9, kf * tf));
-      const mH   = mFin * Hf;
-      const eta  = (mH > 1e-6) ? Math.tanh(mH)/mH : 1.0;
-
-      const dH = h_ch * eta * (2 * Hf) / (S + tf);
-
-      for (const idx of f.cells) {
-        hEff[idx] += dH;
-      }
-    }
-  }
-
-  let Qin=0; for(const s of sources) Qin+=s.W;
-  let Qout=0;
-  for(let i=0;i<T.length;i++)
-    Qout += hEff[i]*A*Math.max(0,T[i]-Ta);
-  const den=Math.max(1e-6,Math.abs(Qin)+Math.abs(Qout));
-  return Math.abs(Qin-Qout)/den;
-}
-
-function topline(){
-  if(!grid){ topLine.textContent='—'; return; }
-  const A = (grid.widthM*grid.heightM).toFixed(3);
-  const res=(energyResidual()*100).toFixed(2);
-  const Tavg=avg(grid.T).toFixed(1);
-  let Tmax=-Infinity; for(const v of grid.T) if(v>Tmax) Tmax=v;
-  const totalW=sources.reduce((s,x)=>s+x.W,0).toFixed(2);
-  topLine.textContent =
-    `n×m=${grid.nx}×${grid.ny} • one-sided • h_base≈ ${grid.h.toFixed(2)} W/m²K • `+
-    `A≈ ${A} m² • ΣW≈ ${totalW} W • fins=${fins.length} • `+
-    `residual≈ ${res}% • Tavg≈ ${Tavg} °C • Tmax≈ ${Tmax.toFixed(1)} °C`;
-}
-
-/* fin region side view, scaled to plate width */
-function drawFinView(){
-  const ctx2 = finCtx;
-  const w=finCv.width, h=finCv.height;
-  ctx2.clearRect(0,0,w,h);
-  ctx2.font='12px system-ui';
-  ctx2.fillStyle='#000';
-
-  if(!grid){ ctx2.fillText('No grid yet.',10,20); return; }
-  if(!fins.length){ ctx2.fillText('No fin regions defined.',10,20); return; }
-
-  let idx=activeFinIndex;
-  if(idx<0) idx=0;
-  if(idx>=fins.length) idx=fins.length-1;
-  const f=fins[idx];
-  const rect=f.rect;
-
-  const x0px=Math.min(rect.x0,rect.x1);
-  const x1px=Math.max(rect.x0,rect.x1);
-
-  const plateWm=grid.widthM;
-  const regionStartM=x0px/cv.width*plateWm;
-  const regionEndM  =x1px/cv.width*plateWm;
-  const regionWidthM=Math.max(1e-9,regionEndM-regionStartM);
-
-  const Hf = Math.max(1e-6,f.H);
-  const s  = Math.max(1e-6,f.s);
-  const tf = Math.max(1e-6,f.tf);
-  const tSink=Math.max(1e-6,grid.t);
-
-  const marginL=50, marginR=20, marginT=20, marginB=30;
-  const drawW=w-marginL-marginR;
-  const drawH=h-marginT-marginB;
-  const totalH=Hf+tSink;
-  const xScale=drawW/plateWm;
-  const yScale=drawH/totalH;
-
-  const yBase=h-marginB;
-  const yPlateTop=yBase-tSink*yScale;
-
-  const xRegion0=marginL+regionStartM*xScale;
-  ctx2.fillStyle='#aaaaaa';
-  ctx2.fillRect(xRegion0,yPlateTop,regionWidthM*xScale,tSink*yScale);
-
-  const xEndM=regionEndM;
-  ctx2.fillStyle='rgba(80,170,255,0.95)';
-  let n=0;
-  while(true){
-    const xCenterM=regionStartM+(n+0.5)*s;
-    if(xCenterM>xEndM) break;
-    const xCenter=marginL+xCenterM*xScale;
-    const finWpx=tf*xScale;
-    const x0=xCenter-finWpx/2;
-    const yTop=yPlateTop-Hf*yScale;
-    ctx2.fillRect(x0,yTop,finWpx,Hf*yScale);
-    n++;
-    if(n>10000) break;
-  }
-
-  ctx2.fillStyle='#000';
-  ctx2.fillText(`Fin region F${idx+1} width ≈ ${regionWidthM.toFixed(3)} m`,marginL,yBase+18);
-  ctx2.fillText(`Plate width = ${plateWm.toFixed(3)} m`,marginL,yBase+34);
-  ctx2.fillText(`Fin height H = ${Hf.toFixed(3)} m`,marginL,marginT+12);
-  ctx2.fillText(`Sink thickness t_sink = ${tSink.toExponential(2)} m`,marginL,marginT+28);
-  ctx2.fillText(`t_fin = ${tf.toExponential(2)} m, s = ${s.toExponential(2)} m`,marginL,marginT+44);
-}
-
-/* field drawing + overlays */
-function draw(tempRect){
-  if(!grid){
-    ctx.clearRect(0,0,cv.width,cv.height);
-    drawFinView();
+  if (!use) {
+    grid.Ta2D.fill(TinC);
+    const el = document.getElementById('taInfo'); if (el) el.textContent = `fixed Ta = ${TinC.toFixed(1)}°C`;
     return;
   }
-  const {nx,ny,T}=grid;
-  let tmin=+Infinity,tmax=-Infinity;
-  for(const v of T){ if(v<tmin)tmin=v; if(v>tmax)tmax=v; }
 
-  const img=ctx.createImageData(cv.width,cv.height);
-  const d=img.data;
-  for(let py=0;py<cv.height;py++){
-    const gy=(py+0.5)/cv.height*ny-0.5;
-    const j0=Math.max(0,Math.min(ny-1,Math.floor(gy)));
-    const j1=Math.min(ny-1,j0+1);
-    const fy=Math.min(1,Math.max(0,gy-j0));
-    for(let px=0;px<cv.width;px++){
-      const gx=(px+0.5)/cv.width*nx-0.5;
-      const i0=Math.max(0,Math.min(nx-1,Math.floor(gx)));
-      const i1=Math.min(nx-1,i0+1);
-      const fx=Math.min(1,Math.max(0,gx-i0));
+  const mdot_total = Math.max(1e-12, rhoA * v * Math.max(1e-9, Hgap));
+  const mdot_row   = mdot_total / ny;
 
-      const t00=T[j0*nx+i0], t10=T[j0*nx+i1];
-      const t01=T[j1*nx+i0], t11=T[j1*nx+i1];
-      const t0=t00*(1-fx)+t10*fx;
-      const t1=t01*(1-fx)+t11*fx;
-      const t =t0*(1-fy)+t1*fy;
+  const TaNew = new Arr(nx*ny);
 
-      const nVal=(t-tmin)/Math.max(1e-9,tmax-tmin);
-      const R=Math.floor(255*Math.min(1,Math.max(0,2*nVal)));
-      const B=Math.floor(255*Math.min(1,Math.max(0,2*(1-nVal))));
-      const G=Math.floor(255*Math.max(0,1-2*Math.abs(nVal-0.5)));
-
-      const k=(py*cv.width+px)*4;
-      d[k]=R; d[k+1]=G; d[k+2]=B; d[k+3]=255;
+  if (dir === 'LR') {
+    for (let j=0; j<ny; j++) {
+      const idx0 = j*nx + 0;
+      const guess = grid.Ta2D[idx0];
+      TaNew[idx0] = (1-gamma)*guess + gamma*TinC;
+      let TaRun = TaNew[idx0];
+      for (let i=0; i<nx-1; i++) {
+        const idx = j*nx + i;
+        const dT = T[idx] - TaRun;
+        const Qi = h * Aeff[idx] * Math.max(0, dT);
+        TaRun = TaRun + Qi/(mdot_row*cpA);
+        const idxNext = j*nx + (i+1);
+        const guessNext = grid.Ta2D[idxNext];
+        TaNew[idxNext] = (1-gamma)*guessNext + gamma*TaRun;
+      }
+    }
+  } else {
+    for (let j=0; j<ny; j++) {
+      const idxN = j*nx + (nx-1);
+      const guess = grid.Ta2D[idxN];
+      TaNew[idxN] = (1-gamma)*guess + gamma*TinC;
+      let TaRun = TaNew[idxN];
+      for (let i=nx-1; i>0; i--) {
+        const idx = j*nx + i;
+        const dT = T[idx] - TaRun;
+        const Qi = h * Aeff[idx] * Math.max(0, dT);
+        TaRun = TaRun + Qi/(mdot_row*cpA);
+        const idxPrev = j*nx + (i-1);
+        const guessPrev = grid.Ta2D[idxPrev];
+        TaNew[idxPrev] = (1-gamma)*guessPrev + gamma*TaRun;
+      }
     }
   }
-  ctx.putImageData(img,0,0);
 
-  // overlays, lighter so contours stay visible; add outlines
-  ctx.save();
-
-  // Heat sources – light red fill + red outline
-  ctx.globalAlpha = 0.35;
-  ctx.fillStyle='rgba(255,40,40,0.85)';
-  sources.forEach(s=>{
-    const r=s.rect;
-    const x = Math.min(r.x0,r.x1);
-    const y = Math.min(r.y0,r.y1);
-    const w = Math.abs(r.x1-r.x0);
-    const h = Math.abs(r.y1-r.y0);
-    ctx.fillRect(x,y,w,h);
-  });
-  ctx.globalAlpha = 1.0;
-  ctx.strokeStyle='rgba(200,0,0,0.85)';
-  ctx.lineWidth=1;
-  sources.forEach(s=>{
-    const r=s.rect;
-    const x = Math.min(r.x0,r.x1);
-    const y = Math.min(r.y0,r.y1);
-    const w = Math.abs(r.x1-r.x0);
-    const h = Math.abs(r.y1-r.y0);
-    ctx.strokeRect(x,y,w,h);
-  });
-
-  // Fins – light blue fill + blue outline
-  ctx.globalAlpha = 0.30;
-  ctx.fillStyle='rgba(80,170,255,0.9)';
-  fins.forEach(f=>{
-    const r=f.rect;
-    const x = Math.min(r.x0,r.x1);
-    const y = Math.min(r.y0,r.y1);
-    const w = Math.abs(r.x1-r.x0);
-    const h = Math.abs(r.y1-r.y0);
-    ctx.fillRect(x,y,w,h);
-  });
-  ctx.globalAlpha = 1.0;
-  ctx.strokeStyle='rgba(0,90,200,0.9)';
-  ctx.lineWidth=1;
-  fins.forEach(f=>{
-    const r=f.rect;
-    const x = Math.min(r.x0,r.x1);
-    const y = Math.min(r.y0,r.y1);
-    const w = Math.abs(r.x1-r.x0);
-    const h = Math.abs(r.y1-r.y0);
-    ctx.strokeRect(x,y,w,h);
-  });
-
-  // temp rectangle while dragging
-  if(tempRect){
-    ctx.globalAlpha = 0.45;
-    ctx.fillStyle=(drawMode==='source'
-      ? 'rgba(255,0,0,0.45)'
-      : 'rgba(0,120,255,0.45)');
-    const x = Math.min(tempRect.x0,tempRect.x1);
-    const y = Math.min(tempRect.y0,tempRect.y1);
-    const w = Math.abs(tempRect.x1-tempRect.x0);
-    const h = Math.abs(tempRect.y1-tempRect.y0);
-    ctx.fillRect(x,y,w,h);
+  if (mix > 0) {
+    for (let i=0; i<nx; i++) {
+      for (let j=0; j<ny; j++) {
+        const idx = j*nx + i;
+        const c  = TaNew[idx];
+        const up = TaNew[(Math.max(0,j-1))*nx + i];
+        const dn = TaNew[(Math.min(ny-1,j+1))*nx + i];
+        grid.Ta2D[idx] = c + mix*(up - 2*c + dn);
+      }
+    }
+  } else {
+    grid.Ta2D.set(TaNew);
   }
 
-  ctx.restore();
+  if (dir === 'LR') { for (let j=0; j<ny; j++) grid.Ta2D[j*nx + 0] = TinC; }
+  else { for (let j=0; j<ny; j++) grid.Ta2D[j*nx + (nx-1)] = TinC; }
 
-  if(showGrid.checked) drawGrid();
-  tMaxLbl.textContent=tmax.toFixed(1)+'°C';
-  tMinLbl.textContent=tmin.toFixed(1)+'°C';
-
-  drawFinView();
+  let taMin=+Infinity, taMax=-Infinity;
+  for (let k=0;k<nx*ny;k++){ const v=grid.Ta2D[k]; if(v<taMin) taMin=v; if(v>taMax) taMax=v; }
+  const tEl = document.getElementById('taInfo');
+  if (tEl) tEl.textContent = `min=${taMin.toFixed(1)}°C, max=${taMax.toFixed(1)}°C`;
 }
 
+/* ===== Rendering ===== */
 function niceStep(x){
-  const p=Math.pow(10,Math.floor(Math.log10(x)));
-  const n=x/p;
-  const s=(n<1.5)?1:(n<3)?2:(n<7)?5:10;
+  const p = Math.pow(10, Math.floor(Math.log10(x)));
+  const n = x/p;
+  const s = (n<1.5)?1:(n<3)?2:(n<7)?5:10;
   return s*p;
 }
-function drawGrid(){
-  const W=grid.widthM, H=grid.heightM;
+function drawAxesAndGrid(){
+  if(!grid) return;
+  const show = document.getElementById('showGrid').checked;
+  const {widthM, heightM} = grid;
   ctx.save();
-  ctx.strokeStyle='#000'; ctx.lineWidth=1;
-  ctx.strokeRect(0.5,0.5,cv.width-1,cv.height-1);
-  const target=8, sx=niceStep(W/target), sy=niceStep(H/target);
-  ctx.fillStyle='#000'; ctx.font='12px system-ui';
+  ctx.strokeStyle = '#000'; ctx.lineWidth = 1;
+  ctx.strokeRect(0.5,0.5,canvas.width-1,canvas.height-1);
 
-  for(let x=0;x<=W+1e-12;x+=sx){
-    const px=x/W*cv.width;
-    ctx.beginPath(); ctx.moveTo(px,cv.height-8); ctx.lineTo(px,cv.height); ctx.stroke();
-    ctx.fillText(x.toFixed(3),px-14,cv.height-10);
-    ctx.strokeStyle='#eee'; ctx.beginPath(); ctx.moveTo(px,0); ctx.lineTo(px,cv.height); ctx.stroke(); ctx.strokeStyle='#000';
+  const targetTicks = 8;
+  const tickW = niceStep(widthM/targetTicks);
+  const tickH = niceStep(heightM/targetTicks);
+
+  ctx.fillStyle = '#000';
+  ctx.font = '12px system-ui';
+
+  for(let x=0; x<=widthM+1e-12; x+=tickW){
+    const px = (x/widthM)*canvas.width;
+    ctx.beginPath(); ctx.moveTo(px, canvas.height-8); ctx.lineTo(px, canvas.height); ctx.stroke();
+    ctx.fillText(x.toFixed(3), px-14, canvas.height-10);
+    if (show){ ctx.strokeStyle='#eee'; ctx.beginPath(); ctx.moveTo(px,0); ctx.lineTo(px,canvas.height); ctx.stroke(); ctx.strokeStyle='#000'; }
   }
-  for(let y=0;y<=H+1e-12;y+=sy){
-    const py=y/H*cv.height;
-    ctx.beginPath(); ctx.moveTo(0,py); ctx.lineTo(8,py); ctx.stroke();
-    ctx.fillText(y.toFixed(3),10,py-2);
-    ctx.strokeStyle='#eee'; ctx.beginPath(); ctx.moveTo(0,py); ctx.lineTo(cv.width,py); ctx.stroke(); ctx.strokeStyle='#000';
+  for(let y=0; y<=heightM+1e-12; y+=tickH){
+    const py = (y/heightM)*canvas.height;
+    ctx.beginPath(); ctx.moveTo(0, py); ctx.lineTo(8, py); ctx.stroke();
+    ctx.fillText(y.toFixed(3), 10, py-2);
+    if (show){ ctx.strokeStyle='#eee'; ctx.beginPath(); ctx.moveTo(0,py); ctx.lineTo(canvas.width,py); ctx.stroke(); ctx.strokeStyle='#000'; }
   }
-  ctx.fillText('W = '+W.toFixed(3)+' m',cv.width-140,cv.height-24);
-  ctx.rotate(-Math.PI/2);
-  ctx.fillText('H = '+H.toFixed(3)+' m',-cv.height+6,12);
-  ctx.rotate(Math.PI/2);
-  ctx.restore();
+
+  ctx.fillText(`W = ${widthM} m`, canvas.width-120, canvas.height-24);
+  ctx.rotate(-Math.PI/2); ctx.fillText(`H = ${heightM} m`, -canvas.height+6, 12); ctx.rotate(Math.PI/2);
 }
 
-/* ============================
-   EXPORT/IMPORT FUNCTIONS
-   ============================ */
+function drawAirOverlayIfEnabled(){
+  if(!grid) return;
+  const showTa = document.getElementById('showTa')?.checked;
+  if (!showTa || !grid?.Ta2D) return;
+
+  const nx = grid.nx, ny = grid.ny;
+  let amin=+Infinity, amax=-Infinity;
+  for (let k=0;k<nx*ny;k++){ const v=grid.Ta2D[k]; if(v<amin) amin=v; if(v>amax) amax=v; }
+  const ar = Math.max(1e-9, amax-amin);
+  const imgTa = ctx.createImageData(canvas.width, canvas.height);
+  const dta = imgTa.data;
+  for (let py=0; py<canvas.height; py++){
+    const j = Math.floor(py / canvas.height * ny);
+    for (let px=0; px<canvas.width; px++){
+      const i = Math.floor(px / canvas.width * nx);
+      const a = grid.Ta2D[j*nx + i];
+      const n = (a - amin)/ar;
+      const idx = (py*canvas.width + px)*4;
+      dta[idx+0] = Math.floor(255*n);
+      dta[idx+1] = 0;
+      dta[idx+2] = Math.floor(255*(1-n));
+      dta[idx+3] = 80;
+    }
+  }
+  ctx.putImageData(imgTa, 0, 0);
+}
+
+function redraw(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  if(grid){
+    const img = ctx.createImageData(canvas.width, canvas.height);
+    const data = img.data, T = grid.T;
+    let tmin = +Infinity, tmax = -Infinity;
+    for(let i=0;i<T.length;i++){ const v=T[i]; if(v<tmin) tmin=v; if(v>tmax) tmax=v; }
+    if(!isFinite(tmin)){ tmin=0; tmax=1; }
+    const range = Math.max(1e-9, tmax - tmin);
+    for(let py=0; py<canvas.height; py++){
+      const gy = Math.floor(py / canvas.height * grid.ny);
+      for(let px=0; px<canvas.width; px++){
+        const gx = Math.floor(px / canvas.width * grid.nx);
+        const t = T[gy*grid.nx + gx];
+        const norm = (t - tmin) / range;
+        const r = Math.floor(255 * Math.min(1, Math.max(0, norm)));
+        const b = Math.floor(255 * (1 - Math.min(1, Math.max(0, norm))));
+        const g_ = Math.floor(64*(1 - Math.min(1, Math.max(0, norm))));
+        const idx = (py*canvas.width + px)*4;
+        data[idx] = r; data[idx+1] = g_; data[idx+2] = b; data[idx+3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+
+    drawAirOverlayIfEnabled();
+
+    document.getElementById('tMaxLbl').textContent = tmax.toFixed(1) + '°C';
+    document.getElementById('tMinLbl').textContent = tmin.toFixed(1) + '°C';
+
+    ctx.save();
+    ctx.globalAlpha = 0.35; ctx.fillStyle = "#00a0ff";
+    fins.forEach(f=>{ const r=f.rect; ctx.fillRect(r.x0, r.y0, r.x1-r.x0, r.y1-r.y0); });
+    
+ctx.globalAlpha = 0.5; ctx.fillStyle = "#ff7700";
+sources.forEach(s=>{ const r=s.rect; ctx.fillRect(r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0); });
+
+    
+    if (dragRect) {
+      ctx.fillStyle = "rgba(0,200,0,0.35)";
+      ctx.fillRect(dragRect.x0, dragRect.y0, dragRect.x1 - dragRect.x0, dragRect.y1 - dragRect.y0);
+    }
+    if(lastClickMarker){
+      const m = lastClickMarker;
+      ctx.strokeStyle='#000'; ctx.beginPath();
+      ctx.arc(m.x, m.y, 6, 0, Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(m.x-8,m.y); ctx.lineTo(m.x+8,m.y); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(m.x,m.y-8); ctx.lineTo(m.x,m.y+8); ctx.stroke();
+      const text = `x=${m.x_m?.toFixed(4)} m, y=${m.y_m?.toFixed(4)} m, T=${(m.T??NaN).toFixed?.(2)} °C, Ta=${(m.Ta??NaN).toFixed?.(2)} °C`;
+      ctx.font='12px system-ui'; ctx.fillStyle='rgba(255,255,255,0.95)'; ctx.strokeStyle='rgba(0,0,0,0.2)';
+      const pad=6; const tw = ctx.measureText(text).width + 2*pad; const th = 18;
+      const bx = Math.min(canvas.width - tw - 4, Math.max(4, m.x + 10));
+      const by = Math.min(canvas.height - th - 4, Math.max(4, m.y - th - 10));
+      ctx.fillRect(bx, by, tw, th); ctx.strokeRect(bx, by, tw, th);
+      ctx.fillStyle='#000'; ctx.fillText(text, bx+pad, by+th-5);
+    }
+    ctx.restore();
+
+    drawAxesAndGrid();
+  } else {
+    ctx.fillStyle = "#eee"; ctx.fillRect(0,0,canvas.width,canvas.height);
+  }
+
+  updateFinSchematic();
+}
+
+/* ===== Linear solver & ADI ===== */
+function thomasSolve(a,b,c,d){
+  const n = b.length;
+  for(let i=1;i<n;i++){ const m=a[i]/b[i-1]; b[i]-=m*c[i-1]; d[i]-=m*d[i-1]; }
+  const x = new Arr(n); x[n-1]=d[n-1]/b[n-1];
+  for(let i=n-2;i>=0;i--){ x[i]=(d[i]-c[i]*x[i+1])/b[i]; }
+  return x;
+}
+function stepADI(dt){
+  const {nx, ny, dx, dy, T, Ttmp, alpha, rho, cp, Q, thickness, Aeff, Ta2D} = grid;
+  const dx2 = dx*dx, dy2 = dy*dy;
+  const rx = alpha*dt/dx2, ry = alpha*dt/dy2;
+
+  const v = parseFloat(document.getElementById('airVel').value);
+  const h = estimateHfromVelocity(v);
+  const V = dx*dy*thickness;
+  const srcFactorHalf = 0.5*dt/(rho*cp*V);
+
+  rebuildTaFromT(grid.T);
+
+  // x-implicit
+  for(let j=0;j<ny;j++){
+    const rowOff = j*nx;
+    const rhs = new Arr(nx);
+    for(let i=0;i<nx;i++){
+      const idx = rowOff + i;
+      const T_ij = T[idx];
+      const T_jp = T[ Math.min(ny-1,j+1)*nx + i ];
+      const T_jm = T[ Math.max(0,j-1)*nx + i ];
+      const lapY = (T_jp - 2*T_ij + T_jm);
+      const scoef = (h * Aeff[idx]) / (rho*cp*V);
+      const TaLoc = Ta2D[idx];
+      rhs[i] = T_ij + 0.5*ry*lapY + srcFactorHalf*Q[idx] + 0.5*dt*scoef*TaLoc;
+    }
+    const a = new Arr(nx), b = new Arr(nx), c = new Arr(nx);
+    for(let i=0;i<nx;i++){
+      const idx = rowOff + i;
+      const scoef = (h * Aeff[idx]) / (rho*cp*V);
+      a[i] = -0.5*rx; c[i] = -0.5*rx; b[i] = 1 + rx + 0.5*dt*scoef;
+    }
+    b[0]   = 1 + rx + 0.5*dt*((h*Aeff[rowOff+0])/(rho*cp*V)); c[0] = -rx;
+    a[nx-1]= -rx; b[nx-1] = 1 + rx + 0.5*dt*((h*Aeff[rowOff+nx-1])/(rho*cp*V));
+    const sol = thomasSolve(a,b,c,rhs);
+    for(let i=0;i<nx;i++) Ttmp[rowOff + i] = sol[i];
+  }
+
+  // y-implicit
+  for(let i=0;i<nx;i++){
+    const rhs = new Arr(ny);
+    for(let j=0;j<ny;j++){
+      const idx = j*nx + i;
+      const T_ij = Ttmp[idx];
+      const T_ip = Ttmp[j*nx + Math.min(nx-1,i+1)];
+      const T_im = Ttmp[j*nx + Math.max(0,i-1)];
+      const lapX = (T_ip - 2*T_ij + T_im);
+      const scoef = (h * Aeff[idx]) / (rho*cp*V);
+      const TaLoc = Ta2D[idx];
+      rhs[j] = T_ij + 0.5*rx*lapX + srcFactorHalf*Q[idx] + 0.5*dt*scoef*TaLoc;
+    }
+    const a = new Arr(ny), b = new Arr(ny), c = new Arr(ny);
+    for(let j=0;j<ny;j++){
+      const idx = j*nx + i;
+      const scoef = (h * Aeff[idx]) / (rho*cp*V);
+      a[j] = -0.5*ry; c[j] = -0.5*ry; b[j] = 1 + ry + 0.5*dt*scoef;
+    }
+    b[0]   = 1 + ry + 0.5*dt*((h*Aeff[0*nx+i])/(rho*cp*V)); c[0] = -ry;
+    a[ny-1]= -ry; b[ny-1] = 1 + ry + 0.5*dt*((h*Aeff[(ny-1)*nx+i])/(rho*cp*V));
+    const sol = thomasSolve(a,b,c,rhs);
+    for(let j=0;j<ny;j++) T[j*nx + i] = sol[j];
+  }
+}
+
+/* ===== Time control + auto-stop ===== */
+function autoDtImplicit(){
+  const L = Math.min(grid.widthM, grid.heightM);
+  return 0.02 * (L*L / grid.alpha);
+}
+function solverInfo(msgExtra=''){
+  const info = document.getElementById('solverInfo');
+  if(!grid){ info.textContent = '—'; return; }
+  const dtUser = parseFloat(document.getElementById('dt').value);
+  const dtAuto = autoDtImplicit();
+  const dtUse = (dtUser>0? dtUser : dtAuto);
+  info.textContent = `nx×ny=${grid.nx}×${grid.ny}, α=${grid.alpha.toExponential(2)} m²/s, dt=${dtUse.toExponential(2)} s ${msgExtra}`;
+}
+const autoStopBadge = document.getElementById('autoStopMsg');
+
+function runTransient(){
+  if(!grid) { alert('Setup grid first'); return; }
+  simRunning = true; autoStopBadge.style.display='none';
+  const dt = (parseFloat(document.getElementById('dt').value) > 0) ? parseFloat(document.getElementById('dt').value) : autoDtImplicit();
+  solverInfo();
+
+  let prevMax = null, stillCtr = 0;
+
+  function frame(){
+    if(!simRunning) return;
+    const stepsPerFrame = 8;
+    for(let s=0;s<stepsPerFrame;s++){
+      rebuildQ(simTime);
+      stepADI(dt);
+      simTime += dt;
+      logProbe(simTime);
+    }
+    let Tmax = -Infinity; for(const v of grid.T) if(v>Tmax) Tmax=v;
+    if(prevMax!==null){
+      const rel = Math.abs(Tmax - prevMax) / Math.max(1e-9, prevMax);
+      if(rel < 0.005) stillCtr++; else stillCtr=0;
+      if(stillCtr >= 15){ simRunning=false; autoStopBadge.style.display='inline-block'; solverInfo('(auto-stopped)'); return; }
+    }
+    prevMax = Tmax;
+
+    redraw(); updateProbe();
+    document.getElementById('simTime').textContent = simTime.toFixed(3);
+    simAnimationId = requestAnimationFrame(frame);
+  }
+  if(simAnimationId) cancelAnimationFrame(simAnimationId);
+  simAnimationId = requestAnimationFrame(frame);
+}
+document.getElementById('solveTransient').addEventListener('click', ()=>{ if(!grid) setupGrid(); runTransient(); });
+document.getElementById('pauseSim').addEventListener('click', ()=>{ simRunning=false; if(simAnimationId) cancelAnimationFrame(simAnimationId); });
+
+/* ===== Fast steady via pseudo-transient ===== */
+function solveSteadyState(maxSteps=400, dtFactor=6, taLag=5, tol=2e-4, sweepsPerIter=3){
+  if(!grid){ alert('Setup grid first'); return; }
+  simRunning = false; if (simAnimationId) cancelAnimationFrame(simAnimationId);
+  autoStopBadge.style.display='none';
+
+  grid.Q.fill(0); let totalW=0;
+  for(const s of sources){
+    if(!s.cells || s.cells.length===0) continue;
+    const W = s.amplitude * (s.type==='sine' ? (1/Math.PI) : 1.0);
+    totalW += W;
+    const perCell = W / s.cells.length;
+    for(const idx of s.cells) grid.Q[idx] += perCell;
+  }
+
+  const hcell = Math.max(grid.dx, grid.dy);
+  const dt = dtFactor * (hcell*hcell / grid.alpha);
+  computeAeff();
+
+  let maxChange = Infinity;
+  for(let step=0; step<maxSteps; step++){
+    if(step % taLag === 0) rebuildTaFromT(grid.T);
+    const Told = new Float32Array(grid.T);
+    for(let k=0; k<sweepsPerIter; k++) stepADI(dt);
+    maxChange = 0;
+    for(let i=0; i<grid.T.length; i++){
+      const d = Math.abs(grid.T[i] - Told[i]);
+      if(d > maxChange) maxChange = d;
+    }
+    if(maxChange < tol) break;
+  }
+
+  redraw(); updateProbe();
+  document.getElementById('steadyInfo').textContent =
+    `Steady: dt=${dt.toExponential(2)}, max Δ=${maxChange.toExponential(2)}, Q≈${totalW.toFixed(2)} W`;
+}
+document.getElementById('solveSteady').addEventListener('click', ()=>solveSteadyState());
+
+/* ===== Probe + Plot ===== */
+function getProbeIndex(){
+  if(!grid) return 0;
+  const x = parseFloat(document.getElementById('probeX').value);
+  const y = parseFloat(document.getElementById('probeY').value);
+  const gx = Math.floor(Math.max(0, Math.min(grid.nx-1, x / grid.widthM * grid.nx)));
+  const gy = Math.floor(Math.max(0, Math.min(grid.ny-1, y / grid.heightM * grid.ny)));
+  return gy*grid.nx + gx;
+}
+function updateProbe(){
+  if(!grid) return;
+  const idx = getProbeIndex();
+  const Tval = grid.T[idx];
+  document.getElementById('probeT').textContent = (isFinite(Tval)? Tval.toFixed(2) : '-');
+}
+['probeX','probeY'].forEach(id=>document.getElementById(id).addEventListener('change', updateProbe));
+
+const plotCanvas = document.getElementById('plotCanvas');
+const pctx = plotCanvas.getContext('2d');
+let timeSeries = [], tempSeries = [], maxPoints = 2000;
+function clearPlotData(){ timeSeries = []; tempSeries = []; drawPlot(); }
+document.getElementById('clearPlot').addEventListener('click', clearPlotData);
+document.getElementById('exportCSV').addEventListener('click', ()=>{
+  const rows = ['time_s,T_C', ...timeSeries.map((t,i)=>`${t},${tempSeries[i]}`)];
+  const blob = new Blob([rows.join('\n')], {type:'text/csv'});
+  const url = URL.createObjectURL(blob); const a = document.createElement('a');
+  a.href = url; a.download = 'probe_T_vs_time.csv'; a.click(); URL.revokeObjectURL(url);
+});
+function logProbe(t){
+  if(!grid) return;
+  const idx = getProbeIndex(); const Tval = grid.T[idx];
+  timeSeries.push(t); tempSeries.push(Tval);
+  if(timeSeries.length > maxPoints){ timeSeries.shift(); tempSeries.shift(); }
+  drawPlot();
+}
+function drawPlot(){
+  const w = plotCanvas.width, h = plotCanvas.height;
+  pctx.clearRect(0,0,w,h); pctx.fillStyle='#fff'; pctx.fillRect(0,0,w,h);
+  pctx.strokeStyle='#000'; pctx.lineWidth=1;
+  const mL=40, mR=10, mT=10, mB=18;
+  let tmin=timeSeries.length?timeSeries[0]:0, tmax=timeSeries.length?timeSeries[timeSeries.length-1]:1; if(tmax<=tmin)tmax=tmin+1;
+  let Tmin=tempSeries.length?Math.min(...tempSeries):0, Tmax=tempSeries.length?Math.max(...tempSeries):1; if(Tmax<=Tmin)Tmax=Tmin+1;
+  pctx.beginPath(); pctx.moveTo(mL,mT); pctx.lineTo(mL,h-mB); pctx.lineTo(w-mR,h-mB); pctx.stroke();
+  pctx.font='12px system-ui'; pctx.fillStyle='#000'; pctx.fillText('T (°C)',6,mT+12); pctx.fillText('t (s)',w-40,h-2);
+  for(let k=0;k<=4;k++){ const ty=mT+(h-mT-mB)*(k/4), Tv=(Tmax-Tmin)*(1-k/4)+Tmin;
+    pctx.fillText(Tv.toFixed(1),2,ty+4); pctx.beginPath(); pctx.moveTo(mL-3,ty); pctx.lineTo(mL,ty); pctx.stroke(); }
+  for(let k=0;k<=4;k++){ const tx=mL+(w-mL-mR)*(k/4), tv=(tmax-tmin)*(k/4)+tmin;
+    pctx.fillText(tv.toFixed(1),tx-10,h-2); pctx.beginPath(); pctx.moveTo(tx,h-mB); pctx.lineTo(tx,h-mB+3); pctx.stroke(); }
+  if(timeSeries.length>1){ pctx.beginPath();
+    for(let i=0;i<timeSeries.length;i++){ const x=mL+(w-mL-mR)*((timeSeries[i]-tmin)/(tmax-tmin));
+      const y=mT+(h-mT-mB)*(1-((tempSeries[i]-Tmin)/(Tmax-Tmin))); if(i===0)pctx.moveTo(x,y); else pctx.lineTo(x,y);}
+    pctx.stroke(); }
+}
+
+/* ===== Suggest H & param changes ===== */
+function suggestH(){
+  const rho=1.2, mu=1.8e-5, Pr=0.71;
+  const v = parseFloat(document.getElementById('airVel').value);
+  const L = parseFloat(document.getElementById('widthM').value);
+  const Rex = rho*v*(0.5*L)/mu;
+  const deltaT = 5*(0.5*L)/Math.sqrt(Math.max(1, Rex*Pr));
+  const Heff = Math.min(0.05, Math.max(0.003, 3*deltaT));
+  document.getElementById('airH').value = Heff.toFixed(3);
+  updateTaEstimate();
+}
+document.getElementById('suggestH').addEventListener('click', suggestH);
+
+function onAnyParamChange(){ if(grid){ computeAeff(); } updateTaEstimate(); }
+['airVel','bothSides','airMix','airRho','airCp','airH','airTin','useWarmed','flowDir'].forEach(
+  id=>document.getElementById(id).addEventListener('change', onAnyParamChange)
+);
+
+function updateTaEstimate(){
+  const el = document.getElementById('taEst'); if (!el) return;
+  const v    = parseFloat(document.getElementById('airVel').value);
+  const rhoA = parseFloat(document.getElementById('airRho').value);
+  const cpA  = parseFloat(document.getElementById('airCp').value);
+  const H    = parseFloat(document.getElementById('airH').value);
+  let Qtot = 0;
+  for (const s of sources){
+    if (!s.cells || s.cells.length===0) continue;
+    const factor = (s.type==='sine' ? (1/Math.PI) : 1.0);
+    Qtot += s.amplitude * factor;
+  }
+  const mdot = Math.max(1e-12, rhoA * v * Math.max(1e-9, H));
+  const dTa = Qtot / (mdot * cpA);
+  el.textContent = `${dTa.toFixed(2)} K (rough outlet rise)`;
+}
+
+/* ===== Clearers ===== */
+document.getElementById('clearSources').addEventListener('click', ()=>{
+  sources.length=0; onSourcesChanged(); if(grid){ grid.Q.fill(0); }
+  redraw();
+});
+document.getElementById('clearFins').addEventListener('click', ()=>{
+  fins.length=0; updateFinsList(); if(grid){ computeAeff(); updateFinSchematic(); }
+  redraw();
+});
+
+/* ===== Init ===== */
+updateSourcesList(); updateFinsList();
+resizeCanvasToAspect();
+redraw(); updateTaEstimate();
+
+/* ===== EXPORT/IMPORT FUNCTIONS ===== */
 
 // Helper function to get formatted timestamp
 function getTimestamp() {
@@ -957,39 +1100,55 @@ function getTimestamp() {
 }
 
 // 1. EXPORT JSON BUTTON
-document.getElementById('exportJsonBtn').onclick = () => {
+document.getElementById('exportJsonBtn').addEventListener('click', () => {
   const data = {
     timestamp: new Date().toISOString(),
-    moduleType: 'vertical_plate_heatsink_with_fins',
+    moduleType: '2d_heat_adi_warmed_air_fins',
     geometry: {
-      widthM: +widthM.value,
-      heightM: +heightM.value,
-      thicknessM: +thicknessM.value,
-      material: materialSel.value
+      widthM: parseFloat(document.getElementById('widthM').value),
+      heightM: parseFloat(document.getElementById('heightM').value),
+      thicknessM: parseFloat(document.getElementById('thicknessM').value),
+      material: document.getElementById('materialSelect').value
     },
-    simulation: {
-      ambientT: +ambientT.value,
-      nx: +nxInput.value,
-      showGrid: showGrid.checked
+    grid: {
+      nx: parseInt(document.getElementById('nx').value),
+      dt: parseFloat(document.getElementById('dt').value)
+    },
+    airflow: {
+      velocity: parseFloat(document.getElementById('airVel').value),
+      ambientT: parseFloat(document.getElementById('ambientT').value),
+      useWarmed: document.getElementById('useWarmed').checked,
+      flowDir: document.getElementById('flowDir').value,
+      bothSides: document.getElementById('bothSides').checked,
+      airH: parseFloat(document.getElementById('airH').value),
+      airRho: parseFloat(document.getElementById('airRho').value),
+      airCp: parseFloat(document.getElementById('airCp').value),
+      airTin: parseFloat(document.getElementById('airTin').value),
+      airMix: parseFloat(document.getElementById('airMix').value)
+    },
+    display: {
+      showTa: document.getElementById('showTa').checked,
+      showGrid: document.getElementById('showGrid').checked
+    },
+    probe: {
+      x: parseFloat(document.getElementById('probeX').value),
+      y: parseFloat(document.getElementById('probeY').value)
     },
     sources: sources.map(s => ({
       rect: s.rect,
-      W: s.W
+      amplitude: s.amplitude,
+      type: s.type,
+      freq: s.freq,
+      label: s.label
     })),
     fins: fins.map(f => ({
       rect: f.rect,
-      H: f.H,
-      tf: f.tf,
+      t: f.t,
+      L: f.L,
       s: f.s,
-      mat: f.mat
-    })),
-    defaults: {
-      defaultW: +defaultWInput.value,
-      defaultHf: +defaultHfInput.value,
-      defaultTf: +defaultTfInput.value,
-      defaultSf: +defaultSfInput.value,
-      finMaterial: finMaterialSel.value
-    }
+      k: f.k,
+      label: f.label
+    }))
   };
   
   const jsonStr = JSON.stringify(data, null, 2);
@@ -997,13 +1156,13 @@ document.getElementById('exportJsonBtn').onclick = () => {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `heatsink_fins_config_${getTimestamp()}.json`;
+  a.download = `heat_adi_config_${getTimestamp()}.json`;
   a.click();
   URL.revokeObjectURL(url);
-};
+});
 
 // 2. IMPORT JSON BUTTON
-document.getElementById('importJsonBtn').onclick = () => {
+document.getElementById('importJsonBtn').addEventListener('click', () => {
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = '.json';
@@ -1018,50 +1177,75 @@ document.getElementById('importJsonBtn').onclick = () => {
         
         // Geometry
         if (data.geometry) {
-          widthM.value = data.geometry.widthM;
-          heightM.value = data.geometry.heightM;
-          thicknessM.value = data.geometry.thicknessM;
-          materialSel.value = data.geometry.material;
+          document.getElementById('widthM').value = data.geometry.widthM;
+          document.getElementById('heightM').value = data.geometry.heightM;
+          document.getElementById('thicknessM').value = data.geometry.thicknessM;
+          document.getElementById('materialSelect').value = data.geometry.material;
         }
         
-        // Simulation
-        if (data.simulation) {
-          ambientT.value = data.simulation.ambientT;
-          nxInput.value = data.simulation.nx;
-          showGrid.checked = data.simulation.showGrid !== undefined ? data.simulation.showGrid : true;
+        // Grid
+        if (data.grid) {
+          document.getElementById('nx').value = data.grid.nx;
+          document.getElementById('dt').value = data.grid.dt;
         }
         
-        // Defaults
-        if (data.defaults) {
-          defaultWInput.value = data.defaults.defaultW;
-          defaultHfInput.value = data.defaults.defaultHf;
-          defaultTfInput.value = data.defaults.defaultTf;
-          defaultSfInput.value = data.defaults.defaultSf;
-          finMaterialSel.value = data.defaults.finMaterial;
+        // Airflow
+        if (data.airflow) {
+          document.getElementById('airVel').value = data.airflow.velocity;
+          document.getElementById('ambientT').value = data.airflow.ambientT;
+          document.getElementById('useWarmed').checked = data.airflow.useWarmed !== undefined ? data.airflow.useWarmed : true;
+          document.getElementById('flowDir').value = data.airflow.flowDir || 'LR';
+          document.getElementById('bothSides').checked = data.airflow.bothSides || false;
+          document.getElementById('airH').value = data.airflow.airH;
+          document.getElementById('airRho').value = data.airflow.airRho;
+          document.getElementById('airCp').value = data.airflow.airCp;
+          document.getElementById('airTin').value = data.airflow.airTin;
+          document.getElementById('airMix').value = data.airflow.airMix;
+        }
+        
+        // Display
+        if (data.display) {
+          document.getElementById('showTa').checked = data.display.showTa || false;
+          document.getElementById('showGrid').checked = data.display.showGrid !== undefined ? data.display.showGrid : true;
+        }
+        
+        // Probe
+        if (data.probe) {
+          document.getElementById('probeX').value = data.probe.x;
+          document.getElementById('probeY').value = data.probe.y;
         }
         
         // Sources
         if (data.sources) {
-          sources = data.sources.map(s => ({
-            rect: s.rect,
-            W: s.W,
-            cells: [] // Will be recalculated on solve
-          }));
-          updateSourcesUI();
+          sources.length = 0;
+          data.sources.forEach(s => {
+            sources.push({
+              rect: s.rect,
+              amplitude: s.amplitude,
+              type: s.type,
+              freq: s.freq,
+              label: s.label,
+              cells: []
+            });
+          });
+          onSourcesChanged();
         }
         
         // Fins
         if (data.fins) {
-          fins = data.fins.map(f => ({
-            rect: f.rect,
-            H: f.H,
-            tf: f.tf,
-            s: f.s,
-            mat: f.mat,
-            cells: [] // Will be recalculated on solve
-          }));
-          if (fins.length > 0) activeFinIndex = 0;
-          updateFinsUI();
+          fins.length = 0;
+          data.fins.forEach(f => {
+            fins.push({
+              rect: f.rect,
+              t: f.t,
+              L: f.L,
+              s: f.s,
+              k: f.k,
+              label: f.label,
+              cells: []
+            });
+          });
+          updateFinsList();
         }
         
         // Rebuild grid
@@ -1075,21 +1259,21 @@ document.getElementById('importJsonBtn').onclick = () => {
     reader.readAsText(file);
   };
   input.click();
-};
+});
 
-// 3. EXPORT CSV BUTTON
-document.getElementById('exportCsvBtn').onclick = () => {
+// 3. EXPORT CSV BUTTON (Temperature field + Time series)
+document.getElementById('exportCsvBtn').addEventListener('click', () => {
   if (!grid || !grid.T) {
-    alert('No simulation data to export. Setup grid and solve first.');
+    alert('No simulation data to export. Setup grid first.');
     return;
   }
   
-  const { nx, ny, dx, dy, widthM, heightM, T } = grid;
+  const timestamp = getTimestamp();
   
-  // Create CSV header
+  // Create temperature field CSV
+  const { nx, ny, dx, dy, widthM, heightM, T } = grid;
   let csv = 'X (m),Y (m),Temperature (°C)\n';
   
-  // Add data rows
   for (let j = 0; j < ny; j++) {
     for (let i = 0; i < nx; i++) {
       const idx = j * nx + i;
@@ -1100,20 +1284,32 @@ document.getElementById('exportCsvBtn').onclick = () => {
     }
   }
   
-  // Download CSV
+  // Download temperature field CSV
   const blob = new Blob([csv], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `heatsink_fins_temperature_${getTimestamp()}.csv`;
+  a.download = `heat_adi_temperature_field_${timestamp}.csv`;
   a.click();
   URL.revokeObjectURL(url);
-};
+  
+  // Also export probe time series if available
+  if (timeSeries.length > 0) {
+    const tsRows = ['Time (s),Probe Temperature (°C)', ...timeSeries.map((t, i) => `${t.toFixed(6)},${tempSeries[i].toFixed(4)}`)];
+    const tsBlob = new Blob([tsRows.join('\n')], { type: 'text/csv' });
+    const tsUrl = URL.createObjectURL(tsBlob);
+    const tsA = document.createElement('a');
+    tsA.href = tsUrl;
+    tsA.download = `heat_adi_probe_timeseries_${timestamp}.csv`;
+    tsA.click();
+    URL.revokeObjectURL(tsUrl);
+  }
+});
 
-// 4. EXPORT ZIP BUTTON (CSV + Images)
-document.getElementById('exportZipBtn').onclick = async () => {
+// 4. EXPORT ZIP BUTTON (CSV + Images + Config)
+document.getElementById('exportZipBtn').addEventListener('click', async () => {
   if (!grid || !grid.T) {
-    alert('No simulation data to export. Setup grid and solve first.');
+    alert('No simulation data to export. Setup grid first.');
     return;
   }
   
@@ -1125,7 +1321,7 @@ document.getElementById('exportZipBtn').onclick = async () => {
   const zip = new JSZip();
   const timestamp = getTimestamp();
   
-  // 1. Add CSV file
+  // 1. Add temperature field CSV
   const { nx, ny, dx, dy, widthM, heightM, T } = grid;
   let csv = 'X (m),Y (m),Temperature (°C)\n';
   for (let j = 0; j < ny; j++) {
@@ -1137,101 +1333,185 @@ document.getElementById('exportZipBtn').onclick = async () => {
       csv += `${x.toFixed(6)},${y.toFixed(6)},${temp.toFixed(4)}\n`;
     }
   }
-  zip.file(`temperature_data_${timestamp}.csv`, csv);
+  zip.file(`temperature_field_${timestamp}.csv`, csv);
   
-  // 2. Add main heat map image (current canvas)
-  const heatmapDataUrl = cv.toDataURL('image/png');
-  const heatmapBase64 = heatmapDataUrl.split(',')[1];
-  zip.file(`heatmap_${timestamp}.png`, heatmapBase64, { base64: true });
+  // 2. Add probe time series CSV if available
+  if (timeSeries.length > 0) {
+    const tsRows = ['Time (s),Probe Temperature (°C)', ...timeSeries.map((t, i) => `${t.toFixed(6)},${tempSeries[i].toFixed(4)}`)];
+    zip.file(`probe_timeseries_${timestamp}.csv`, tsRows.join('\n'));
+  }
   
-  // 3. Add heat map without grid overlay
-  const gridWasChecked = showGrid.checked;
-  showGrid.checked = false;
-  draw();
-  const cleanHeatmapDataUrl = cv.toDataURL('image/png');
-  const cleanHeatmapBase64 = cleanHeatmapDataUrl.split(',')[1];
-  zip.file(`heatmap_clean_${timestamp}.png`, cleanHeatmapBase64, { base64: true });
+  // 3. Add main canvas image (temperature field)
+  const mainDataUrl = canvas.toDataURL('image/png');
+  const mainBase64 = mainDataUrl.split(',')[1];
+  zip.file(`temperature_heatmap_${timestamp}.png`, mainBase64, { base64: true });
   
-  // 4. Add fin detail view
-  const finViewDataUrl = finCv.toDataURL('image/png');
-  const finViewBase64 = finViewDataUrl.split(',')[1];
-  zip.file(`fin_detail_${timestamp}.png`, finViewBase64, { base64: true });
+  // 4. Add temperature field without overlays
+  const showTaWas = document.getElementById('showTa').checked;
+  const showGridWas = document.getElementById('showGrid').checked;
+  document.getElementById('showTa').checked = false;
+  document.getElementById('showGrid').checked = false;
+  lastClickMarker = null;
+  redraw();
+  const cleanDataUrl = canvas.toDataURL('image/png');
+  const cleanBase64 = cleanDataUrl.split(',')[1];
+  zip.file(`temperature_heatmap_clean_${timestamp}.png`, cleanBase64, { base64: true });
   
-  // Restore grid state
-  showGrid.checked = gridWasChecked;
-  draw();
+  // 5. Add Ta (air temperature) heatmap if warmed air is enabled
+  if (document.getElementById('useWarmed').checked) {
+    document.getElementById('showTa').checked = true;
+    redraw();
+    const taDataUrl = canvas.toDataURL('image/png');
+    const taBase64 = taDataUrl.split(',')[1];
+    zip.file(`air_temperature_heatmap_${timestamp}.png`, taBase64, { base64: true });
+  }
   
-  // 5. Add configuration JSON
+  // Restore display state
+  document.getElementById('showTa').checked = showTaWas;
+  document.getElementById('showGrid').checked = showGridWas;
+  redraw();
+  
+  // 6. Add probe plot if available
+  if (timeSeries.length > 0) {
+    const plotDataUrl = plotCanvas.toDataURL('image/png');
+    const plotBase64 = plotDataUrl.split(',')[1];
+    zip.file(`probe_plot_${timestamp}.png`, plotBase64, { base64: true });
+  }
+  
+  // 7. Add fin schematic
+  const finSvg = document.getElementById('finSchematic');
+  const serializer = new XMLSerializer();
+  const svgString = serializer.serializeToString(finSvg);
+  zip.file(`fin_schematic_${timestamp}.svg`, svgString);
+  
+  // 8. Add configuration JSON
   const config = {
     timestamp: new Date().toISOString(),
-    moduleType: 'vertical_plate_heatsink_with_fins',
+    moduleType: '2d_heat_adi_warmed_air_fins',
     geometry: {
-      widthM: +widthM.value,
-      heightM: +heightM.value,
-      thicknessM: +thicknessM.value,
-      material: materialSel.value
+      widthM: parseFloat(document.getElementById('widthM').value),
+      heightM: parseFloat(document.getElementById('heightM').value),
+      thicknessM: parseFloat(document.getElementById('thicknessM').value),
+      material: document.getElementById('materialSelect').value
+    },
+    materialProperties: grid ? {
+      k: grid.k,
+      rho: grid.rho,
+      cp: grid.cp,
+      alpha: grid.alpha
+    } : null,
+    grid: {
+      nx: grid ? grid.nx : parseInt(document.getElementById('nx').value),
+      ny: grid ? grid.ny : null,
+      dx: grid ? grid.dx : null,
+      dy: grid ? grid.dy : null,
+      dt_setting: parseFloat(document.getElementById('dt').value)
+    },
+    airflow: {
+      velocity: parseFloat(document.getElementById('airVel').value),
+      ambientT: parseFloat(document.getElementById('ambientT').value),
+      useWarmed: document.getElementById('useWarmed').checked,
+      flowDir: document.getElementById('flowDir').value,
+      bothSides: document.getElementById('bothSides').checked,
+      airH: parseFloat(document.getElementById('airH').value),
+      airRho: parseFloat(document.getElementById('airRho').value),
+      airCp: parseFloat(document.getElementById('airCp').value),
+      airTin: parseFloat(document.getElementById('airTin').value),
+      airMix: parseFloat(document.getElementById('airMix').value),
+      estimated_h: grid ? estimateHfromVelocity(parseFloat(document.getElementById('airVel').value)).toFixed(2) + ' W/m²K' : null
     },
     simulation: {
-      ambientT: +ambientT.value,
-      nx: +nxInput.value,
-      showGrid: showGrid.checked
+      currentTime: simTime.toFixed(4) + ' s',
+      running: simRunning
     },
-    results: {
-      h_base_convective: grid.h.toFixed(2) + ' W/m²K',
-      area_m2: (widthM.value * heightM.value).toFixed(6),
-      total_power_W: sources.reduce((s, x) => s + x.W, 0).toFixed(2),
-      avg_temp_C: avg(grid.T).toFixed(2),
-      max_temp_C: Math.max(...grid.T).toFixed(2),
-      energy_residual_percent: (energyResidual() * 100).toFixed(2),
-      num_heat_sources: sources.length,
-      num_fin_regions: fins.length
-    },
-    sources: sources.map(s => ({
+    sources: sources.map((s, idx) => ({
+      index: idx + 1,
+      label: s.label,
       rect: s.rect,
-      W: s.W
+      amplitude: s.amplitude,
+      type: s.type,
+      frequency: s.freq
     })),
     fins: fins.map((f, idx) => ({
       index: idx + 1,
+      label: f.label,
       rect: f.rect,
-      height_H_m: f.H,
-      thickness_tf_m: f.tf,
+      thickness_t_m: f.t,
+      length_L_m: f.L,
       spacing_s_m: f.s,
-      material: f.mat
-    }))
+      conductivity_k: f.k
+    })),
+    results: grid ? {
+      min_temp_C: Math.min(...grid.T).toFixed(2),
+      max_temp_C: Math.max(...grid.T).toFixed(2),
+      avg_temp_C: (grid.T.reduce((a, b) => a + b, 0) / grid.T.length).toFixed(2),
+      total_heat_sources: sources.length,
+      total_fin_regions: fins.length
+    } : null
   };
   zip.file(`config_${timestamp}.json`, JSON.stringify(config, null, 2));
   
-  // 6. Add README
-  const readme = `Heat Sink with Fins Simulation Export
+  // 9. Add README
+  const totalPower = sources.reduce((sum, s) => {
+    const factor = (s.type === 'sine' ? (1 / Math.PI) : 1.0);
+    return sum + s.amplitude * factor;
+  }, 0);
+  
+  const readme = `2D Heat Solver with ADI, Warmed Air, and Fins - Export
 Generated: ${new Date().toLocaleString()}
 
 Contents:
-- temperature_data_${timestamp}.csv: Temperature field data (X, Y, Temperature)
-- heatmap_${timestamp}.png: Heat map visualization with grid and overlays
-- heatmap_clean_${timestamp}.png: Heat map visualization without grid overlay
-- fin_detail_${timestamp}.png: Side view of active fin region
+- temperature_field_${timestamp}.csv: Spatial temperature distribution (X, Y, T)
+${timeSeries.length > 0 ? `- probe_timeseries_${timestamp}.csv: Probe temperature vs time\n` : ''}
+- temperature_heatmap_${timestamp}.png: Temperature field visualization with overlays
+- temperature_heatmap_clean_${timestamp}.png: Temperature field without overlays
+${document.getElementById('useWarmed').checked ? `- air_temperature_heatmap_${timestamp}.png: Air temperature (Ta) field\n` : ''}
+${timeSeries.length > 0 ? `- probe_plot_${timestamp}.png: Probe temperature vs time plot\n` : ''}
+- fin_schematic_${timestamp}.svg: Fin geometry end-view (SVG)
 - config_${timestamp}.json: Complete simulation configuration and results
 
 Simulation Parameters:
-- Plate dimensions: ${widthM.value} m × ${heightM.value} m × ${thicknessM.value} m
-- Plate material: ${materialSel.value}
-- Grid resolution: ${nxInput.value} × ${ny} cells
-- Ambient temperature: ${ambientT.value} °C
-- Number of heat sources: ${sources.length}
-- Total power: ${sources.reduce((s, x) => s + x.W, 0).toFixed(2)} W
-- Number of fin regions: ${fins.length}
+- Plate dimensions: ${widthM.toFixed(3)} m × ${heightM.toFixed(3)} m × ${parseFloat(document.getElementById('thicknessM').value).toFixed(4)} m
+- Material: ${document.getElementById('materialSelect').value}
+${grid ? `  - Thermal conductivity k: ${grid.k} W/m·K\n` : ''}
+${grid ? `  - Density ρ: ${grid.rho} kg/m³\n` : ''}
+${grid ? `  - Specific heat cp: ${grid.cp} J/kg·K\n` : ''}
+${grid ? `  - Thermal diffusivity α: ${grid.alpha.toExponential(2)} m²/s\n` : ''}
+- Grid resolution: ${grid ? `${grid.nx} × ${grid.ny}` : `${document.getElementById('nx').value} cells`}
 
-Results:
-- Base convective coefficient h: ${grid.h.toFixed(2)} W/m²K
-- Average temperature: ${avg(grid.T).toFixed(2)} °C
-- Maximum temperature: ${Math.max(...grid.T).toFixed(2)} °C
-- Energy balance residual: ${(energyResidual() * 100).toFixed(2)}%
+Airflow Configuration:
+- Velocity: ${document.getElementById('airVel').value} m/s
+- Ambient temperature: ${document.getElementById('ambientT').value} °C
+- Warmed air model: ${document.getElementById('useWarmed').checked ? 'Enabled' : 'Disabled'}
+- Flow direction: ${document.getElementById('flowDir').value === 'LR' ? 'Left → Right' : 'Right → Left'}
+- Both sides: ${document.getElementById('bothSides').checked ? 'Yes' : 'No'}
+- Air gap height: ${document.getElementById('airH').value} m
+- Air properties: ρ=${document.getElementById('airRho').value} kg/m³, cp=${document.getElementById('airCp').value} J/kg·K
+${grid ? `- Estimated convection coefficient h: ${estimateHfromVelocity(parseFloat(document.getElementById('airVel').value)).toFixed(2)} W/m²K\n` : ''}
 
-Fin Regions:
-${fins.map((f, idx) => `  F${idx + 1}: H=${f.H.toFixed(3)}m, t=${f.tf.toExponential(2)}m, s=${f.s.toFixed(3)}m, mat=${f.mat}`).join('\n')}
+Heat Sources (${sources.length}):
+${sources.map((s, i) => `  ${s.label}: ${s.amplitude.toFixed(2)} W, ${s.type}${s.type === 'sine' ? ` @ ${s.freq} Hz` : ''}`).join('\n')}
+${sources.length > 0 ? `  Total effective power: ${totalPower.toFixed(2)} W\n` : ''}
 
-Heat Sources:
-${sources.map((s, idx) => `  S${idx + 1}: ${s.W.toFixed(2)} W`).join('\n')}
+Fin Regions (${fins.length}):
+${fins.map((f, i) => `  ${f.label}: t=${f.t.toExponential(2)} m, L=${f.L.toFixed(3)} m, s=${f.s.toFixed(3)} m, k=${f.k} W/m·K`).join('\n')}
+
+${grid ? `Results:\n` : ''}
+${grid ? `- Minimum temperature: ${Math.min(...grid.T).toFixed(2)} °C\n` : ''}
+${grid ? `- Maximum temperature: ${Math.max(...grid.T).toFixed(2)} °C\n` : ''}
+${grid ? `- Average temperature: ${(grid.T.reduce((a, b) => a + b, 0) / grid.T.length).toFixed(2)} °C\n` : ''}
+${grid ? `- Simulation time: ${simTime.toFixed(4)} s\n` : ''}
+
+Probe Location:
+- X: ${document.getElementById('probeX').value} m
+- Y: ${document.getElementById('probeY').value} m
+${grid && timeSeries.length > 0 ? `- Data points logged: ${timeSeries.length}\n` : ''}
+
+Notes:
+- ADI (Alternating Direction Implicit) method used for time integration
+- Warmed air model accounts for row-wise crossflow heating
+- Fin effectiveness calculated using classical fin theory
+- Time series data available if transient simulation was run
 `;
   zip.file('README.txt', readme);
   
@@ -1241,15 +1521,20 @@ ${sources.map((s, idx) => `  S${idx + 1}: ${s.W.toFixed(2)} W`).join('\n')}
     const url = URL.createObjectURL(content);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `heatsink_fins_export_${timestamp}.zip`;
+    a.download = `heat_adi_export_${timestamp}.zip`;
     a.click();
     URL.revokeObjectURL(url);
   } catch (err) {
     alert('Error creating ZIP file: ' + err.message);
   }
-};
+});
+
+
 
 </script>
+</body>
+</html>
+
 
 
 
