@@ -342,10 +342,7 @@
       <div class="btn-row">
         <button type="button" class="secondary" id="addRowBtn">+ Row</button>
         <button type="button" class="secondary" id="delRowBtn">– Row</button>
-      
-
-
-</div>
+      </div>
     </div>
   </section>
 
@@ -354,8 +351,15 @@
     <!-- 5. Solve -->
     <div class="panel">
       <h2>5. Solve</h2>
-      <small>Fan / system intersection, velocities, Re, and air power.</small>
-      
+      <small>Fan scaled to meet target channel velocity; velocities, Re, and air power.</small>
+
+      <div class="grid-2">
+        <div class="field">
+          <label for="Vch_target">Target channel velocity V<sub>ch,target</sub> (ft/s)</label>
+          <input id="Vch_target" type="number" value="20" step="0.1">
+        </div>
+      </div>
+
 <div class="btn-row" style="justify-content:flex-start;">
   <button type="button" id="solveBtn">Solve</button>
   
@@ -365,10 +369,10 @@
   <button type="button" id="exportCsvBtn" class="secondary" style="background: #d4edda; border-color: #c3e6cb; color: #155724;">📊 CSV</button>
   <button type="button" id="exportZipBtn" class="secondary" style="background: #cfe2ff; border-color: #b6d4fe; color: #084298;">📦 ZIP</button>
   <!-- END OF NEW BUTTONS -->
-</div>
-     
+</div>      
 
- </div>
+</div>
+
       <div class="section-label">Key Results</div>
       <div class="results-grid">
         <div class="result-label">Flow rate Q* (cfm)</div>
@@ -391,6 +395,9 @@
 
         <div class="result-label">Fan air power (HP)</div>
         <div class="result-value" id="HP">—</div>
+
+        <div class="result-label">Fan scale factor (×)</div>
+        <div class="result-value" id="ScaleFactor">—</div>
       </div>
     </div>
 
@@ -421,7 +428,7 @@
     <!-- 8. Fan & System Curves -->
     <div class="panel fan-panel">
       <h2>8. Fan & System Curves</h2>
-      <small>Fan curve from table; system curve from 3-branch model with inlet & exit losses (IP axes).</small>
+      <small>Scaled fan curve vs. fixed system curve (IP axes).</small>
       <canvas id="curveChart"></canvas>
     </div>
   </section>
@@ -490,7 +497,7 @@
     const tr=document.createElement('tr');
     tr.innerHTML=`<td>${idx}</td><td><input value=""></td><td><input value=""></td>`;
     tbody.appendChild(tr);
-    refreshFanChart();
+    refreshFanChart(); // base (unscaled) display until next solve
   });
   document.getElementById('delRowBtn').addEventListener('click',()=>{
     const tbody=document.querySelector('#fanTable tbody');
@@ -601,7 +608,6 @@
 
     // Allocate Q_i based on k_i
     if (sumInvSqrt <= 0){
-      // degenerate: all huge resistance; just put everything in "ch"
       const anyKey = Object.keys(branches)[0];
       branches[anyKey].Q = Q_m3s;
       branches[anyKey].V = branches[anyKey].A>0 ? Q_m3s/branches[anyKey].A : 0;
@@ -658,16 +664,13 @@
     return dp_in + dp_branch + dp_out;
   }
 
-  // ---------- operating point ----------
-  function computeOperatingPoint(){
-    const fanPtsIP = readFanTable();
-    if (fanPtsIP.length<2){
-      alert("Need at least two fan points.");
+  // ---------- operating point with scale S on fan Δp ----------
+  function computeOperatingPointScaled(fanPtsIP, scaleS){
+    if (!fanPtsIP || fanPtsIP.length < 2){
       return null;
     }
     const Qmax = fanPtsIP[fanPtsIP.length-1].x;
     if (!isFinite(Qmax) || Qmax<=0){
-      alert("Fan curve Q must be positive.");
       return null;
     }
     const nScan=80;
@@ -676,18 +679,48 @@
     for (let i=0;i<=nScan;i++){
       const Q_ip = Qmax*i/nScan;
       const Q_si = Q_ip*CFM_TO_M3S;
-      const dpFan_ip = fanDeltaP_IP(Q_ip,fanPtsIP);
+      const dpFan_ip = scaleS * fanDeltaP_IP(Q_ip,fanPtsIP);
       const dpSys_pa = systemDeltaP_SI(Q_si);
       const dpSys_ip = dpSys_pa/INH2O_TO_PA;
       const err=Math.abs(dpFan_ip-dpSys_ip);
       if (err<bestErr){ bestErr=err; bestQ=Q_ip; }
       sysCurveIP.push({x:Q_ip, y:dpSys_ip});
     }
-    const dpStar_ip = fanDeltaP_IP(bestQ,fanPtsIP);
+    const dpStar_ip = scaleS * fanDeltaP_IP(bestQ,fanPtsIP);
     return {Qstar_ip:bestQ, Dpstar_ip:dpStar_ip, sysCurveIP};
   }
 
-  // ---------- V2 velocity vs x (keep your existing plenum-over-HS model) ----------
+  // For a given scale S, compute operating point AND resulting channel velocity (ft/s)
+  function evaluateScale(fanPtsIP, scaleS){
+    const op = computeOperatingPointScaled(fanPtsIP, scaleS);
+    if (!op) return null;
+
+    const {Qstar_ip, Dpstar_ip, sysCurveIP} = op;
+    const Qstar_m3s = Qstar_ip * CFM_TO_M3S;
+
+    const rho = parseFloat(document.getElementById('rho').value) || 1.2;
+    const mu  = parseFloat(document.getElementById('mu').value)  || 1.82e-5;
+
+    const branchInfo = computeBranchFlows(Qstar_m3s, rho, mu);
+    const br = branchInfo.branches || {};
+
+    let Vch_m = NaN;
+    if (br.ch){
+      Vch_m = br.ch.V;
+    }
+    const Vch_ft = isFinite(Vch_m) ? Vch_m * 3.28084 : NaN;
+
+    return {
+      Qstar_ip,
+      Dpstar_ip,
+      sysCurveIP,
+      Qstar_m3s,
+      Vch_ft,
+      branchInfo
+    };
+  }
+
+  // ---------- V2 velocity vs x ----------
   function computeVelocityProfile(Qstar_m3s){
     const rho=parseFloat(document.getElementById('rho').value)||1.2;
     const mu =parseFloat(document.getElementById('mu').value)||1.82e-5;
@@ -782,7 +815,7 @@
   const curveConfig={
     type:'line',
     data:{datasets:[
-      {label:'Fan curve', data:[], borderWidth:2, tension:0.2, pointRadius:2},
+      {label:'Fan curve (scaled)', data:[], borderWidth:2, tension:0.2, pointRadius:2},
       {label:'System curve', data:[], borderWidth:2, borderDash:[4,4], tension:0.2, pointRadius:0},
       {label:'Operating point', data:[], type:'scatter', pointRadius:4, pointStyle:'circle'}
     ]},
@@ -798,7 +831,10 @@
   const curveChart=new Chart(ctxCurve,curveConfig);
 
   function refreshFanChart(){
-    curveConfig.data.datasets[0].data=readFanTable();
+    const basePts = readFanTable();
+    curveConfig.data.datasets[0].data = basePts;  // base fan until a Solve applies scaling
+    curveConfig.data.datasets[1].data = [];       // system curve cleared
+    curveConfig.data.datasets[2].data = [];       // operating point cleared
     curveChart.update();
   }
   refreshFanChart();
@@ -1074,7 +1110,6 @@
     const topGap  = Math.max(0, H - b);
 
     const yBottom = -Hs/2;
-    const yTop    =  Hs/2;
 
     const b_s  = b * scale;
     const WHS_s = WHS * scale;
@@ -1084,7 +1119,6 @@
     const xHS_start = (-Ls/2) + xHS * scale;
     const Lf_s = Math.min(Lf, L - xHS) * scale;
     const xHS_mid   = xHS_start + 0.5*Lf_s;
-    const xHS_end   = xHS_start + Lf_s;
 
     // Velocities (m/s)
     const Vch = branchVels.Vch_m || 0;
@@ -1224,18 +1258,61 @@
   });
 
   // -------------------------
-  // Solve button: V2 + 3-branch split + velocity blocks
+  // Solve button: target Vch (ft/s) + fan scaling + 3-branch split + velocity blocks
   // -------------------------
   document.getElementById('solveBtn').addEventListener('click', () => {
-    const op = computeOperatingPoint();
-    if (!op) return;
+    const fanPtsIP = readFanTable();
+    if (!fanPtsIP || fanPtsIP.length < 2){
+      alert("Need at least two fan points.");
+      return;
+    }
 
-    const { Qstar_ip, Dpstar_ip, sysCurveIP } = op;
-    const Qstar_m3s = Qstar_ip * CFM_TO_M3S;
+    let Vch_target_ft = parseFloat(document.getElementById('Vch_target').value);
+    if (!isFinite(Vch_target_ft) || Vch_target_ft <= 0){
+      // If no valid target specified, just treat scale factor as 1.0
+      Vch_target_ft = NaN;
+    }
 
     const rho = parseFloat(document.getElementById('rho').value) || 1.2;
     const mu  = parseFloat(document.getElementById('mu').value)  || 1.82e-5;
 
+    let scaleS = 1.0;
+    let bestEval = null;
+
+    if (isFinite(Vch_target_ft) && Vch_target_ft > 0){
+      // Iteratively adjust scaleS so Vch_avg ≈ target (ft/s)
+      for (let it=0; it<15; it++){
+        const evalObj = evaluateScale(fanPtsIP, scaleS);
+        if (!evalObj || !isFinite(evalObj.Vch_ft)){
+          break;
+        }
+        bestEval = {...evalObj, scaleS};
+        const err = evalObj.Vch_ft - Vch_target_ft;
+        if (Math.abs(err) <= 0.01 * Vch_target_ft){ // within 1%
+          break;
+        }
+        // Update scale: if channel velocity is too low, increase S; if too high, decrease S
+        scaleS *= Vch_target_ft / Math.max(evalObj.Vch_ft, 1e-6);
+        // Keep S within reasonable bounds
+        if (scaleS < 0.05) scaleS = 0.05;
+        if (scaleS > 20)  scaleS = 20;
+      }
+    }
+
+    // If no target or iteration failed, fall back to S = 1
+    if (!bestEval){
+      const evalObj = evaluateScale(fanPtsIP, 1.0);
+      if (!evalObj){
+        alert("Unable to find operating point. Check inputs.");
+        return;
+      }
+      bestEval = {...evalObj, scaleS:1.0};
+      scaleS = 1.0;
+    }
+
+    const {Qstar_ip, Dpstar_ip, sysCurveIP, Qstar_m3s, Vch_ft} = bestEval;
+
+    // Basic plenum / inlet metrics at final Q*
     const W_in   = (parseFloat(document.getElementById('plenumW').value) || 12) * IN_TO_M;
     const H_in   = (parseFloat(document.getElementById('plenumH').value) ||  6) * IN_TO_M;
     const wIn_in = (parseFloat(document.getElementById('inletW').value)  ||  4) * IN_TO_M;
@@ -1252,20 +1329,15 @@
     const Dh_pl = 2 * W_in * H_in / Math.max(W_in + H_in, 1e-9);
     const Re_pl = rho * Vpl * Dh_pl / mu;
 
-    // Branch flows (channels, top, side)
+    // Channel Reynolds
     const branchInfo = computeBranchFlows(Qstar_m3s, rho, mu);
-    const br = branchInfo.branches;
-
+    const br = branchInfo.branches || {};
     let Vch_m = NaN, Re_ch = NaN;
     if (br.ch){
       Vch_m = br.ch.V;
       Re_ch = rho * br.ch.V * br.ch.Dh / mu;
     }
-
-    let Vtop_m = (br.top && br.top.V) ? br.top.V : 0;
-    let Vside_m = (br.side && br.side.V) ? br.side.V : 0;
-
-    const Vch_ft = isFinite(Vch_m) ? Vch_m * 3.28084 : NaN;
+    const Vch_ft_final = isFinite(Vch_m) ? Vch_m * 3.28084 : Vch_ft;
 
     // Fan air power
     const Dpstar_Pa = Dpstar_ip * INH2O_TO_PA;
@@ -1273,15 +1345,21 @@
     const HP = power_W / 745.7;
 
     // Update numeric results (IP display)
-    document.getElementById('Qstar').textContent  = Qstar_ip.toFixed(1);
-    document.getElementById('Dpstar').textContent = Dpstar_ip.toFixed(3);
-    document.getElementById('Vin').textContent    = isFinite(Vin_ft) ? Vin_ft.toFixed(1) : '—';
-    document.getElementById('Vch').textContent    = isFinite(Vch_ft) ? Vch_ft.toFixed(1) : '—';
-    document.getElementById('Re_pl').textContent  = isFinite(Re_pl)  ? Re_pl.toFixed(0)  : '—';
-    document.getElementById('Re_ch').textContent  = isFinite(Re_ch)  ? Re_ch.toFixed(0)  : '—';
-    document.getElementById('HP').textContent     = isFinite(HP)     ? HP.toFixed(3)     : '—';
+    document.getElementById('Qstar').textContent  = isFinite(Qstar_ip) ? Qstar_ip.toFixed(1) : '—';
+    document.getElementById('Dpstar').textContent = isFinite(Dpstar_ip) ? Dpstar_ip.toFixed(3) : '—';
+    document.getElementById('Vin').textContent    = isFinite(Vin_ft)    ? Vin_ft.toFixed(1)     : '—';
+    document.getElementById('Vch').textContent    = isFinite(Vch_ft_final) ? Vch_ft_final.toFixed(1) : '—';
+    document.getElementById('Re_pl').textContent  = isFinite(Re_pl)     ? Re_pl.toFixed(0)      : '—';
+    document.getElementById('Re_ch').textContent  = isFinite(Re_ch)     ? Re_ch.toFixed(0)      : '—';
+    document.getElementById('HP').textContent     = isFinite(HP)        ? HP.toFixed(3)         : '—';
+    document.getElementById('ScaleFactor').textContent = isFinite(scaleS) ? scaleS.toFixed(3)   : '—';
 
-    // Update fan/system chart
+    // Update fan/system chart:
+    // - dataset[0]: scaled fan curve
+    // - dataset[1]: system curve
+    // - dataset[2]: operating point
+    const scaledFan = fanPtsIP.map(p => ({x:p.x, y:p.y*scaleS}));
+    curveConfig.data.datasets[0].data = scaledFan;
     curveConfig.data.datasets[1].data = sysCurveIP;
     curveConfig.data.datasets[2].data = [{x: Qstar_ip, y: Dpstar_ip}];
     curveChart.update();
@@ -1292,8 +1370,8 @@
       velConfig.data.datasets[0].data = [];
     } else {
       const { xs, Vs } = prof;
-      const data = [];
       const Lf_in = (parseFloat(document.getElementById('Lfin').value) || 8) * IN_TO_M;
+      const data = [];
       for (let i = 0; i < xs.length; i++) {
         const xNorm = Lf_in > 0 ? xs[i] / Lf_in : 0;
         data.push({ x: xNorm, y: Vs[i] });
@@ -1303,6 +1381,8 @@
     velChart.update();
 
     // Store branch velocities for 3D coloring (m/s)
+    const Vtop_m = (br.top && br.top.V) ? br.top.V : 0;
+    const Vside_m = (br.side && br.side.V) ? br.side.V : 0;
     lastBranchVels = {
       Vch_m: isFinite(Vch_m) ? Vch_m : 0,
       Vtop_m: isFinite(Vtop_m) ? Vtop_m : 0,
@@ -1335,7 +1415,7 @@
   document.getElementById('exportJsonBtn').addEventListener('click', () => {
     const data = {
       timestamp: new Date().toISOString(),
-      moduleType: 'plenum_fan_matching_v2',
+      moduleType: 'plenum_fan_matching_v2_target_velocity',
       air: {
         rho: parseFloat(document.getElementById('rho').value),
         mu: parseFloat(document.getElementById('mu').value)
@@ -1360,6 +1440,7 @@
       },
       fanCurve: readFanTable(),
       velocity: {
+        target_Vch_ft_s: parseFloat(document.getElementById('Vch_target').value),
         nSlices: parseInt(document.getElementById('nSlices').value, 10)
       }
     };
@@ -1369,7 +1450,7 @@
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `plenum_fan_config_${getTimestamp()}.json`;
+    a.download = `plenum_fan_target_vel_config_${getTimestamp()}.json`;
     a.click();
     URL.revokeObjectURL(url);
   });
@@ -1432,6 +1513,7 @@
           
           // Velocity
           if (data.velocity) {
+            document.getElementById('Vch_target').value = data.velocity.target_Vch_ft_s;
             document.getElementById('nSlices').value = data.velocity.nSlices;
           }
           
@@ -1460,6 +1542,7 @@
     const Re_pl = document.getElementById('Re_pl').textContent;
     const Re_ch = document.getElementById('Re_ch').textContent;
     const HP = document.getElementById('HP').textContent;
+    const ScaleFactor = document.getElementById('ScaleFactor').textContent;
     
     if (Qstar === '—') {
       alert('No results to export. Please solve first.');
@@ -1475,19 +1558,21 @@
     csv += `Reynolds plenum,${Re_pl},-\n`;
     csv += `Reynolds channel,${Re_ch},-\n`;
     csv += `Fan air power,${HP},HP\n`;
+    csv += `Fan scale factor,${ScaleFactor},-\n`;
+    csv += `Target channel velocity,${document.getElementById('Vch_target').value},ft/s\n`;
     
     // Download results CSV
     const blob1 = new Blob([csv], { type: 'text/csv' });
     const url1 = URL.createObjectURL(blob1);
     const a1 = document.createElement('a');
     a1.href = url1;
-    a1.download = `plenum_fan_results_${timestamp}.csv`;
+    a1.download = `plenum_fan_target_vel_results_${timestamp}.csv`;
     a1.click();
     URL.revokeObjectURL(url1);
     
-    // Fan curve CSV
+    // Fan curve CSV (base, unscaled)
     const fanPts = readFanTable();
-    let fanCsv = 'Q (cfm),Δp (inH₂O)\n';
+    let fanCsv = 'Q (cfm),Δp (inH₂O) [base]\n';
     fanPts.forEach(pt => {
       fanCsv += `${pt.x},${pt.y}\n`;
     });
@@ -1496,9 +1581,26 @@
     const url2 = URL.createObjectURL(blob2);
     const a2 = document.createElement('a');
     a2.href = url2;
-    a2.download = `plenum_fan_curve_${timestamp}.csv`;
+    a2.download = `plenum_fan_base_curve_${timestamp}.csv`;
     a2.click();
     URL.revokeObjectURL(url2);
+    
+    // Scaled fan curve CSV
+    const scaleFactorNum = parseFloat(ScaleFactor);
+    if (isFinite(scaleFactorNum)) {
+      let scaledCsv = 'Q (cfm),Δp (inH₂O) [scaled]\n';
+      fanPts.forEach(pt => {
+        scaledCsv += `${pt.x},${(pt.y * scaleFactorNum).toFixed(4)}\n`;
+      });
+      
+      const blob2b = new Blob([scaledCsv], { type: 'text/csv' });
+      const url2b = URL.createObjectURL(blob2b);
+      const a2b = document.createElement('a');
+      a2b.href = url2b;
+      a2b.download = `plenum_fan_scaled_curve_${timestamp}.csv`;
+      a2b.click();
+      URL.revokeObjectURL(url2b);
+    }
     
     // Velocity profile CSV if available
     const velData = velConfig.data.datasets[0].data;
@@ -1534,6 +1636,9 @@
     const zip = new JSZip();
     const timestamp = getTimestamp();
     
+    const ScaleFactor = document.getElementById('ScaleFactor').textContent;
+    const scaleFactorNum = parseFloat(ScaleFactor);
+    
     // 1. Results CSV
     let resultsCsv = 'Parameter,Value,Units\n';
     resultsCsv += `Flow rate Q*,${document.getElementById('Qstar').textContent},cfm\n`;
@@ -1543,17 +1648,28 @@
     resultsCsv += `Reynolds plenum,${document.getElementById('Re_pl').textContent},-\n`;
     resultsCsv += `Reynolds channel,${document.getElementById('Re_ch').textContent},-\n`;
     resultsCsv += `Fan air power,${document.getElementById('HP').textContent},HP\n`;
+    resultsCsv += `Fan scale factor,${ScaleFactor},-\n`;
+    resultsCsv += `Target channel velocity,${document.getElementById('Vch_target').value},ft/s\n`;
     zip.file(`results_${timestamp}.csv`, resultsCsv);
     
-    // 2. Fan curve CSV
+    // 2. Base fan curve CSV
     const fanPts = readFanTable();
-    let fanCsv = 'Q (cfm),Δp (inH₂O)\n';
+    let fanCsv = 'Q (cfm),Δp (inH₂O) [base]\n';
     fanPts.forEach(pt => {
       fanCsv += `${pt.x},${pt.y}\n`;
     });
-    zip.file(`fan_curve_${timestamp}.csv`, fanCsv);
+    zip.file(`fan_curve_base_${timestamp}.csv`, fanCsv);
     
-    // 3. Velocity profile CSV
+    // 3. Scaled fan curve CSV
+    if (isFinite(scaleFactorNum)) {
+      let scaledCsv = 'Q (cfm),Δp (inH₂O) [scaled]\n';
+      fanPts.forEach(pt => {
+        scaledCsv += `${pt.x},${(pt.y * scaleFactorNum).toFixed(4)}\n`;
+      });
+      zip.file(`fan_curve_scaled_${timestamp}.csv`, scaledCsv);
+    }
+    
+    // 4. Velocity profile CSV
     const velData = velConfig.data.datasets[0].data;
     if (velData && velData.length > 0) {
       let velCsv = 'x/Lf,V_ch (m/s)\n';
@@ -1563,29 +1679,29 @@
       zip.file(`velocity_profile_${timestamp}.csv`, velCsv);
     }
     
-    // 4. Fan & System curves chart image
+    // 5. Fan & System curves chart image
     const curveCanvas = document.getElementById('curveChart');
     const curveDataUrl = curveCanvas.toDataURL('image/png');
     const curveBase64 = curveDataUrl.split(',')[1];
     zip.file(`fan_system_curves_${timestamp}.png`, curveBase64, { base64: true });
     
-    // 5. Velocity chart image
+    // 6. Velocity chart image
     const velCanvas = document.getElementById('velChart');
     const velImgUrl = velCanvas.toDataURL('image/png');
     const velBase64 = velImgUrl.split(',')[1];
     zip.file(`velocity_distribution_${timestamp}.png`, velBase64, { base64: true });
     
-    // 6. 3D view image
+    // 7. 3D view image
     if (renderer && renderer.domElement) {
       const view3dUrl = renderer.domElement.toDataURL('image/png');
       const view3dBase64 = view3dUrl.split(',')[1];
       zip.file(`3d_geometry_view_${timestamp}.png`, view3dBase64, { base64: true });
     }
     
-    // 7. Configuration JSON
+    // 8. Configuration JSON
     const config = {
       timestamp: new Date().toISOString(),
-      moduleType: 'plenum_fan_matching_v2',
+      moduleType: 'plenum_fan_matching_v2_target_velocity',
       air: {
         rho: parseFloat(document.getElementById('rho').value),
         mu: parseFloat(document.getElementById('mu').value)
@@ -1608,8 +1724,9 @@
         hs_lead_edge_x_in: parseFloat(document.getElementById('xHS').value),
         hs_width_in: parseFloat(document.getElementById('WHS').value)
       },
-      fanCurve: readFanTable(),
+      fanCurve_base: readFanTable(),
       velocity: {
+        target_Vch_ft_s: parseFloat(document.getElementById('Vch_target').value),
         nSlices: parseInt(document.getElementById('nSlices').value, 10)
       },
       results: {
@@ -1619,7 +1736,8 @@
         channel_velocity_avg_ft_s: document.getElementById('Vch').textContent,
         reynolds_plenum: document.getElementById('Re_pl').textContent,
         reynolds_channel: document.getElementById('Re_ch').textContent,
-        fan_air_power_HP: document.getElementById('HP').textContent
+        fan_air_power_HP: document.getElementById('HP').textContent,
+        fan_scale_factor: ScaleFactor
       },
       branchVelocities: lastBranchVels ? {
         channels_m_s: lastBranchVels.Vch_m,
@@ -1632,15 +1750,16 @@
     };
     zip.file(`config_${timestamp}.json`, JSON.stringify(config, null, 2));
     
-    // 8. README
-    const readme = `Plenum / Fan Matching Analysis - V2 Simple Flow Export
+    // 9. README
+    const readme = `Plenum / Fan Matching Analysis - V2 with Target Velocity Export
 Generated: ${new Date().toLocaleString()}
 
 Contents:
 - results_${timestamp}.csv: Operating point and key results
-- fan_curve_${timestamp}.csv: Fan curve data points
+- fan_curve_base_${timestamp}.csv: Base (unscaled) fan curve data points
+- fan_curve_scaled_${timestamp}.csv: Scaled fan curve (scale factor: ${ScaleFactor})
 - velocity_profile_${timestamp}.csv: Channel velocity distribution along fin length
-- fan_system_curves_${timestamp}.png: Fan and system curves with operating point
+- fan_system_curves_${timestamp}.png: Scaled fan and system curves with operating point
 - velocity_distribution_${timestamp}.png: Velocity profile chart
 - 3d_geometry_view_${timestamp}.png: 3D visualization of plenum and heat sink
 - config_${timestamp}.json: Complete configuration and results
@@ -1668,6 +1787,9 @@ Heat Sink (Finned) (inches):
 - HS lead edge x: ${document.getElementById('xHS').value} in
 - HS width: ${document.getElementById('WHS').value} in
 
+Target Velocity:
+- Target channel velocity: ${document.getElementById('Vch_target').value} ft/s
+
 Operating Point Results:
 - Flow rate Q*: ${document.getElementById('Qstar').textContent} cfm
 - Back pressure Δp*: ${document.getElementById('Dpstar').textContent} inH₂O
@@ -1676,6 +1798,7 @@ Operating Point Results:
 - Reynolds (plenum): ${document.getElementById('Re_pl').textContent}
 - Reynolds (channel): ${document.getElementById('Re_ch').textContent}
 - Fan air power: ${document.getElementById('HP').textContent} HP
+- Fan scale factor: ${ScaleFactor}
 
 ${lastBranchVels ? `
 Branch Flow Distribution:
@@ -1684,12 +1807,13 @@ Branch Flow Distribution:
 - Side gaps: ${(lastBranchVels.Vside_m * 3.28084).toFixed(2)} ft/s
 ` : ''}
 
-Notes:
+Methodology:
 - IP units (inches, cfm, inH₂O, ft/s) used for display
 - SI units used internally for calculations
 - 3-branch flow model: channels (through fins), top gap, side gaps
 - V2 plenum-over-HS manifold model for velocity distribution
-- Operating point found at fan/system curve intersection
+- Fan curve iteratively scaled to meet target channel velocity
+- Operating point found at scaled fan/system curve intersection
 `;
     zip.file('README.txt', readme);
     
@@ -1699,7 +1823,7 @@ Notes:
       const url = URL.createObjectURL(content);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `plenum_fan_export_${timestamp}.zip`;
+      a.download = `plenum_fan_target_vel_export_${timestamp}.zip`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
@@ -1711,6 +1835,7 @@ Notes:
 </script>
 </body>
 </html>
+
 
 
 
