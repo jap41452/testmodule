@@ -1,1539 +1,1717 @@
-<!doctype html>
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
-<meta charset="utf-8" />
+  <meta charset="UTF-8" />
+  <title>Plenum / Fan – V2 Simple Flow + Branch Split + Velocity Blocks</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-<title>2D Heat FD Solver — ADI + warmed air + fins</title>
+
+<!-- Libraries (Chart.js MUST be before our script) -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <!-- ADD THIS LINE FOR ZIP FUNCTIONALITY -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
+  <style>
+    :root{
+      --bg:#f5f5f7;
+      --panel:#ffffff;
+      --border:#d0d5dd;
+      --ink:#111827;
+      --muted:#6b7280;
+      --accent:#0b73c8;
+      --r:12px;
+      --pad:14px;
+      --gap:14px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+      background:var(--bg);
+      color:var(--ink);
+      font-size:14px;
+    }
+    header{
+      padding:10px 16px;
+      border-bottom:1px solid var(--border);
+      background:#f9fafb;
+    }
+    header h1{
+      margin:0;
+      font-size:18px;
+      letter-spacing:.02em;
+    }
+    header p{
+      margin:4px 0 0;
+      color:var(--muted);
+      font-size:13px;
+    }
+    main{
+      padding:var(--pad);
+      display:flex;
+      flex-wrap:wrap;
+      gap:var(--gap);
+      align-items:flex-start;
+    }
+    .col{
+      display:flex;
+      flex-direction:column;
+      gap:var(--gap);
+    }
+    .col-left{
+      flex:0 0 200px;
+      max-width:200px;
+    }
+    .col-mid{
+      flex:0 0 600px;
+      max-width:600px;
+      min-width:320px;
+    }
+    .panel{
+      background:var(--panel);
+      border-radius:var(--r);
+      border:1px solid var(--border);
+      padding:var(--pad);
+      box-shadow:0 1px 2px rgba(15,23,42,0.04);
+    }
+    .panel h2{
+      margin:0 0 8px;
+      font-size:15px;
+      font-weight:600;
+    }
+    .panel small{
+      color:var(--muted);
+    }
+    .grid-2{
+      display:grid;
+      grid-template-columns:repeat(2,minmax(0,1fr));
+      gap:10px 12px;
+      margin-top:8px;
+    }
+    .field{
+      display:flex;
+      flex-direction:column;
+      gap:2px;
+    }
+    .field label{
+      font-size:12px;
+      color:var(--muted);
+    }
+    .field input{
+      padding:4px 6px;
+      border-radius:6px;
+      border:1px solid var(--border);
+      font-size:13px;
+    }
+    .section-label{
+      margin-top:8px;
+      font-size:12px;
+      font-weight:600;
+      text-transform:uppercase;
+      letter-spacing:.06em;
+      color:var(--muted);
+    }
+    .btn-row{
+      display:flex;
+      justify-content:flex-end;
+      gap:8px;
+      margin-top:10px;
+      flex-wrap:wrap;
+    }
+    button{
+      border-radius:999px;
+      border:1px solid transparent;
+      padding:6px 12px;
+      font-size:13px;
+      cursor:pointer;
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      background:var(--accent);
+      color:#fff;
+    }
+    button.secondary{
+      background:#fff;
+      color:var(--ink);
+      border-color:var(--border);
+    }
+    button:disabled{
+      opacity:.5;
+      cursor:default;
+    }
+    table{
+      width:100%;
+      border-collapse:collapse;
+      margin-top:6px;
+      font-size:12px;
+    }
+    th, td{
+      border:1px solid #e5e7eb;
+      padding:2px 4px;
+      text-align:right;
+    }
+    th{
+      background:#f3f4f6;
+      font-weight:500;
+    }
+    td input{
+      width:100%;
+      border:none;
+      outline:none;
+      text-align:right;
+      font-size:12px;
+      padding:2px 2px;
+      background:transparent;
+    }
+    .results-grid{
+      display:grid;
+      grid-template-columns:repeat(2,minmax(0,1fr));
+      gap:6px 12px;
+      margin-top:6px;
+      font-size:13px;
+    }
+    .result-label{
+      color:var(--muted);
+    }
+    .result-value{
+      text-align:right;
+      font-feature-settings:"tnum" 1;
+    }
+    canvas{max-width:100%;}
+    #curveChart{height:180px !important;}
+    #velChart{height:180px !important;}
+    .fan-panel{max-height:300px;overflow-y:auto;}
 
-<style>
-  /* -------- Base & Host-page hardening -------- */
-  * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; }
-  body { font-family: system-ui, Arial, sans-serif; margin: 12px; color:#111; line-height:1.28; }
-  .panel { border:1px solid #ddd; padding:10px; border-radius:8px; background:#fff; }
+    #view3D{
+      width:100%;
+      height:260px;
+      border-radius:10px;
+      border:1px solid #e5e7eb;
+      background:#f9fafb;
+      position:relative;
+      overflow:hidden;
+    }
+    #view3D-msg{
+      position:absolute;
+      inset:0;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size:12px;
+      color:#6b7280;
+      pointer-events:none;
+    }
 
-  /* -------- Controls layout -------- */
-  #controls { 
-    display:flex; 
-    gap:16px; 
-    flex-wrap:wrap; 
-    align-items:flex-start; 
-  }
+    #velLegend{
+      margin-top:8px;
+      font-size:12px;
+      color:var(--muted);
+    }
+    #velLegend .row{
+      display:flex;
+      align-items:center;
+      gap:6px;
+      margin-bottom:3px;
+    }
+    #velLegend .swatch{
+      width:14px;
+      height:14px;
+      border-radius:3px;
+      border:1px solid #cbd5e1;
+    }
 
-  #controls .panel { 
-    margin-bottom: 12px; 
-  }
-
-  /* Three columns that collapse nicely on small widths */
-  #controls > div { 
-    min-width: 280px; 
-    max-width: 700px; 
-    flex: 1 1 700px; 
-  }
-
-  /* -------- KISS form layout -------- */
-/* -------- KISS form layout -------- */
-.row { 
-  display: flex; 
-  flex-wrap: wrap; 
-  align-items: center; 
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-/* Center a row of buttons inside the panel */
-.row.center {
-  justify-content: center;
-  flex-wrap: nowrap;   /* keep both buttons on the same line */
-}
-
-
-  label { 
-    display: inline-block; 
-    width: 120px;           /* fixed width keeps inputs aligned */
-    text-align: right; 
-    margin-right: 8px;      /* space between label and box */
-    font-size: 13px; 
-    white-space: nowrap; 
-  }
-
-  input[type=number], 
-  select, 
-button {
-  display: inline-flex;
-  align-items: center;     /* vertical center */
-  justify-content: center; /* horizontal center */
-  height: 28px;
-  padding: 0 8px;          /* no vertical padding */
-  line-height: 1;          /* don’t rely on font metrics */
-}
-
-
-  /* Specific widths if you want certain boxes tighter */
-  input[type=number] { width: 100px; }
-  #nx, #dt, #probeX, #probeY, #airRho, #airCp, #airMix { width: 110px; }
-  #airVel, #ambientT, #airTin { width: 100px; }
-
-  /* Lists */
-  #sourcesList, #finsList { max-height:160px; overflow:auto; font-size:13px; min-width:260px }
-  .pill{ display:inline-block; padding:2px 6px; border:1px solid #ddd; border-radius:10px; font-size:12px; background:#f7f7f7 }
-  .srcRow,.finRow{ display:flex; gap:6px; align-items:center; margin:4px 0; flex-wrap:wrap }
-
-  /* Warmed-air compact grid (4 columns: label/input pairs) */
-  .airGrid{
-    display:grid;
-    grid-template-columns:auto 120px auto 120px;
-    gap:8px 12px;
-    align-items:center;
-    margin-top:6px;
-  }
-  .airGrid label{ margin:0; }
-  .airGrid input[type=number], .airGrid select, .airGrid button{ margin:0; }
-
-  /* Canvas row */
-  #canvasRow { display:flex; gap:16px; align-items:flex-start; }
-  #canvasWrap { position:relative; display:inline-block }
-  canvas { border:1px solid #333; cursor: crosshair; background:#fff; }
-
-  /* Legend */
-  .legend{ position:absolute; right:6px; top:6px; padding:6px; background:rgba(255,255,255,.92); border:1px solid #ddd; border-radius:6px }
-  .legend .bar{ width:12px; height:120px; background:linear-gradient(#f00,#8000,#00f); }
-  .legend .ticks{ display:flex; flex-direction:column; justify-content:space-between; height:120px; margin-left:6px; font-size:12px }
-
-  /* Fin preview */
-  #finPreview { display:flex; flex-direction:column; align-items:center; min-width:190px; }
-  #finSchematic{ border:1px solid #eee; background:#fafafa; width:160px; }
-
-  /* Plot */
-  #plotPanel{ margin-top:10px }
-  #plotCanvas{ border:1px solid #333; background:#fff }
-  .badge{ display:inline-block; padding:2px 6px; background:#eef; border:1px solid #cde; border-radius:6px; font-size:12px; margin-left:8px; }
-</style>
+    @media (max-width:860px){
+      .col-left{flex:1 1 200px; max-width:none;}
+      .col-mid{flex:1 1 320px; max-width:none;}
+    }
+  </style>
 </head>
 <body>
-  <h1>Forced Air Convection with and without Finned Sections</h1>
-<h1>Multiple Heat Sources, Steady State and Transient</h1>
-  <div id="controls" class="panel">
-    <!-- Column 1 -->
-    <div>
-      <!-- Row 1: Width + Height -->
-      <div class="row">
-        <label for="widthM">Width (m)</label>
-        <input id="widthM" type="number" value="0.2" step="0.01" />
-        <label for="heightM">Height (m)</label>
-        <input id="heightM" type="number" value="0.12" step="0.01" />
-      </div>
+<header>
+  <h1>Plenum / Fan Matching – V2 Simple Flow</h1>
+  <p>IP units: in, inH₂O, cfm. Solver uses SI internally. 3D view is illustrative only.</p>
+</header>
 
-      <!-- Row 2: Thickness + Material -->
-      <div class="row">
-        <label for="thicknessM">Thickness (m)</label>
-        <input id="thicknessM" type="number" value="0.005" step="0.001" />
-        <label for="materialSelect">Material</label>
-        <select id="materialSelect"></select>
-      </div>
-
-  <!-- With this centered row -->
-  <div class="row center" style="margin-top:6px">
-    <button id="setupBtn" type="button">Setup Grid</button>
-    <button id="resetAmbient" type="button">Reset to Ambient</button>
-  </div>
-
-
-
-      <div id="solverInfo" style="margin-top:6px; font-size:12px; color:#555;">—</div>
-      <div id="steadyInfo" style="margin-top:4px; font-size:12px; color:#555;">—</div>
-    </div>
-
-    <!-- Column 2 -->
-    <div>
-      <!-- Row: Airflow + Ambient (same line) -->
-      <div class="row">
-        <label for="airVel">Airflow (m/s)</label>
-        <input id="airVel" type="number" value="0.5" step="0.1" />
-        <label for="ambientT">Ambient (°C)</label>
-        <input id="ambientT" type="number" value="20" step="1" />
-      </div>
-
-      <div class="panel" style="margin-top:8px; max-width:560px">
-        <div class="row">
-          <input id="useWarmed" type="checkbox" checked />
-          <label for="useWarmed" style="display:inline">Use warmed air (row-wise crossflow)</label>
+<main>
+  <!-- LEFT COLUMN: PANELS 1–4 -->
+  <section class="col col-left">
+    <!-- 1. Air -->
+    <div class="panel">
+      <h2>1. Air (solver)</h2>
+      <small>Used for Re and pressure-drop calcs (SI).</small>
+      <div class="grid-2">
+        <div class="field">
+          <label for="rho">Density ρ (kg/m³)</label>
+          <input id="rho" type="number" value="1.20">
         </div>
-
-        <div class="row">
-          <label for="flowDir">Flow direction</label>
-          <select id="flowDir">
-            <option value="LR" selected>Left → Right</option>
-            <option value="RL">Right → Left</option>
-          </select>
-          <input id="bothSides" type="checkbox" />
-          <label for="bothSides" style="display:inline">Same air stream on both sides</label>
-        </div>
-
-<div class="airGrid">
-  <!-- Row 1: Suggest H + Air gap -->
-  <button id="suggestH" type="button">Suggest H</button>
-  <label for="airH">Air gap H (m)</label>
-  <input id="airH" type="number" value="0.005" step="0.001" />
-  <span></span> <!-- filler to end the first row cleanly -->
-
-  <!-- Remaining pairs follow naturally in the grid -->
-  <label for="airRho">ρ_air (kg/m³)</label>   <input id="airRho" type="number" value="1.2"   step="0.01" />
-  <label for="airCp">cp_air (J/kg-K)</label>  <input id="airCp"  type="number" value="1005"  step="1"    />
-  <label for="airTin">Air inlet T_in (°C)</label><input id="airTin" type="number" value="20" step="1"    />
-  <label for="airMix">Lateral mixing λ (0–0.2)</label><input id="airMix" type="number" value="0" step="0.01" min="0" max="0.2" />
-  <span></span><span></span>
-</div>
-
-
-
-        <div class="row" style="margin-top:6px">
-          <input id="showTa" type="checkbox" />
-          <label for="showTa" style="display:inline">Show air Ta heatmap</label>
-          <input id="showGrid" type="checkbox" checked />
-          <label for="showGrid" style="display:inline">Show scale/grid</label>
+        <div class="field">
+          <label for="mu">Viscosity μ (Pa·s)</label>
+          <input id="mu" type="number" value="1.82e-5" step="1e-6">
         </div>
       </div>
     </div>
 
-    <!-- Column 3 -->
-    <div>
-      <label for="nx"># of cells along width</label>
-      <input id="nx" type="number" value="80" min="10" max="400" />
-      <label for="dt">Time step,s 0 = auto</label>
-      <input id="dt" type="number" value="0" step="0.0001" />
+    <!-- 2. Plenum & Inlet -->
+    <div class="panel">
+      <h2>2. Plenum & Inlet</h2>
+      <small>Geometry in inches (display + 3D).</small>
+      <div class="section-label">Plenum</div>
+      <div class="grid-2">
+        <div class="field">
+          <label for="plenumW">Width W (in)</label>
+          <input id="plenumW" type="number" value="12" step="0.1">
+        </div>
+        <div class="field">
+          <label for="plenumH">Height H (in)</label>
+          <input id="plenumH" type="number" value="6" step="0.1">
+        </div>
+        <div class="field">
+          <label for="plenumL">Length L (in)</label>
+          <input id="plenumL" type="number" value="12" step="0.1">
+        </div>
+      </div>
+
+      <div class="section-label">Fan / Blower Inlet</div>
+      <div class="grid-2">
+        <div class="field">
+          <label for="inletW">Inlet width w (in)</label>
+          <input id="inletW" type="number" value="4" step="0.1">
+        </div>
+        <div class="field">
+          <label for="inletH">Inlet height h (in)</label>
+          <input id="inletH" type="number" value="4" step="0.1">
+        </div>
+        <div class="field">
+          <label for="inletX">Inlet x from start (in)</label>
+          <input id="inletX" type="number" value="4" step="0.1">
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. Heat Sink -->
+    <div class="panel">
+      <h2>3. Heat Sink (Finned)</h2>
+      <small>For channel geometry and pressure drop.</small>
+      <div class="grid-2">
+        <div class="field">
+          <label for="b">Fin height b (in)</label>
+          <input id="b" type="number" value="2" step="0.05">
+        </div>
+        <div class="field">
+          <label for="tfin">Fin thickness t (in)</label>
+          <input id="tfin" type="number" value="0.05" step="0.01">
+        </div>
+        <div class="field">
+          <label for="sfin">Fin spacing s (in)</label>
+          <input id="sfin" type="number" value="1" step="0.1">
+        </div>
+        <div class="field">
+          <label for="Lfin">Fin length L<sub>f</sub> (in)</label>
+          <input id="Lfin" type="number" value="8" step="0.1">
+        </div>
+        <div class="field">
+          <label for="xHS">HS lead edge x (in)</label>
+          <input id="xHS" type="number" value="3" step="0.1">
+        </div>
+        <div class="field">
+          <label for="WHS">HS width (in, ≤ W)</label>
+          <input id="WHS" type="number" value="12" step="0.1">
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. Fan Curve -->
+    <div class="panel">
+      <h2>4. Fan Curve (IP)</h2>
+      <small>Q in cfm, Δp in inH₂O (0.5 HP-ish default curve).</small>
+      <table id="fanTable">
+        <thead>
+        <tr><th>#</th><th>Q (cfm)</th><th>Δp (inH₂O)</th></tr>
+        </thead>
+        <tbody>
+        <tr><td>1</td><td><input value="0"></td><td><input value="2.2"></td></tr>
+        <tr><td>2</td><td><input value="200"></td><td><input value="2.0"></td></tr>
+        <tr><td>3</td><td><input value="400"></td><td><input value="1.7"></td></tr>
+        <tr><td>4</td><td><input value="600"></td><td><input value="1.3"></td></tr>
+        <tr><td>5</td><td><input value="800"></td><td><input value="0.8"></td></tr>
+        <tr><td>6</td><td><input value="1000"></td><td><input value="0.3"></td></tr>
+        <tr><td>7</td><td><input value="1100"></td><td><input value="0.0"></td></tr>
+        </tbody>
+      </table>
+      <div class="btn-row">
+        <button type="button" class="secondary" id="addRowBtn">+ Row</button>
+        <button type="button" class="secondary" id="delRowBtn">– Row</button>
       
 
 
-<div class="row center" style="margin-top:6px">
-  <button id="solveTransient" type="button">Solve Transient</button>
-  <button id="solveSteady" type="button">Solve Steady</button>
-  <button id="pauseSim" type="button">Pause</button>
 </div>
+    </div>
+  </section>
 
-<!-- ADD THESE FOUR BUTTONS HERE -->
-<div class="row center" style="margin-top:6px; gap:8px;">
-  <button id="exportJsonBtn" type="button" style="background: #fff3cd; border: 1px solid #ffc107; color: #856404;">💾 JSON</button>
-  <button id="importJsonBtn" type="button" style="background: #d1ecf1; border: 1px solid #bee5eb; color: #0c5460;">📂 Import</button>
-  <button id="exportCsvBtn" type="button" style="background: #d4edda; border: 1px solid #c3e6cb; color: #155724;">📊 CSV</button>
-  <button id="exportZipBtn" type="button" style="background: #cfe2ff; border: 1px solid #b6d4fe; color: #084298;">📦 ZIP</button>
+  <!-- MIDDLE COLUMN: PANELS 5–8 -->
+  <section class="col col-mid">
+    <!-- 5. Solve -->
+    <div class="panel">
+      <h2>5. Solve</h2>
+      <small>Fan / system intersection, velocities, Re, and air power.</small>
+      
+<div class="btn-row" style="justify-content:flex-start;">
+  <button type="button" id="solveBtn">Solve</button>
+  
+  <!-- ADD THESE FOUR BUTTONS HERE -->
+  <button type="button" id="exportJsonBtn" class="secondary" style="background: #fff3cd; border-color: #ffc107; color: #856404;">💾 JSON</button>
+  <button type="button" id="importJsonBtn" class="secondary" style="background: #d1ecf1; border-color: #bee5eb; color: #0c5460;">📂 Import</button>
+  <button type="button" id="exportCsvBtn" class="secondary" style="background: #d4edda; border-color: #c3e6cb; color: #155724;">📊 CSV</button>
+  <button type="button" id="exportZipBtn" class="secondary" style="background: #cfe2ff; border-color: #b6d4fe; color: #084298;">📦 ZIP</button>
+  <!-- END OF NEW BUTTONS -->
 </div>
-<!-- END OF NEW BUTTONS -->
+     
 
+ </div>
+      <div class="section-label">Key Results</div>
+      <div class="results-grid">
+        <div class="result-label">Flow rate Q* (cfm)</div>
+        <div class="result-value" id="Qstar">—</div>
 
+        <div class="result-label">Back pressure Δp* (inH₂O)</div>
+        <div class="result-value" id="Dpstar">—</div>
 
-      <div class="row" style="margin-top:6px">
-        <label for="probeX">Probe X,Y (m)</label>
-        <input id="probeX" type="number" value="0.05" step="0.001" />
-        <input id="probeY" type="number" value="0.03" step="0.001" />
-      </div>
-      <div style="margin-top:4px; font-size:12px; color:#555;">Probe T: <span id="probeT">-</span> °C &nbsp; | &nbsp; t = <span id="simTime">0.000</span> s</div>
+        <div class="result-label">Inlet velocity V<sub>in</sub> (ft/s)</div>
+        <div class="result-value" id="Vin">—</div>
 
-      <div class="row" style="margin-top:10px">
-        <label for="drawMode">Canvas mode:</label>
-        <select id="drawMode">
-          <option value="source">Draw Sources</option>
-          <option value="fin">Draw Fins</option>
-        </select>
-        <button id="clearSources" type="button">Clear sources</button>
-        <button id="clearFins" type="button">Clear fins</button>
-      </div>
+        <div class="result-label">Channel velocity V<sub>ch,avg</sub> (ft/s)</div>
+        <div class="result-value" id="Vch">—</div>
 
-      <div style="margin-top:8px">
-        <label>Sources</label>
-        <div id="sourcesList"></div>
-      </div>
+        <div class="result-label">Reynolds (plenum) Re<sub>pl</sub></div>
+        <div class="result-value" id="Re_pl">—</div>
 
-      <div style="margin-top:10px">
-        <label>Finned regions (effective area)</label>
-        <div id="finsList"></div>
+        <div class="result-label">Reynolds (channel) Re<sub>ch</sub></div>
+        <div class="result-value" id="Re_ch">—</div>
+
+        <div class="result-label">Fan air power (HP)</div>
+        <div class="result-value" id="HP">—</div>
       </div>
     </div>
-  </div>
 
-  <hr/>
-
-  <div id="canvasRow">
-    <div id="canvasWrap" class="panel">
-      <canvas id="mainCanvas" width="720" height="432"></canvas>
-      <div class="legend" id="legend" style="display:none">
-        <div style="display:flex; align-items:flex-start">
-          <div class="bar"></div>
-          <div class="ticks">
-            <div id="tMaxLbl">—</div>
-            <div> </div>
-            <div id="tMinLbl">—</div>
-          </div>
+    <!-- 6. Velocity vs x -->
+    <div class="panel">
+      <h2>6. Velocity Distribution (V2)</h2>
+      <small>1D plenum-over-HS manifold – channel velocity vs x along fins.</small>
+      <div class="grid-2">
+        <div class="field">
+          <label for="nSlices"># slices along HS</label>
+          <input id="nSlices" type="number" value="20" min="3" max="80" step="1">
         </div>
       </div>
+      <div class="section-label">V<sub>ch</sub>(x) (m/s, internal)</div>
+      <canvas id="velChart"></canvas>
     </div>
 
-    <div id="finPreview" class="panel">
-      <strong>Fin end-view</strong>
-      <svg id="finSchematic" width="160" height="432"></svg>
+    <!-- 7. 3D View -->
+    <div class="panel">
+      <h2>7. 3D Geometry View</h2>
+      <small>Rotatable view of plenum, inlet, and finned heat sink with velocity-colored regions.</small>
+      <div id="view3D">
+        <div id="view3D-msg">Click and drag to rotate, mouse wheel to zoom.</div>
+      </div>
+      <div id="velLegend"></div>
     </div>
-  </div>
 
-  <div id="plotPanel" class="panel">
-    <div class="row">
-      <strong>Probe T vs time</strong>
-      <span class="badge" id="autoStopMsg" style="display:none">auto-stopped (ΔTmax &lt; 0.5%)</span>
-      <button id="clearPlot" type="button">Clear plot</button>
-      <button id="exportCSV" type="button">Export CSV</button>
+    <!-- 8. Fan & System Curves -->
+    <div class="panel fan-panel">
+      <h2>8. Fan & System Curves</h2>
+      <small>Fan curve from table; system curve from 3-branch model with inlet & exit losses (IP axes).</small>
+      <canvas id="curveChart"></canvas>
     </div>
-    <canvas id="plotCanvas" width="720" height="160"></canvas>
-  </div>
+  </section>
+</main>
 
 <script>
-/* ===== Materials ===== */
-const materials = {
-  "Aluminum (6061)": { k: 167, rho: 2700, cp: 896 },
-  "Copper":          { k: 401, rho: 8960, cp: 385 },
-  "FR4 (PCB)":       { k: 0.3, rho: 1900,  cp: 1200 },
-  "Steel":           { k: 50,  rho: 7850,  cp: 470 },
-  "Silicon":         { k: 150, rho: 2330,  cp: 700 }
-};
-const matSel = document.getElementById('materialSelect');
-Object.keys(materials).forEach(name => {
-  const o = document.createElement('option'); o.value = name; o.textContent = name;
-  matSel.appendChild(o);
-});
-matSel.value = "Aluminum (6061)";
+  // ---------- constants / helpers ----------
+  const CFM_TO_M3S = 0.00047194745;
+  const IN_TO_M    = 0.0254;
+  const INH2O_TO_PA= 249.0889;
 
-/* ===== Canvases & state ===== */
-const canvas = document.getElementById('mainCanvas');
-const ctx = canvas.getContext('2d');
-const drawModeSel = document.getElementById('drawMode');
+  // minor loss coefficients
+  const K_INLET = 1.0;   // plenum inlet
+  const K_EXIT  = 1.0;   // plenum outlet
+  const K_CH_MINOR   = 2.0; // entrance/exit + bundle effects (lumped)
+  const K_TOP_MINOR  = 1.0;
+  const K_SIDE_MINOR = 1.0;
 
-let drawing = false, dragStart = null, dragRect = null;
-const DragMin = 6;
-const sources = []; // {rect, amplitude, type, freq, label, cells:int[]}
-const fins = [];    // {rect, t, L, s, k, label, cells:int[]}
-let lastClickMarker = null;
-
-const UseF32 = true;
-const Arr = UseF32 ? Float32Array : Float64Array;
-
-let grid = null;
-let simRunning = false, simAnimationId = null, simTime = 0;
-
-/* ===== Layout helpers ===== */
-function resizeCanvasToAspect(){
-  const Wm = parseFloat(document.getElementById('widthM').value);
-  const Hm = parseFloat(document.getElementById('heightM').value);
-  const aspect = Math.max(0.1, Hm / Wm);
-  const baseW = 720;
-  canvas.width = baseW;
-  canvas.height = Math.max(240, Math.round(baseW * aspect));
-  const finSvg = document.getElementById('finSchematic');
-  finSvg.setAttribute('height', String(canvas.height));
-}
-
-/* ===== Setup & reset ===== */
-function setupGrid(){
-  resizeCanvasToAspect();
-
-  const widthM = parseFloat(document.getElementById('widthM').value);
-  const heightM = parseFloat(document.getElementById('heightM').value);
-  const nx = parseInt(document.getElementById('nx').value);
-  const ny = Math.max(1, Math.round(nx * (heightM/widthM)));
-  const material = materials[document.getElementById('materialSelect').value];
-  const thickness = parseFloat(document.getElementById('thicknessM').value);
-
-  const dx = widthM / nx;
-  const dy = heightM / ny;
-  const N = nx*ny;
-  const T0 = parseFloat(document.getElementById('ambientT').value);
-
-  const T = new Arr(N).fill(T0);
-  const Ttmp = new Arr(N).fill(T0);
-  const Q = new Arr(N).fill(0);
-  const Aeff = new Arr(N);
-  const Ta2D = new Arr(N).fill(parseFloat(document.getElementById('airTin').value));
-
-  grid = { nx, ny, dx, dy, widthM, heightM, thickness,
-           k: material.k, rho: material.rho, cp: material.cp,
-           T, Ttmp, Q, Aeff, Ta2D };
-  grid.alpha = grid.k / (grid.rho * grid.cp);
-
-  document.getElementById('legend').style.display = 'block';
-  reprojectSourcesToGrid();
-  reprojectFinsToGrid();
-  computeAeff();
-  rebuildTaFromT(grid.T);
-  redraw(); simTime = 0; solverInfo();
-  document.getElementById('steadyInfo').textContent = '—';
-  clearPlotData();
-  updateTaEstimate();
-}
-document.getElementById('setupBtn').addEventListener('click', setupGrid);
-['widthM','heightM'].forEach(id=>document.getElementById(id).addEventListener('change', setupGrid));
-document.getElementById('resetAmbient').addEventListener('click', ()=>{
-  if(!grid) return;
-  const T0 = parseFloat(document.getElementById('ambientT').value);
-  grid.T.fill(T0); grid.Ttmp.fill(T0);
-  const Tin = parseFloat(document.getElementById('airTin').value);
-  grid.Ta2D.fill(Tin);
-  simTime=0; redraw(); updateProbe(); solverInfo(); document.getElementById('steadyInfo').textContent='—'; clearPlotData();
-  updateTaEstimate();
-});
-
-/* ===== Mouse: draw or click-probe ===== */
-canvas.addEventListener('mousedown', (ev) => {
-  drawing = true;
-  const r = canvas.getBoundingClientRect();
-  dragStart = { x: ev.clientX - r.left, y: ev.clientY - r.top };
-});
-canvas.addEventListener('mousemove', (ev) => {
-  if (!drawing) return;
-  const r = canvas.getBoundingClientRect();
-  const mx = ev.clientX - r.left, my = ev.clientY - r.top;
-  dragRect = { x0: dragStart.x, y0: dragStart.y, x1: mx, y1: my };
-  redraw();
-});
-canvas.addEventListener('mouseup', (ev) => {
-  const wasDrawing = drawing; drawing = false;
-  const r = canvas.getBoundingClientRect();
-  const mx = ev.clientX - r.left, my = ev.clientY - r.top;
-
-  if (!wasDrawing) return;
-
-  const dx = Math.abs(mx - dragStart.x), dy = Math.abs(my - dragStart.y);
-  const isClick = (dx < DragMin && dy < DragMin);
-
-  if (isClick) {
-    lastClickMarker = {x: mx, y: my};
-    updateClickProbeOverlay(mx, my);
-    dragRect = null;
-    redraw();
-    return;
+  function frictionFactor(Re){
+    if (!isFinite(Re) || Re <= 0) return 0;
+    if (Re < 2300) return 64/Re;
+    return 0.3164/Math.pow(Re,0.25);
   }
 
-  const rect = {
-    x0: Math.min(dragStart.x, mx), y0: Math.min(dragStart.y, my),
-    x1: Math.max(dragStart.x, mx), y1: Math.max(dragStart.y, my)
+  // ---------- fan table ----------
+  function readFanTable(){
+    const tbody = document.querySelector('#fanTable tbody');
+    const pts = [];
+    for (const row of tbody.rows){
+      const Q = parseFloat(row.cells[1].querySelector('input').value);
+      const dp= parseFloat(row.cells[2].querySelector('input').value);
+      if (!isNaN(Q) && !isNaN(dp)) pts.push({x:Q, y:dp});
+    }
+    pts.sort((a,b)=>a.x-b.x);
+    return pts;
+  }
+
+  function fanDeltaP_IP(Q, pts){
+    if (pts.length===0) return 0;
+    if (pts.length===1) return pts[0].y;
+    if (Q <= pts[0].x){
+      const p0=pts[0], p1=pts[1];
+      const t=(Q-p0.x)/(p1.x-p0.x || 1e-9);
+      return p0.y + t*(p1.y-p0.y);
+    }
+    const last=pts[pts.length-1];
+    const secondLast=pts[pts.length-2];
+    if (Q >= last.x){
+      const p0=secondLast, p1=last;
+      const t=(Q-p0.x)/(p1.x-p0.x || 1e-9);
+      return p0.y + t*(p1.y-p0.y);
+    }
+    for (let i=0;i<pts.length-1;i++){
+      const p0=pts[i], p1=pts[i+1];
+      if (Q>=p0.x && Q<=p1.x){
+        const t=(Q-p0.x)/(p1.x-p0.x || 1e-9);
+        return p0.y + t*(p1.y-p0.y);
+      }
+    }
+    return last.y;
+  }
+
+  document.getElementById('addRowBtn').addEventListener('click',()=>{
+    const tbody=document.querySelector('#fanTable tbody');
+    const idx=tbody.rows.length+1;
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td>${idx}</td><td><input value=""></td><td><input value=""></td>`;
+    tbody.appendChild(tr);
+    refreshFanChart();
+  });
+  document.getElementById('delRowBtn').addEventListener('click',()=>{
+    const tbody=document.querySelector('#fanTable tbody');
+    if (tbody.rows.length>1) tbody.deleteRow(-1);
+    refreshFanChart();
+  });
+
+  // ---------- 3-branch flow split helper ----------
+  // Given total Q (m³/s), returns per-branch flows/velocities and branch Δp (Pa)
+  function computeBranchFlows(Q_m3s, rho, mu){
+    if (Q_m3s <= 0){
+      return {
+        dp_branch:0,
+        branches:{}
+      };
+    }
+
+    // geometry in SI
+    const W  = (parseFloat(document.getElementById('plenumW').value)||12)*IN_TO_M;
+    const H  = (parseFloat(document.getElementById('plenumH').value)||6 )*IN_TO_M;
+    const L  = (parseFloat(document.getElementById('plenumL').value)||12)*IN_TO_M;
+
+    const b   = (parseFloat(document.getElementById('b').value)||2)*IN_TO_M;
+    const s   = (parseFloat(document.getElementById('sfin').value)||1)*IN_TO_M;
+    const t   = (parseFloat(document.getElementById('tfin').value)||0.05)*IN_TO_M;
+    const Lf  = (parseFloat(document.getElementById('Lfin').value)||8)*IN_TO_M;
+    const WHS = (parseFloat(document.getElementById('WHS').value)||W/IN_TO_M)*IN_TO_M;
+
+    const sideGap = Math.max(0, (W - WHS)/2);
+    const topGap  = Math.max(0, H - b);
+
+    const branches = {};
+
+    // Channel region
+    const pitch = s + t;
+    let AchTot = 0, Dh_ch = 0;
+    if (pitch > 0 && WHS > 0 && b > 0 && Lf > 0){
+      let Nch = Math.floor((WHS + s)/pitch);
+      if (Nch < 1) Nch = 1;
+      AchTot = Nch * s * b;
+      Dh_ch = 2*s*b / Math.max(s + b,1e-9);
+      branches.ch = {
+        name:'Channels',
+        A:AchTot,
+        Dh:Dh_ch,
+        L:Lf,
+        Kminor:K_CH_MINOR
+      };
+    }
+
+    // Top gap above fins
+    if (topGap > 1e-6 && WHS > 0){
+      const A_top = WHS * topGap;
+      const Dh_top = 2*WHS*topGap / Math.max(WHS + topGap,1e-9);
+      branches.top = {
+        name:'Top gap',
+        A:A_top,
+        Dh:Dh_top,
+        L:L,
+        Kminor:K_TOP_MINOR
+      };
+    }
+
+    // Side gaps
+    if (sideGap > 1e-6 && b > 0){
+      const A_side = 2 * sideGap * b;
+      const Dh_side = 2*sideGap*b / Math.max(sideGap + b,1e-9);
+      branches.side = {
+        name:'Side gaps',
+        A:A_side,
+        Dh:Dh_side,
+        L:L,
+        Kminor:K_SIDE_MINOR
+      };
+    }
+
+    // Fallback: if no branches defined, treat whole plenum as one duct
+    if (Object.keys(branches).length === 0){
+      const Apl = W * H;
+      const Dh  = 2*W*H / Math.max(W + H,1e-9);
+      branches.ch = {
+        name:'Plenum',
+        A:Apl,
+        Dh:Dh,
+        L:L,
+        Kminor:1.0
+      };
+    }
+
+    // For each branch, compute k_i such that Δp_i ≈ k_i Q_i²
+    const Vref = 1.0; // m/s
+    let sumInvSqrt = 0;
+    for (const key of Object.keys(branches)){
+      const br = branches[key];
+      const Re_ref = rho*Vref*br.Dh / mu;
+      const f_ref  = frictionFactor(Re_ref);
+      const dp_ref = 0.5*rho*Vref*Vref * ( f_ref*(br.L/Math.max(br.Dh,1e-9)) + br.Kminor );
+      const Q_ref  = br.A * Vref;
+      let k_i = 1e12;
+      if (dp_ref>0 && Q_ref>0){
+        k_i = dp_ref / (Q_ref*Q_ref);
+      }
+      br.k = k_i;
+      const invSqrt = 1/Math.sqrt(k_i || 1e-12);
+      br.invSqrt = invSqrt;
+      sumInvSqrt += invSqrt;
+    }
+
+    // Allocate Q_i based on k_i
+    if (sumInvSqrt <= 0){
+      // degenerate: all huge resistance; just put everything in "ch"
+      const anyKey = Object.keys(branches)[0];
+      branches[anyKey].Q = Q_m3s;
+      branches[anyKey].V = branches[anyKey].A>0 ? Q_m3s/branches[anyKey].A : 0;
+    } else {
+      for (const key of Object.keys(branches)){
+        const br = branches[key];
+        const frac = br.invSqrt / sumInvSqrt;
+        const Qi = frac * Q_m3s;
+        br.Q = Qi;
+        br.V = br.A>0 ? Qi/br.A : 0;
+      }
+    }
+
+    // Common branch Δp from any branch
+    let dp_branch = 0;
+    const anyKey = Object.keys(branches)[0];
+    if (anyKey){
+      const br = branches[anyKey];
+      dp_branch = br.k * br.Q * br.Q;
+    }
+
+    return {
+      dp_branch,
+      branches
+    };
+  }
+
+  // ---------- system Δp(Q) in SI ----------
+  function systemDeltaP_SI(Q_m3s){
+    if (Q_m3s<=0) return 0;
+    const rho=parseFloat(document.getElementById('rho').value)||1.2;
+    const mu =parseFloat(document.getElementById('mu').value)||1.82e-5;
+
+    // geometry (in -> m)
+    const W  = (parseFloat(document.getElementById('plenumW').value)||12)*IN_TO_M;
+    const H  = (parseFloat(document.getElementById('plenumH').value)||6 )*IN_TO_M;
+    const wIn= (parseFloat(document.getElementById('inletW').value)||4 )*IN_TO_M;
+    const hIn= (parseFloat(document.getElementById('inletH').value)||4 )*IN_TO_M;
+
+    // Inlet loss
+    const Ain = Math.max(wIn*hIn,1e-9);
+    const Vin = Q_m3s/Ain;
+    const dp_in = K_INLET * 0.5*rho*Vin*Vin;
+
+    // Branch network (channels + top + sides)
+    const branchInfo = computeBranchFlows(Q_m3s, rho, mu);
+    const dp_branch = branchInfo.dp_branch;
+
+    // Exit loss at plenum outlet
+    const Aout = Math.max(W*H,1e-9);
+    const Vout = Q_m3s/Aout;
+    const dp_out = K_EXIT * 0.5*rho*Vout*Vout;
+
+    return dp_in + dp_branch + dp_out;
+  }
+
+  // ---------- operating point ----------
+  function computeOperatingPoint(){
+    const fanPtsIP = readFanTable();
+    if (fanPtsIP.length<2){
+      alert("Need at least two fan points.");
+      return null;
+    }
+    const Qmax = fanPtsIP[fanPtsIP.length-1].x;
+    if (!isFinite(Qmax) || Qmax<=0){
+      alert("Fan curve Q must be positive.");
+      return null;
+    }
+    const nScan=80;
+    let bestQ=0, bestErr=Infinity;
+    const sysCurveIP=[];
+    for (let i=0;i<=nScan;i++){
+      const Q_ip = Qmax*i/nScan;
+      const Q_si = Q_ip*CFM_TO_M3S;
+      const dpFan_ip = fanDeltaP_IP(Q_ip,fanPtsIP);
+      const dpSys_pa = systemDeltaP_SI(Q_si);
+      const dpSys_ip = dpSys_pa/INH2O_TO_PA;
+      const err=Math.abs(dpFan_ip-dpSys_ip);
+      if (err<bestErr){ bestErr=err; bestQ=Q_ip; }
+      sysCurveIP.push({x:Q_ip, y:dpSys_ip});
+    }
+    const dpStar_ip = fanDeltaP_IP(bestQ,fanPtsIP);
+    return {Qstar_ip:bestQ, Dpstar_ip:dpStar_ip, sysCurveIP};
+  }
+
+  // ---------- V2 velocity vs x (keep your existing plenum-over-HS model) ----------
+  function computeVelocityProfile(Qstar_m3s){
+    const rho=parseFloat(document.getElementById('rho').value)||1.2;
+    const mu =parseFloat(document.getElementById('mu').value)||1.82e-5;
+
+    const W  = (parseFloat(document.getElementById('plenumW').value)||12)*IN_TO_M;
+    const H  = (parseFloat(document.getElementById('plenumH').value)||6 )*IN_TO_M;
+    const b  = (parseFloat(document.getElementById('b').value)||2)*IN_TO_M;
+    const s  = (parseFloat(document.getElementById('sfin').value)||1)*IN_TO_M;
+    const t  = (parseFloat(document.getElementById('tfin').value)||0.05)*IN_TO_M;
+    const Lf = (parseFloat(document.getElementById('Lfin').value)||8)*IN_TO_M;
+    let nSlices=parseInt(document.getElementById('nSlices').value,10);
+    if (!isFinite(nSlices)||nSlices<3) nSlices=20;
+    if (nSlices>80) nSlices=80;
+
+    if (Qstar_m3s<=0 || Lf<=0 || W<=0 || H<=0 || b<=0 || s<=0) return null;
+
+    const Hp=Math.max(H-b,1e-6);
+    const Apl=Math.max(W*Hp,1e-9);
+    const Dh_pl = 2*W*Hp/Math.max(W+Hp,1e-9);
+
+    const pitch=s+t;
+    let Nch=Math.floor(( (parseFloat(document.getElementById('WHS').value)||12)*IN_TO_M + s)/pitch);
+    if (Nch<1) Nch=1;
+    const AchTot=Nch*s*b;
+
+    const Vch_star=Qstar_m3s/Math.max(AchTot,1e-9);
+    const Dh_ch=2*s*b/Math.max(s+b,1e-9);
+    const Re_ch=rho*Vch_star*Dh_ch/mu;
+    const f_ch =frictionFactor(Re_ch);
+    const dp_ch_star=f_ch*(Lf/Math.max(Dh_ch,1e-9))*0.5*rho*Vch_star*Vch_star + 2.0*0.5*rho*Vch_star*Vch_star;
+
+    let Kch_eff=dp_ch_star>0 ? dp_ch_star/(0.5*rho*Vch_star*Vch_star) : 0;
+    if (!isFinite(Kch_eff) || Kch_eff<=0){
+      const xs=[],Vs=[],dx=Lf/nSlices;
+      for (let i=0;i<nSlices;i++){ xs.push((i+0.5)*dx); Vs.push(Vch_star); }
+      return {xs,Vs};
+    }
+
+    const dx=Lf/nSlices;
+    const Aslice=AchTot/nSlices;
+    const P_out=0;
+
+    function runForP0(P0,capture){
+      let Pp=P0, Qp=Qstar_m3s, sumQ=0;
+      const xs=[],Vs=[];
+      for (let i=0;i<nSlices;i++){
+        let Vch_i=0, qi=0;
+        if (Pp>P_out){
+          Vch_i=Math.sqrt(2*(Pp-P_out)/(rho*Kch_eff));
+          qi=Aslice*Vch_i;
+        }
+        sumQ+=qi;
+        if (capture){ xs.push((i+0.5)*dx); Vs.push(Vch_i); }
+        Qp=Qstar_m3s-sumQ;
+        if (Qp<0) Qp=0;
+        const Vpl_i = Apl>0 ? Qp/Apl : 0;
+        const Re_pl_i = rho*Vpl_i*Dh_pl/mu;
+        const f_pl_i = frictionFactor(Re_pl_i);
+        const dp_pl_i = f_pl_i*(dx/Math.max(Dh_pl,1e-9))*0.5*rho*Vpl_i*Vpl_i;
+        Pp -= dp_pl_i;
+      }
+      return {sumQ,xs,Vs};
+    }
+
+    let dpRef=dp_ch_star;
+    if (!isFinite(dpRef)||dpRef<=0) dpRef=100;
+    let P0_low=0.1*dpRef, P0_high=10*dpRef;
+    if (P0_low<=0) P0_low=10;
+    if (P0_high<=P0_low) P0_high=P0_low*100;
+
+    let sum_low=runForP0(P0_low,false).sumQ;
+    let sum_high=runForP0(P0_high,false).sumQ;
+    if (!isFinite(sum_low)||!isFinite(sum_high)||sum_low>Qstar_m3s||sum_high<Qstar_m3s){
+      const xs=[],Vs=[],dx=Lf/nSlices;
+      for (let i=0;i<nSlices;i++){ xs.push((i+0.5)*dx); Vs.push(Vch_star); }
+      return {xs,Vs};
+    }
+
+    let P0_mid=P0_low;
+    for (let it=0;it<30;it++){
+      P0_mid=0.5*(P0_low+P0_high);
+      const smid=runForP0(P0_mid,false).sumQ;
+      if (!isFinite(smid)) break;
+      if (smid>Qstar_m3s) P0_high=P0_mid; else P0_low=P0_mid;
+    }
+    const finalRun=runForP0(P0_mid,true);
+    return {xs:finalRun.xs, Vs:finalRun.Vs};
+  }
+
+  // ---------- charts ----------
+  const ctxCurve=document.getElementById('curveChart').getContext('2d');
+  const curveConfig={
+    type:'line',
+    data:{datasets:[
+      {label:'Fan curve', data:[], borderWidth:2, tension:0.2, pointRadius:2},
+      {label:'System curve', data:[], borderWidth:2, borderDash:[4,4], tension:0.2, pointRadius:0},
+      {label:'Operating point', data:[], type:'scatter', pointRadius:4, pointStyle:'circle'}
+    ]},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      scales:{
+        x:{type:'linear', title:{display:true,text:'Q (cfm)'}, ticks:{maxTicksLimit:6}},
+        y:{title:{display:true,text:'Δp (inH₂O)'}, ticks:{maxTicksLimit:6}}
+      },
+      plugins:{legend:{display:true,position:'bottom'}}
+    }
   };
-  dragRect = null;
+  const curveChart=new Chart(ctxCurve,curveConfig);
 
-  if (drawModeSel.value === 'source') {
-    const src = { rect, amplitude: 10.0, type: 'const', freq: 1.0, label: `S${sources.length+1}`, cells: [] };
-    sources.push(src); onSourcesChanged();
-  } else {
-    const fin = { rect, t: 0.0015, L: 0.02, s: 0.005, k: materials["Aluminum (6061)"].k, label: `F${fins.length+1}`, cells: [] };
-    fins.push(fin); updateFinsList();
+  function refreshFanChart(){
+    curveConfig.data.datasets[0].data=readFanTable();
+    curveChart.update();
+  }
+  refreshFanChart();
+
+  const ctxVel=document.getElementById('velChart').getContext('2d');
+  const velConfig={
+    type:'line',
+    data:{datasets:[
+      {label:'V_ch(x)', data:[], borderWidth:2, tension:0.2, pointRadius:0}
+    ]},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      scales:{
+        x:{type:'linear', title:{display:true,text:'x / L_f'}, ticks:{maxTicksLimit:6}},
+        y:{title:{display:true,text:'V_ch (m/s)'}, ticks:{maxTicksLimit:6}}
+      },
+      plugins:{legend:{display:false}}
+    }
+  };
+  const velChart=new Chart(ctxVel,velConfig);
+
+  // =========================
+  // 3D VIEW (geometry + velocity-colored blocks)
+  // =========================
+  let scene, camera, renderer, plenumGroup, velGroup;
+  let orbit = { radius:15, theta:Math.PI/4, phi:Math.PI/4, target:new THREE.Vector3(0,0,0) };
+  let isDragging = false, lastX=0, lastY=0, startTheta=0, startPhi=0;
+  let lastBranchVels = null; // {Vch_m, Vtop_m, Vside_m}
+
+  function init3D() {
+    if (!window.THREE) {
+      const m = document.getElementById('view3D-msg');
+      if (m) m.textContent = "Three.js failed to load.";
+      return;
+    }
+    const container = document.getElementById('view3D');
+    const w = container.clientWidth || 580;
+    const h = container.clientHeight || 260;
+
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xf9fafb);
+
+    camera = new THREE.PerspectiveCamera(40, w/h, 0.1, 1000);
+
+    renderer = new THREE.WebGLRenderer({antialias:true});
+    renderer.setSize(w, h);
+    renderer.setPixelRatio(window.devicePixelRatio || 1);
+    renderer.setClearColor(0xf9fafb, 1);
+    container.appendChild(renderer.domElement);
+
+    const ambient = new THREE.AmbientLight(0xffffff, 0.9);
+    scene.add(ambient);
+    const dir = new THREE.DirectionalLight(0xffffff, 0.6);
+    dir.position.set(10, 15, 8);
+    scene.add(dir);
+
+    plenumGroup = new THREE.Group();
+    scene.add(plenumGroup);
+
+    update3DGeometry();          // geometry only, no velocity blocks yet
+    setup3DInteractions(renderer.domElement);
+
+    window.addEventListener('resize', onResize3D);
+
+    function animate() {
+      requestAnimationFrame(animate);
+      renderer.render(scene, camera);
+    }
+    animate();
   }
 
-  if(grid){ reprojectSourcesToGrid(); reprojectFinsToGrid(); computeAeff(); }
-  redraw();
-});
-
-function updateClickProbeOverlay(cx, cy){
-  if(!grid) return;
-  const i = Math.floor(cx / canvas.width * grid.nx);
-  const j = Math.floor(cy / canvas.height * grid.ny);
-  const idx = j*grid.nx + i;
-  const x = (i+0.5)*grid.dx, y=(j+0.5)*grid.dy;
-  const T = grid.T[idx];
-  const Ta = grid.Ta2D ? grid.Ta2D[idx] : parseFloat(document.getElementById('ambientT').value);
-  lastClickMarker = { x: cx, y: cy, x_m: x, y_m: y, T, Ta };
-}
-
-/* ===== List UIs ===== */
-function updateSourcesList(){
-  const div = document.getElementById('sourcesList'); div.innerHTML = '';
-  sources.forEach((s,i)=>{
-    const row = document.createElement('div'); row.className='srcRow';
-    const lbl = document.createElement('span'); lbl.className='pill'; lbl.textContent = s.label; row.appendChild(lbl);
-    const powLbl = document.createElement('span'); powLbl.textContent = 'Power (W)';
-    const pow = document.createElement('input'); pow.type='number'; pow.step='0.1'; pow.value = s.amplitude; pow.style.width='80px';
-    pow.onchange = ()=>{ s.amplitude = parseFloat(pow.value)||0; updateTaEstimate(); };
-    const typ = document.createElement('select');
-    [{v:'const',t:'const'}, {v:'sine',t:'sine (half-wave)'}].forEach(o=>{ const opt=document.createElement('option'); opt.value=o.v; opt.textContent=o.t; typ.appendChild(opt);});
-    typ.value = s.type; typ.onchange = ()=>{ s.type = typ.value; updateTaEstimate(); };
-    const fLbl = document.createElement('span'); fLbl.textContent = 'f (Hz)';
-    const f = document.createElement('input'); f.type='number'; f.step='0.1'; f.value = s.freq; f.style.width='70px';
-    f.onchange = ()=>{ s.freq = parseFloat(f.value)||0; updateTaEstimate(); };
-    const rem = document.createElement('button'); rem.textContent='Remove';
-    rem.onclick = ()=>{ sources.splice(i,1); onSourcesChanged(); if(grid){ reprojectSourcesToGrid(); } };
-    row.appendChild(powLbl); row.appendChild(pow);
-    row.appendChild(typ); row.appendChild(fLbl); row.appendChild(f); row.appendChild(rem);
-    div.appendChild(row);
-  });
-  if(sources.length===0){ const hint = document.createElement('div'); hint.style.fontSize='12px'; hint.style.color='#555'; hint.textContent='No sources. Drag on canvas to add one.'; div.appendChild(hint); }
-}
-function onSourcesChanged(){ updateSourcesList(); updateTaEstimate(); }
-
-function updateFinsList(){
-  const div = document.getElementById('finsList'); div.innerHTML = '';
-  fins.forEach((fObj,i)=>{
-    const row = document.createElement('div'); row.className='finRow';
-    const lbl=document.createElement('span'); lbl.className='pill'; lbl.textContent=fObj.label; row.appendChild(lbl);
-
-    const tLbl=document.createElement('span'); tLbl.textContent='t(m)'; const tIn=document.createElement('input');
-    tIn.type='number'; tIn.step='0.0001'; tIn.value=fObj.t; tIn.style.width='70px'; tIn.onchange=()=>{ fObj.t=parseFloat(tIn.value)||0.001; computeAeff(); updateFinSchematic(); };
-
-    const LLbl=document.createElement('span'); LLbl.textContent='L(m)'; const LIn=document.createElement('input');
-    LIn.type='number'; LIn.step='0.001'; LIn.value=fObj.L; LIn.style.width='70px'; LIn.onchange=()=>{ fObj.L=parseFloat(LIn.value)||0.01; computeAeff(); updateFinSchematic(); };
-
-    const sLbl=document.createElement('span'); sLbl.textContent='s(m)'; const sIn=document.createElement('input');
-    sIn.type='number'; sIn.step='0.0005'; sIn.value=fObj.s; sIn.style.width='70px'; sIn.onchange=()=>{ fObj.s=parseFloat(sIn.value)||0.002; computeAeff(); updateFinSchematic(); };
-
-    const kLbl=document.createElement('span'); kLbl.textContent='k(W/mK)'; const kIn=document.createElement('input');
-    kIn.type='number'; kIn.step='1'; kIn.value=fObj.k; kIn.style.width='70px'; kIn.onchange=()=>{ fObj.k=parseFloat(kIn.value)||materials["Aluminum (6061)"].k; computeAeff(); updateFinSchematic(); };
-
-    const rem = document.createElement('button'); rem.textContent='Remove';
-    rem.onclick=()=>{ fins.splice(i,1); updateFinsList(); if(grid){ reprojectFinsToGrid(); computeAeff(); } updateFinSchematic(); };
-
-    row.appendChild(tLbl); row.appendChild(tIn);
-    row.appendChild(LLbl); row.appendChild(LIn);
-    row.appendChild(sLbl); row.appendChild(sIn);
-    row.appendChild(kLbl); row.appendChild(kIn);
-    row.appendChild(rem);
-    div.appendChild(row);
-  });
-  if(fins.length===0){ const hint=document.createElement('div'); hint.style.fontSize='12px'; hint.style.color='#555'; hint.textContent='No fins. Switch canvas mode to "Draw Fins" and drag a region.'; div.appendChild(hint); }
-  updateFinSchematic();
-}
-
-/* ===== Mapping helpers ===== */
-function rectToCellIndices(rect){
-  const cw = canvas.width, ch = canvas.height;
-  let x0 = Math.floor((Math.min(rect.x0, rect.x1) / cw) * grid.nx);
-  let x1 = Math.floor((Math.max(rect.x0, rect.x1) / cw) * grid.nx);
-  let y0 = Math.floor((Math.min(rect.y0, rect.y1) / ch) * grid.ny);
-  let y1 = Math.floor((Math.max(rect.y0, rect.y1) / ch) * grid.ny);
-  x0 = Math.max(0, Math.min(grid.nx-1, x0));
-  x1 = Math.max(0, Math.min(grid.nx-1, x1));
-  y0 = Math.max(0, Math.min(grid.ny-1, y0));
-  y1 = Math.max(0, Math.min(grid.ny-1, y1));
-  const out = [];
-  if (x1 < x0 || y1 < y0) {
-    const cx = Math.max(0, Math.min(grid.nx-1, Math.floor(((rect.x0+rect.x1)/2)/cw*grid.nx)));
-    const cy = Math.max(0, Math.min(grid.nx-1, Math.floor(((rect.y0+rect.y1)/2)/ch*grid.ny)));
-    out.push(cy*grid.nx + cx);
-  } else {
-    for(let j=y0;j<=y1;j++) for(let i=x0;i<=x1;i++) out.push(j*grid.nx + i);
+  function setup3DInteractions(canvas) {
+    canvas.addEventListener('mousedown', (e)=>{
+      isDragging = true;
+      lastX = e.clientX;
+      lastY = e.clientY;
+      startTheta = orbit.theta;
+      startPhi   = orbit.phi;
+    });
+    window.addEventListener('mousemove', (e)=>{
+      if (!isDragging) return;
+      const dx = e.clientX - lastX;
+      const dy = e.clientY - lastY;
+      const rotSpeed = 0.005;
+      orbit.theta = startTheta - dx * rotSpeed;
+      orbit.phi   = startPhi   - dy * rotSpeed;
+      const eps = 0.1;
+      orbit.phi = Math.max(eps, Math.min(Math.PI-eps, orbit.phi));
+      updateCameraFromOrbit();
+    });
+    window.addEventListener('mouseup', ()=>{ isDragging=false; });
+    canvas.addEventListener('wheel', (e)=>{
+      e.preventDefault();
+      const zoomFactor = 1 + Math.sign(e.deltaY) * 0.1;
+      orbit.radius *= zoomFactor;
+      orbit.radius = Math.max(2, Math.min(100, orbit.radius));
+      updateCameraFromOrbit();
+    }, {passive:false});
   }
-  return out;
-}
-function reprojectSourcesToGrid(){ if(!grid) return; sources.forEach(s => { s.cells = rectToCellIndices(s.rect); }); }
-function reprojectFinsToGrid(){ if(!grid) return; fins.forEach(f => { f.cells = rectToCellIndices(f.rect); }); }
 
-/* ===== h correlation + fins ===== */
-function estimateHfromVelocity(v){
-  const h = 1.16*(10.45 - v + 10*Math.sqrt(Math.max(0,v)));
-  return Math.max(1.0, Math.min(h, 500));
-}
-function computeAeff(){
-  if(!grid) return;
-  const {nx, ny, dx, dy, Aeff} = grid;
-  const v = parseFloat(document.getElementById('airVel').value);
-  const h = estimateHfromVelocity(v);
-  const both = document.getElementById('bothSides')?.checked;
-  const Abase = (both ? 2 : 1) * dx * dy;
-  for(let idx=0; idx<nx*ny; idx++) Aeff[idx] = Abase;
+  function updateCameraFromOrbit() {
+    if (!camera) return;
+    const {radius, theta, phi, target} = orbit;
+    const x = target.x + radius * Math.sin(phi) * Math.cos(theta);
+    const y = target.y + radius * Math.cos(phi);
+    const z = target.z + radius * Math.sin(phi) * Math.sin(theta);
+    camera.position.set(x,y,z);
+    camera.lookAt(target);
+  }
 
-  fins.forEach(f=>{
-    const p = (f.t + f.s); if(p <= 1e-9) return;
-    const NperCell = Math.max(0, dx / p);
-    const m = Math.sqrt( Math.max(0, 2*h / Math.max(1e-12, f.k * f.t)) );
-    const eta = (m*f.L > 1e-9) ? (Math.tanh(m*f.L)/(m*f.L)) : 1.0;
-    f.cells.forEach(idx=>{
-      Aeff[idx] += eta * (2 * f.L * dy * NperCell);
+  function onResize3D() {
+    if (!renderer || !camera) return;
+    const container = document.getElementById('view3D');
+    const w = container.clientWidth || 580;
+    const h = container.clientHeight || 260;
+    camera.aspect = w/h;
+    camera.updateProjectionMatrix();
+    renderer.setSize(w,h);
+  }
+
+  function clearGroup(group) {
+    if (!group) return;
+    while (group.children.length > 0) {
+      const obj = group.children[0];
+      group.remove(obj);
+      if (obj.geometry) obj.geometry.dispose();
+      if (obj.material) {
+        if (Array.isArray(obj.material)) obj.material.forEach(m=>m.dispose());
+        else obj.material.dispose();
+      }
+    }
+  }
+
+  function update3DGeometry() {
+    if (!plenumGroup || !window.THREE) return;
+
+    // Clear everything (geometry + any old velocity blocks)
+    clearGroup(plenumGroup);
+    velGroup = null;
+
+    const W   = parseFloat(document.getElementById('plenumW').value) || 12;
+    const H   = parseFloat(document.getElementById('plenumH').value) || 6;
+    const L   = parseFloat(document.getElementById('plenumL').value) || 12;
+    const wIn = parseFloat(document.getElementById('inletW').value)  || 4;
+    const hIn = parseFloat(document.getElementById('inletH').value)  || 4;
+
+    const b   = parseFloat(document.getElementById('b').value)       || 2;
+    const s   = parseFloat(document.getElementById('sfin').value)    || 1;
+    const t   = parseFloat(document.getElementById('tfin').value)    || 0.05;
+    const Lf  = parseFloat(document.getElementById('Lfin').value)    || 8;
+    const xHS = parseFloat(document.getElementById('xHS').value)     || 3;
+    const WHS = parseFloat(document.getElementById('WHS').value)     || W;
+
+    const maxDim = Math.max(L, W, H, 0.1);
+    const scale = 10 / maxDim;
+    const Ls = L * scale;
+    const Ws = W * scale;
+    const Hs = H * scale;
+
+    // Plenum box (wireframe + light fill)
+    const plenumGeom = new THREE.BoxGeometry(Ls, Hs, Ws);
+    const edges = new THREE.EdgesGeometry(plenumGeom);
+    const wireMat = new THREE.LineBasicMaterial({color:0x111111});
+    const wireMesh = new THREE.LineSegments(edges, wireMat);
+    plenumGroup.add(wireMesh);
+
+    const plenumMat = new THREE.MeshBasicMaterial({
+      color:0xcbd5f5,
+      transparent:true,
+      opacity:0.12,
+      depthWrite:false
+    });
+    const plenumMesh = new THREE.Mesh(plenumGeom, plenumMat);
+    plenumGroup.add(plenumMesh);
+
+    // Inlet block
+    const AinW = Math.min(wIn, L) * scale;
+    const AinH = Math.min(hIn, H) * scale;
+    const inletGeom = new THREE.BoxGeometry(0.04*Ls, AinH, AinW);
+    const inletMat  = new THREE.MeshBasicMaterial({color:0x4b5563});
+    const inletMesh = new THREE.Mesh(inletGeom, inletMat);
+    inletMesh.position.set(-Ls/2 - 0.02*Ls, 0, 0);
+    plenumGroup.add(inletMesh);
+
+    // Heat-sink base & fins (fins same color as base)
+    if (b > 0 && Lf > 0 && WHS > 0) {
+      const baseThickness = 0.03 * Hs;
+      const baseLen   = Math.min(Lf, L - xHS) * scale;
+      const baseWidth = Math.min(WHS, W) * scale;
+
+      const baseColor = 0x9ca3af;
+
+      const baseGeom = new THREE.BoxGeometry(baseLen, baseThickness, baseWidth);
+      const baseMat  = new THREE.MeshPhongMaterial({color:baseColor});
+      const baseMesh = new THREE.Mesh(baseGeom, baseMat);
+      const xHSs = (-Ls/2) + xHS * scale + baseLen/2;
+      const yBase = -Hs/2 + baseThickness/2;
+      baseMesh.position.set(xHSs, yBase, 0);
+      plenumGroup.add(baseMesh);
+
+      const pitch = s + t;
+      if (pitch > 0) {
+        let Nch = Math.floor((WHS + s) / pitch);
+        if (Nch < 1) Nch = 1;
+        const maxFinsToDraw = 60;
+        const drawEvery = Math.max(1, Math.floor(Nch / maxFinsToDraw));
+
+        const finHeight = Math.min(b, H) * scale;
+        const finThick  = t * scale;
+        const finLen    = baseLen;
+        const WfinTotal = baseWidth;
+
+        const finGeom = new THREE.BoxGeometry(finLen, finHeight, finThick);
+        const finMat  = new THREE.MeshPhongMaterial({color:baseColor});
+
+        for (let i=0; i<Nch; i+=drawEvery) {
+          const z0 = -WfinTotal/2 + (i + 0.5) * pitch * scale;
+          if (z0 < -WfinTotal/2 || z0 > WfinTotal/2) continue;
+
+          const finMesh = new THREE.Mesh(finGeom, finMat.clone());
+          const yFin = yBase + baseThickness/2 + finHeight/2;
+          finMesh.position.set(xHSs, yFin, z0);
+          plenumGroup.add(finMesh);
+        }
+      }
+    }
+
+    // Fit camera to plenum box
+    if (camera) {
+      const box = new THREE.Box3().setFromObject(plenumGroup);
+      const size = new THREE.Vector3();
+      const center = new THREE.Vector3();
+      box.getSize(size);
+      box.getCenter(center);
+      const maxSize = Math.max(size.x, size.y, size.z);
+      orbit.target.copy(center);
+      orbit.radius = maxSize * 1.8;
+      camera.near = orbit.radius / 50;
+      camera.far  = orbit.radius * 50;
+      camera.updateProjectionMatrix();
+      updateCameraFromOrbit();
+    }
+  }
+
+  // Velocity-colored blocks
+  function updateVelocityBlocks(branchVels){
+    if (!plenumGroup || !window.THREE) return;
+    if (!branchVels) return;
+
+    // Remove old velocity blocks
+    if (velGroup) {
+      clearGroup(velGroup);
+      plenumGroup.remove(velGroup);
+    }
+    velGroup = new THREE.Group();
+    plenumGroup.add(velGroup);
+
+    const W   = parseFloat(document.getElementById('plenumW').value) || 12;
+    const H   = parseFloat(document.getElementById('plenumH').value) || 6;
+    const L   = parseFloat(document.getElementById('plenumL').value) || 12;
+    const b   = parseFloat(document.getElementById('b').value)       || 2;
+    const Lf  = parseFloat(document.getElementById('Lfin').value)    || 8;
+    const xHS = parseFloat(document.getElementById('xHS').value)     || 3;
+    const WHS = parseFloat(document.getElementById('WHS').value)     || W;
+
+    const maxDim = Math.max(L, W, H, 0.1);
+    const scale = 10 / maxDim;
+    const Ls = L * scale;
+    const Ws = W * scale;
+    const Hs = H * scale;
+
+    const sideGap = Math.max(0, (W - WHS)/2);
+    const topGap  = Math.max(0, H - b);
+
+    const yBottom = -Hs/2;
+    const yTop    =  Hs/2;
+
+    const b_s  = b * scale;
+    const WHS_s = WHS * scale;
+    const sideGap_s = sideGap * scale;
+    const topGap_s  = topGap * scale;
+
+    const xHS_start = (-Ls/2) + xHS * scale;
+    const Lf_s = Math.min(Lf, L - xHS) * scale;
+    const xHS_mid   = xHS_start + 0.5*Lf_s;
+    const xHS_end   = xHS_start + Lf_s;
+
+    // Velocities (m/s)
+    const Vch = branchVels.Vch_m || 0;
+    const Vtop = branchVels.Vtop_m || 0;
+    const Vside = branchVels.Vside_m || 0;
+
+    const entries = [];
+    if (Vch > 0) entries.push({key:'ch', V:Vch});
+    if (Vtop > 0) entries.push({key:'top', V:Vtop});
+    if (Vside> 0) entries.push({key:'side',V:Vside});
+
+    if (entries.length === 0) return;
+
+    // Rank by velocity
+    entries.sort((a,b)=>b.V - a.V); // highest first
+
+    // Color palette: darkest for fastest, lightest for slowest
+    const palette = [0x0b3a8a, 0x1d4ed8, 0x93c5fd];
+
+    const colorMap = {};
+    for (let i=0;i<entries.length;i++){
+      colorMap[entries[i].key] = palette[Math.min(i, palette.length-1)];
+    }
+
+    // Channel block: over the fin region
+    if (Vch > 0 && Lf_s>0 && b_s>0 && WHS_s>0){
+      const chGeom = new THREE.BoxGeometry(Lf_s, b_s, WHS_s);
+      const chMat  = new THREE.MeshBasicMaterial({
+        color: colorMap.ch || palette[1],
+        transparent:true,
+        opacity:0.35
+      });
+      const yChCenter = yBottom + b_s/2;
+      const chMesh = new THREE.Mesh(chGeom, chMat);
+      chMesh.position.set(xHS_mid, yChCenter, 0);
+      velGroup.add(chMesh);
+    }
+
+    // Top block: above fins, over HS width
+    if (Vtop > 0 && topGap_s>0 && WHS_s>0){
+      const topGeom = new THREE.BoxGeometry(Ls, topGap_s, WHS_s);
+      const topMat  = new THREE.MeshBasicMaterial({
+        color: colorMap.top || palette[2],
+        transparent:true,
+        opacity:0.30
+      });
+      const yTopCenter = yBottom + b_s + topGap_s/2;
+      const topMesh = new THREE.Mesh(topGeom, topMat);
+      topMesh.position.set(0, yTopCenter, 0);
+      velGroup.add(topMesh);
+    }
+
+    // Side blocks: left & right, height b
+    if (Vside > 0 && sideGap_s>0 && b_s>0){
+      const sideGeom = new THREE.BoxGeometry(Ls, b_s, sideGap_s);
+      const sideMat  = new THREE.MeshBasicMaterial({
+        color: colorMap.side || palette[2],
+        transparent:true,
+        opacity:0.30
+      });
+
+      const ySideCenter = yBottom + b_s/2;
+      const zLeft  = -(WHS_s/2 + sideGap_s/2);
+      const zRight = +(WHS_s/2 + sideGap_s/2);
+
+      const leftMesh = new THREE.Mesh(sideGeom, sideMat);
+      leftMesh.position.set(0, ySideCenter, zLeft);
+      velGroup.add(leftMesh);
+
+      const rightMesh = new THREE.Mesh(sideGeom, sideMat.clone());
+      rightMesh.position.set(0, ySideCenter, zRight);
+      velGroup.add(rightMesh);
+    }
+  }
+
+  function updateVelocityLegend(branchVels){
+    const div = document.getElementById('velLegend');
+    if (!div) return;
+
+    if (!branchVels){
+      div.textContent = '';
+      return;
+    }
+
+    const Vch = branchVels.Vch_m || 0;
+    const Vtop = branchVels.Vtop_m || 0;
+    const Vside = branchVels.Vside_m || 0;
+
+    const entries = [];
+    if (Vch > 0) entries.push({key:'ch', name:'Channels', V:Vch});
+    if (Vtop> 0) entries.push({key:'top', name:'Top gap', V:Vtop});
+    if (Vside>0) entries.push({key:'side',name:'Side gaps', V:Vside});
+
+    if (entries.length === 0){
+      div.textContent = '';
+      return;
+    }
+
+    // Same ranking as blocks
+    entries.sort((a,b)=>b.V - a.V);
+    const paletteCSS = ['#0b3a8a','#1d4ed8','#93c5fd'];
+    const colorByKey = {};
+    for (let i=0;i<entries.length;i++){
+      colorByKey[entries[i].key] = paletteCSS[Math.min(i, paletteCSS.length-1)];
+    }
+
+    let html = '<div style="margin-top:4px;margin-bottom:2px;">Velocity legend (ft/s):</div>';
+    for (const e of entries){
+      const V_ft = e.V * 3.28084;
+      html += `
+        <div class="row">
+          <span class="swatch" style="background:${colorByKey[e.key]};"></span>
+          <span>${e.name}: ${V_ft.toFixed(1)} ft/s</span>
+        </div>`;
+    }
+    div.innerHTML = html;
+  }
+
+  // Kick off 3D on load
+  window.addEventListener('load', () => {
+    init3D();
+  });
+
+  // Rebuild geometry (but NOT velocity blocks) when geometry inputs change
+  const geomIds = [
+    'plenumW','plenumH','plenumL',
+    'inletW','inletH','xHS','Lfin','b','WHS','sfin','tfin'
+  ];
+  geomIds.forEach(id=>{
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', () => {
+      update3DGeometry();
+      // clear legend and blocks if geometry changes
+      lastBranchVels = null;
+      updateVelocityLegend(null);
     });
   });
-  updateFinSchematic();
-}
 
-/* ===== Fin schematic (scaled to grid) ===== */
-function updateFinSchematic(){
-  const svg = document.getElementById('finSchematic'); if (!svg || !grid) return;
-  while (svg.firstChild) svg.removeChild(svg.firstChild);
-  const W = +svg.getAttribute('width') || 160;
-  const H = +svg.getAttribute('height') || canvas.height;
-  const margin = 12;
+  // -------------------------
+  // Solve button: V2 + 3-branch split + velocity blocks
+  // -------------------------
+  document.getElementById('solveBtn').addEventListener('click', () => {
+    const op = computeOperatingPoint();
+    if (!op) return;
 
-  const rect = (x,y,w,h,fill,stroke)=>{
-    const r=document.createElementNS('http://www.w3.org/2000/svg','rect');
-    r.setAttribute('x',x); r.setAttribute('y',y); r.setAttribute('width',w); r.setAttribute('height',h);
-    if(fill) r.setAttribute('fill',fill); if(stroke) r.setAttribute('stroke',stroke);
-    svg.appendChild(r);
-  };
+    const { Qstar_ip, Dpstar_ip, sysCurveIP } = op;
+    const Qstar_m3s = Qstar_ip * CFM_TO_M3S;
 
-  rect(0,0,W,H,'#fff','#ddd');      // bg
-  const plateX = margin;
-  rect(plateX, margin, 10, H-2*margin, '#eee', '#bbb'); // plate edge
+    const rho = parseFloat(document.getElementById('rho').value) || 1.2;
+    const mu  = parseFloat(document.getElementById('mu').value)  || 1.82e-5;
 
-  const ppmY = canvas.height / grid.heightM;  // px/m vertical
-  const ppmX = canvas.width  / grid.widthM;   // px/m horizontal
-  const bandW = W - (plateX + 10) - margin;
+    const W_in   = (parseFloat(document.getElementById('plenumW').value) || 12) * IN_TO_M;
+    const H_in   = (parseFloat(document.getElementById('plenumH').value) ||  6) * IN_TO_M;
+    const wIn_in = (parseFloat(document.getElementById('inletW').value)  ||  4) * IN_TO_M;
+    const hIn_in = (parseFloat(document.getElementById('inletH').value)  ||  4) * IN_TO_M;
 
-  fins.forEach(f=>{
-    const ch = canvas.height;
-    const y0r = Math.min(f.rect.y0, f.rect.y1)/ch;
-    const y1r = Math.max(f.rect.y0, f.rect.y1)/ch;
-    const sy0 = margin + (H-2*margin) * y0r;
-    const sy1 = margin + (H-2*margin) * y1r;
+    // Inlet velocity
+    const Ain = Math.max(wIn_in * hIn_in, 1e-9);
+    const Vin_m = Qstar_m3s / Ain;
+    const Vin_ft = Vin_m * 3.28084;
 
-    rect(plateX+10, sy0, bandW, Math.max(2, sy1-sy0), '#eef6ff', '#cfe5ff');
+    // Plenum Re based on full cross-section
+    const Apl_full = Math.max(W_in * H_in, 1e-9);
+    const Vpl = Qstar_m3s / Apl_full;
+    const Dh_pl = 2 * W_in * H_in / Math.max(W_in + H_in, 1e-9);
+    const Re_pl = rho * Vpl * Dh_pl / mu;
 
-    const t_px = Math.max(1, Math.round((f.t || 0.001) * ppmY));
-    const s_px = Math.max(1, Math.round((f.s || 0.002) * ppmY));
-    const pitch_px = t_px + s_px;
-    const L_px = Math.max(4, Math.min(bandW - 4, Math.round((f.L || 0.01) * ppmX)));
+    // Branch flows (channels, top, side)
+    const branchInfo = computeBranchFlows(Qstar_m3s, rho, mu);
+    const br = branchInfo.branches;
 
-    const x0 = plateX + 10 + 2;
-    let y = Math.round(sy0 + 2);
-    while (y + t_px <= sy1 - 2) {
-      rect(x0, y, L_px, t_px, '#2680eb', '#1460b8');
-      y += pitch_px;
+    let Vch_m = NaN, Re_ch = NaN;
+    if (br.ch){
+      Vch_m = br.ch.V;
+      Re_ch = rho * br.ch.V * br.ch.Dh / mu;
     }
+
+    let Vtop_m = (br.top && br.top.V) ? br.top.V : 0;
+    let Vside_m = (br.side && br.side.V) ? br.side.V : 0;
+
+    const Vch_ft = isFinite(Vch_m) ? Vch_m * 3.28084 : NaN;
+
+    // Fan air power
+    const Dpstar_Pa = Dpstar_ip * INH2O_TO_PA;
+    const power_W = Qstar_m3s * Dpstar_Pa;
+    const HP = power_W / 745.7;
+
+    // Update numeric results (IP display)
+    document.getElementById('Qstar').textContent  = Qstar_ip.toFixed(1);
+    document.getElementById('Dpstar').textContent = Dpstar_ip.toFixed(3);
+    document.getElementById('Vin').textContent    = isFinite(Vin_ft) ? Vin_ft.toFixed(1) : '—';
+    document.getElementById('Vch').textContent    = isFinite(Vch_ft) ? Vch_ft.toFixed(1) : '—';
+    document.getElementById('Re_pl').textContent  = isFinite(Re_pl)  ? Re_pl.toFixed(0)  : '—';
+    document.getElementById('Re_ch').textContent  = isFinite(Re_ch)  ? Re_ch.toFixed(0)  : '—';
+    document.getElementById('HP').textContent     = isFinite(HP)     ? HP.toFixed(3)     : '—';
+
+    // Update fan/system chart
+    curveConfig.data.datasets[1].data = sysCurveIP;
+    curveConfig.data.datasets[2].data = [{x: Qstar_ip, y: Dpstar_ip}];
+    curveChart.update();
+
+    // V2 velocity profile chart (internal m/s)
+    const prof = computeVelocityProfile(Qstar_m3s);
+    if (!prof || !prof.Vs || prof.Vs.length === 0) {
+      velConfig.data.datasets[0].data = [];
+    } else {
+      const { xs, Vs } = prof;
+      const data = [];
+      const Lf_in = (parseFloat(document.getElementById('Lfin').value) || 8) * IN_TO_M;
+      for (let i = 0; i < xs.length; i++) {
+        const xNorm = Lf_in > 0 ? xs[i] / Lf_in : 0;
+        data.push({ x: xNorm, y: Vs[i] });
+      }
+      velConfig.data.datasets[0].data = data;
+    }
+    velChart.update();
+
+    // Store branch velocities for 3D coloring (m/s)
+    lastBranchVels = {
+      Vch_m: isFinite(Vch_m) ? Vch_m : 0,
+      Vtop_m: isFinite(Vtop_m) ? Vtop_m : 0,
+      Vside_m: isFinite(Vside_m) ? Vside_m : 0
+    };
+
+    // Refresh geometry and draw velocity-colored blocks + legend
+    update3DGeometry();
+    updateVelocityBlocks(lastBranchVels);
+    updateVelocityLegend(lastBranchVels);
   });
-}
 
-/* ===== Sources & air ===== */
-function rebuildQ(t){
-  if(!grid) return;
-  grid.Q.fill(0);
-  for(const s of sources){
-    if(!s.cells || s.cells.length===0) continue;
-    let timeFactor = 1;
-    if(s.type === 'sine'){ timeFactor = Math.max(0, Math.sin(2*Math.PI*(s.freq||0)*t)); }
-    const perCell = (s.amplitude * timeFactor) / s.cells.length;
-    for(const idx of s.cells) grid.Q[idx] += perCell;
-  }
-}
+// -------------------------
+  // EXPORT/IMPORT FUNCTIONS
+  // -------------------------
 
-function rebuildTaFromT(T){
-  if(!grid) return;
-  const {nx, ny, Aeff} = grid;
-  const use   = document.getElementById('useWarmed').checked;
-  const v     = parseFloat(document.getElementById('airVel').value);
-  const rhoA  = parseFloat(document.getElementById('airRho').value);
-  const cpA   = parseFloat(document.getElementById('airCp').value);
-  const Hgap  = parseFloat(document.getElementById('airH').value);
-  const TinC  = parseFloat(document.getElementById('airTin').value);
-  const gamma = 0.0;
-  const dir   = document.getElementById('flowDir').value;
-  const mix   = Math.max(0, Math.min(0.2, parseFloat(document.getElementById('airMix').value)||0));
-
-  const h     = estimateHfromVelocity(v);
-
-  if (!use) {
-    grid.Ta2D.fill(TinC);
-    const el = document.getElementById('taInfo'); if (el) el.textContent = `fixed Ta = ${TinC.toFixed(1)}°C`;
-    return;
+  // Helper function to get formatted timestamp
+  function getTimestamp() {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const seconds = String(now.getSeconds()).padStart(2, '0');
+    return `${year}${month}${day}_${hours}${minutes}${seconds}`;
   }
 
-  const mdot_total = Math.max(1e-12, rhoA * v * Math.max(1e-9, Hgap));
-  const mdot_row   = mdot_total / ny;
-
-  const TaNew = new Arr(nx*ny);
-
-  if (dir === 'LR') {
-    for (let j=0; j<ny; j++) {
-      const idx0 = j*nx + 0;
-      const guess = grid.Ta2D[idx0];
-      TaNew[idx0] = (1-gamma)*guess + gamma*TinC;
-      let TaRun = TaNew[idx0];
-      for (let i=0; i<nx-1; i++) {
-        const idx = j*nx + i;
-        const dT = T[idx] - TaRun;
-        const Qi = h * Aeff[idx] * Math.max(0, dT);
-        TaRun = TaRun + Qi/(mdot_row*cpA);
-        const idxNext = j*nx + (i+1);
-        const guessNext = grid.Ta2D[idxNext];
-        TaNew[idxNext] = (1-gamma)*guessNext + gamma*TaRun;
-      }
-    }
-  } else {
-    for (let j=0; j<ny; j++) {
-      const idxN = j*nx + (nx-1);
-      const guess = grid.Ta2D[idxN];
-      TaNew[idxN] = (1-gamma)*guess + gamma*TinC;
-      let TaRun = TaNew[idxN];
-      for (let i=nx-1; i>0; i--) {
-        const idx = j*nx + i;
-        const dT = T[idx] - TaRun;
-        const Qi = h * Aeff[idx] * Math.max(0, dT);
-        TaRun = TaRun + Qi/(mdot_row*cpA);
-        const idxPrev = j*nx + (i-1);
-        const guessPrev = grid.Ta2D[idxPrev];
-        TaNew[idxPrev] = (1-gamma)*guessPrev + gamma*TaRun;
-      }
-    }
-  }
-
-  if (mix > 0) {
-    for (let i=0; i<nx; i++) {
-      for (let j=0; j<ny; j++) {
-        const idx = j*nx + i;
-        const c  = TaNew[idx];
-        const up = TaNew[(Math.max(0,j-1))*nx + i];
-        const dn = TaNew[(Math.min(ny-1,j+1))*nx + i];
-        grid.Ta2D[idx] = c + mix*(up - 2*c + dn);
-      }
-    }
-  } else {
-    grid.Ta2D.set(TaNew);
-  }
-
-  if (dir === 'LR') { for (let j=0; j<ny; j++) grid.Ta2D[j*nx + 0] = TinC; }
-  else { for (let j=0; j<ny; j++) grid.Ta2D[j*nx + (nx-1)] = TinC; }
-
-  let taMin=+Infinity, taMax=-Infinity;
-  for (let k=0;k<nx*ny;k++){ const v=grid.Ta2D[k]; if(v<taMin) taMin=v; if(v>taMax) taMax=v; }
-  const tEl = document.getElementById('taInfo');
-  if (tEl) tEl.textContent = `min=${taMin.toFixed(1)}°C, max=${taMax.toFixed(1)}°C`;
-}
-
-/* ===== Rendering ===== */
-function niceStep(x){
-  const p = Math.pow(10, Math.floor(Math.log10(x)));
-  const n = x/p;
-  const s = (n<1.5)?1:(n<3)?2:(n<7)?5:10;
-  return s*p;
-}
-function drawAxesAndGrid(){
-  if(!grid) return;
-  const show = document.getElementById('showGrid').checked;
-  const {widthM, heightM} = grid;
-  ctx.save();
-  ctx.strokeStyle = '#000'; ctx.lineWidth = 1;
-  ctx.strokeRect(0.5,0.5,canvas.width-1,canvas.height-1);
-
-  const targetTicks = 8;
-  const tickW = niceStep(widthM/targetTicks);
-  const tickH = niceStep(heightM/targetTicks);
-
-  ctx.fillStyle = '#000';
-  ctx.font = '12px system-ui';
-
-  for(let x=0; x<=widthM+1e-12; x+=tickW){
-    const px = (x/widthM)*canvas.width;
-    ctx.beginPath(); ctx.moveTo(px, canvas.height-8); ctx.lineTo(px, canvas.height); ctx.stroke();
-    ctx.fillText(x.toFixed(3), px-14, canvas.height-10);
-    if (show){ ctx.strokeStyle='#eee'; ctx.beginPath(); ctx.moveTo(px,0); ctx.lineTo(px,canvas.height); ctx.stroke(); ctx.strokeStyle='#000'; }
-  }
-  for(let y=0; y<=heightM+1e-12; y+=tickH){
-    const py = (y/heightM)*canvas.height;
-    ctx.beginPath(); ctx.moveTo(0, py); ctx.lineTo(8, py); ctx.stroke();
-    ctx.fillText(y.toFixed(3), 10, py-2);
-    if (show){ ctx.strokeStyle='#eee'; ctx.beginPath(); ctx.moveTo(0,py); ctx.lineTo(canvas.width,py); ctx.stroke(); ctx.strokeStyle='#000'; }
-  }
-
-  ctx.fillText(`W = ${widthM} m`, canvas.width-120, canvas.height-24);
-  ctx.rotate(-Math.PI/2); ctx.fillText(`H = ${heightM} m`, -canvas.height+6, 12); ctx.rotate(Math.PI/2);
-}
-
-function drawAirOverlayIfEnabled(){
-  if(!grid) return;
-  const showTa = document.getElementById('showTa')?.checked;
-  if (!showTa || !grid?.Ta2D) return;
-
-  const nx = grid.nx, ny = grid.ny;
-  let amin=+Infinity, amax=-Infinity;
-  for (let k=0;k<nx*ny;k++){ const v=grid.Ta2D[k]; if(v<amin) amin=v; if(v>amax) amax=v; }
-  const ar = Math.max(1e-9, amax-amin);
-  const imgTa = ctx.createImageData(canvas.width, canvas.height);
-  const dta = imgTa.data;
-  for (let py=0; py<canvas.height; py++){
-    const j = Math.floor(py / canvas.height * ny);
-    for (let px=0; px<canvas.width; px++){
-      const i = Math.floor(px / canvas.width * nx);
-      const a = grid.Ta2D[j*nx + i];
-      const n = (a - amin)/ar;
-      const idx = (py*canvas.width + px)*4;
-      dta[idx+0] = Math.floor(255*n);
-      dta[idx+1] = 0;
-      dta[idx+2] = Math.floor(255*(1-n));
-      dta[idx+3] = 80;
-    }
-  }
-  ctx.putImageData(imgTa, 0, 0);
-}
-
-function redraw(){
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  if(grid){
-    const img = ctx.createImageData(canvas.width, canvas.height);
-    const data = img.data, T = grid.T;
-    let tmin = +Infinity, tmax = -Infinity;
-    for(let i=0;i<T.length;i++){ const v=T[i]; if(v<tmin) tmin=v; if(v>tmax) tmax=v; }
-    if(!isFinite(tmin)){ tmin=0; tmax=1; }
-    const range = Math.max(1e-9, tmax - tmin);
-    for(let py=0; py<canvas.height; py++){
-      const gy = Math.floor(py / canvas.height * grid.ny);
-      for(let px=0; px<canvas.width; px++){
-        const gx = Math.floor(px / canvas.width * grid.nx);
-        const t = T[gy*grid.nx + gx];
-        const norm = (t - tmin) / range;
-        const r = Math.floor(255 * Math.min(1, Math.max(0, norm)));
-        const b = Math.floor(255 * (1 - Math.min(1, Math.max(0, norm))));
-        const g_ = Math.floor(64*(1 - Math.min(1, Math.max(0, norm))));
-        const idx = (py*canvas.width + px)*4;
-        data[idx] = r; data[idx+1] = g_; data[idx+2] = b; data[idx+3] = 255;
-      }
-    }
-    ctx.putImageData(img, 0, 0);
-
-    drawAirOverlayIfEnabled();
-
-    document.getElementById('tMaxLbl').textContent = tmax.toFixed(1) + '°C';
-    document.getElementById('tMinLbl').textContent = tmin.toFixed(1) + '°C';
-
-    ctx.save();
-    ctx.globalAlpha = 0.35; ctx.fillStyle = "#00a0ff";
-    fins.forEach(f=>{ const r=f.rect; ctx.fillRect(r.x0, r.y0, r.x1-r.x0, r.y1-r.y0); });
-    
-ctx.globalAlpha = 0.5; ctx.fillStyle = "#ff7700";
-sources.forEach(s=>{ const r=s.rect; ctx.fillRect(r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0); });
-
-    
-    if (dragRect) {
-      ctx.fillStyle = "rgba(0,200,0,0.35)";
-      ctx.fillRect(dragRect.x0, dragRect.y0, dragRect.x1 - dragRect.x0, dragRect.y1 - dragRect.y0);
-    }
-    if(lastClickMarker){
-      const m = lastClickMarker;
-      ctx.strokeStyle='#000'; ctx.beginPath();
-      ctx.arc(m.x, m.y, 6, 0, Math.PI*2); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(m.x-8,m.y); ctx.lineTo(m.x+8,m.y); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(m.x,m.y-8); ctx.lineTo(m.x,m.y+8); ctx.stroke();
-      const text = `x=${m.x_m?.toFixed(4)} m, y=${m.y_m?.toFixed(4)} m, T=${(m.T??NaN).toFixed?.(2)} °C, Ta=${(m.Ta??NaN).toFixed?.(2)} °C`;
-      ctx.font='12px system-ui'; ctx.fillStyle='rgba(255,255,255,0.95)'; ctx.strokeStyle='rgba(0,0,0,0.2)';
-      const pad=6; const tw = ctx.measureText(text).width + 2*pad; const th = 18;
-      const bx = Math.min(canvas.width - tw - 4, Math.max(4, m.x + 10));
-      const by = Math.min(canvas.height - th - 4, Math.max(4, m.y - th - 10));
-      ctx.fillRect(bx, by, tw, th); ctx.strokeRect(bx, by, tw, th);
-      ctx.fillStyle='#000'; ctx.fillText(text, bx+pad, by+th-5);
-    }
-    ctx.restore();
-
-    drawAxesAndGrid();
-  } else {
-    ctx.fillStyle = "#eee"; ctx.fillRect(0,0,canvas.width,canvas.height);
-  }
-
-  updateFinSchematic();
-}
-
-/* ===== Linear solver & ADI ===== */
-function thomasSolve(a,b,c,d){
-  const n = b.length;
-  for(let i=1;i<n;i++){ const m=a[i]/b[i-1]; b[i]-=m*c[i-1]; d[i]-=m*d[i-1]; }
-  const x = new Arr(n); x[n-1]=d[n-1]/b[n-1];
-  for(let i=n-2;i>=0;i--){ x[i]=(d[i]-c[i]*x[i+1])/b[i]; }
-  return x;
-}
-function stepADI(dt){
-  const {nx, ny, dx, dy, T, Ttmp, alpha, rho, cp, Q, thickness, Aeff, Ta2D} = grid;
-  const dx2 = dx*dx, dy2 = dy*dy;
-  const rx = alpha*dt/dx2, ry = alpha*dt/dy2;
-
-  const v = parseFloat(document.getElementById('airVel').value);
-  const h = estimateHfromVelocity(v);
-  const V = dx*dy*thickness;
-  const srcFactorHalf = 0.5*dt/(rho*cp*V);
-
-  rebuildTaFromT(grid.T);
-
-  // x-implicit
-  for(let j=0;j<ny;j++){
-    const rowOff = j*nx;
-    const rhs = new Arr(nx);
-    for(let i=0;i<nx;i++){
-      const idx = rowOff + i;
-      const T_ij = T[idx];
-      const T_jp = T[ Math.min(ny-1,j+1)*nx + i ];
-      const T_jm = T[ Math.max(0,j-1)*nx + i ];
-      const lapY = (T_jp - 2*T_ij + T_jm);
-      const scoef = (h * Aeff[idx]) / (rho*cp*V);
-      const TaLoc = Ta2D[idx];
-      rhs[i] = T_ij + 0.5*ry*lapY + srcFactorHalf*Q[idx] + 0.5*dt*scoef*TaLoc;
-    }
-    const a = new Arr(nx), b = new Arr(nx), c = new Arr(nx);
-    for(let i=0;i<nx;i++){
-      const idx = rowOff + i;
-      const scoef = (h * Aeff[idx]) / (rho*cp*V);
-      a[i] = -0.5*rx; c[i] = -0.5*rx; b[i] = 1 + rx + 0.5*dt*scoef;
-    }
-    b[0]   = 1 + rx + 0.5*dt*((h*Aeff[rowOff+0])/(rho*cp*V)); c[0] = -rx;
-    a[nx-1]= -rx; b[nx-1] = 1 + rx + 0.5*dt*((h*Aeff[rowOff+nx-1])/(rho*cp*V));
-    const sol = thomasSolve(a,b,c,rhs);
-    for(let i=0;i<nx;i++) Ttmp[rowOff + i] = sol[i];
-  }
-
-  // y-implicit
-  for(let i=0;i<nx;i++){
-    const rhs = new Arr(ny);
-    for(let j=0;j<ny;j++){
-      const idx = j*nx + i;
-      const T_ij = Ttmp[idx];
-      const T_ip = Ttmp[j*nx + Math.min(nx-1,i+1)];
-      const T_im = Ttmp[j*nx + Math.max(0,i-1)];
-      const lapX = (T_ip - 2*T_ij + T_im);
-      const scoef = (h * Aeff[idx]) / (rho*cp*V);
-      const TaLoc = Ta2D[idx];
-      rhs[j] = T_ij + 0.5*rx*lapX + srcFactorHalf*Q[idx] + 0.5*dt*scoef*TaLoc;
-    }
-    const a = new Arr(ny), b = new Arr(ny), c = new Arr(ny);
-    for(let j=0;j<ny;j++){
-      const idx = j*nx + i;
-      const scoef = (h * Aeff[idx]) / (rho*cp*V);
-      a[j] = -0.5*ry; c[j] = -0.5*ry; b[j] = 1 + ry + 0.5*dt*scoef;
-    }
-    b[0]   = 1 + ry + 0.5*dt*((h*Aeff[0*nx+i])/(rho*cp*V)); c[0] = -ry;
-    a[ny-1]= -ry; b[ny-1] = 1 + ry + 0.5*dt*((h*Aeff[(ny-1)*nx+i])/(rho*cp*V));
-    const sol = thomasSolve(a,b,c,rhs);
-    for(let j=0;j<ny;j++) T[j*nx + i] = sol[j];
-  }
-}
-
-/* ===== Time control + auto-stop ===== */
-function autoDtImplicit(){
-  const L = Math.min(grid.widthM, grid.heightM);
-  return 0.02 * (L*L / grid.alpha);
-}
-function solverInfo(msgExtra=''){
-  const info = document.getElementById('solverInfo');
-  if(!grid){ info.textContent = '—'; return; }
-  const dtUser = parseFloat(document.getElementById('dt').value);
-  const dtAuto = autoDtImplicit();
-  const dtUse = (dtUser>0? dtUser : dtAuto);
-  info.textContent = `nx×ny=${grid.nx}×${grid.ny}, α=${grid.alpha.toExponential(2)} m²/s, dt=${dtUse.toExponential(2)} s ${msgExtra}`;
-}
-const autoStopBadge = document.getElementById('autoStopMsg');
-
-function runTransient(){
-  if(!grid) { alert('Setup grid first'); return; }
-  simRunning = true; autoStopBadge.style.display='none';
-  const dt = (parseFloat(document.getElementById('dt').value) > 0) ? parseFloat(document.getElementById('dt').value) : autoDtImplicit();
-  solverInfo();
-
-  let prevMax = null, stillCtr = 0;
-
-  function frame(){
-    if(!simRunning) return;
-    const stepsPerFrame = 8;
-    for(let s=0;s<stepsPerFrame;s++){
-      rebuildQ(simTime);
-      stepADI(dt);
-      simTime += dt;
-      logProbe(simTime);
-    }
-    let Tmax = -Infinity; for(const v of grid.T) if(v>Tmax) Tmax=v;
-    if(prevMax!==null){
-      const rel = Math.abs(Tmax - prevMax) / Math.max(1e-9, prevMax);
-      if(rel < 0.005) stillCtr++; else stillCtr=0;
-      if(stillCtr >= 15){ simRunning=false; autoStopBadge.style.display='inline-block'; solverInfo('(auto-stopped)'); return; }
-    }
-    prevMax = Tmax;
-
-    redraw(); updateProbe();
-    document.getElementById('simTime').textContent = simTime.toFixed(3);
-    simAnimationId = requestAnimationFrame(frame);
-  }
-  if(simAnimationId) cancelAnimationFrame(simAnimationId);
-  simAnimationId = requestAnimationFrame(frame);
-}
-document.getElementById('solveTransient').addEventListener('click', ()=>{ if(!grid) setupGrid(); runTransient(); });
-document.getElementById('pauseSim').addEventListener('click', ()=>{ simRunning=false; if(simAnimationId) cancelAnimationFrame(simAnimationId); });
-
-/* ===== Fast steady via pseudo-transient ===== */
-function solveSteadyState(maxSteps=400, dtFactor=6, taLag=5, tol=2e-4, sweepsPerIter=3){
-  if(!grid){ alert('Setup grid first'); return; }
-  simRunning = false; if (simAnimationId) cancelAnimationFrame(simAnimationId);
-  autoStopBadge.style.display='none';
-
-  grid.Q.fill(0); let totalW=0;
-  for(const s of sources){
-    if(!s.cells || s.cells.length===0) continue;
-    const W = s.amplitude * (s.type==='sine' ? (1/Math.PI) : 1.0);
-    totalW += W;
-    const perCell = W / s.cells.length;
-    for(const idx of s.cells) grid.Q[idx] += perCell;
-  }
-
-  const hcell = Math.max(grid.dx, grid.dy);
-  const dt = dtFactor * (hcell*hcell / grid.alpha);
-  computeAeff();
-
-  let maxChange = Infinity;
-  for(let step=0; step<maxSteps; step++){
-    if(step % taLag === 0) rebuildTaFromT(grid.T);
-    const Told = new Float32Array(grid.T);
-    for(let k=0; k<sweepsPerIter; k++) stepADI(dt);
-    maxChange = 0;
-    for(let i=0; i<grid.T.length; i++){
-      const d = Math.abs(grid.T[i] - Told[i]);
-      if(d > maxChange) maxChange = d;
-    }
-    if(maxChange < tol) break;
-  }
-
-  redraw(); updateProbe();
-  document.getElementById('steadyInfo').textContent =
-    `Steady: dt=${dt.toExponential(2)}, max Δ=${maxChange.toExponential(2)}, Q≈${totalW.toFixed(2)} W`;
-}
-document.getElementById('solveSteady').addEventListener('click', ()=>solveSteadyState());
-
-/* ===== Probe + Plot ===== */
-function getProbeIndex(){
-  if(!grid) return 0;
-  const x = parseFloat(document.getElementById('probeX').value);
-  const y = parseFloat(document.getElementById('probeY').value);
-  const gx = Math.floor(Math.max(0, Math.min(grid.nx-1, x / grid.widthM * grid.nx)));
-  const gy = Math.floor(Math.max(0, Math.min(grid.ny-1, y / grid.heightM * grid.ny)));
-  return gy*grid.nx + gx;
-}
-function updateProbe(){
-  if(!grid) return;
-  const idx = getProbeIndex();
-  const Tval = grid.T[idx];
-  document.getElementById('probeT').textContent = (isFinite(Tval)? Tval.toFixed(2) : '-');
-}
-['probeX','probeY'].forEach(id=>document.getElementById(id).addEventListener('change', updateProbe));
-
-const plotCanvas = document.getElementById('plotCanvas');
-const pctx = plotCanvas.getContext('2d');
-let timeSeries = [], tempSeries = [], maxPoints = 2000;
-function clearPlotData(){ timeSeries = []; tempSeries = []; drawPlot(); }
-document.getElementById('clearPlot').addEventListener('click', clearPlotData);
-document.getElementById('exportCSV').addEventListener('click', ()=>{
-  const rows = ['time_s,T_C', ...timeSeries.map((t,i)=>`${t},${tempSeries[i]}`)];
-  const blob = new Blob([rows.join('\n')], {type:'text/csv'});
-  const url = URL.createObjectURL(blob); const a = document.createElement('a');
-  a.href = url; a.download = 'probe_T_vs_time.csv'; a.click(); URL.revokeObjectURL(url);
-});
-function logProbe(t){
-  if(!grid) return;
-  const idx = getProbeIndex(); const Tval = grid.T[idx];
-  timeSeries.push(t); tempSeries.push(Tval);
-  if(timeSeries.length > maxPoints){ timeSeries.shift(); tempSeries.shift(); }
-  drawPlot();
-}
-function drawPlot(){
-  const w = plotCanvas.width, h = plotCanvas.height;
-  pctx.clearRect(0,0,w,h); pctx.fillStyle='#fff'; pctx.fillRect(0,0,w,h);
-  pctx.strokeStyle='#000'; pctx.lineWidth=1;
-  const mL=40, mR=10, mT=10, mB=18;
-  let tmin=timeSeries.length?timeSeries[0]:0, tmax=timeSeries.length?timeSeries[timeSeries.length-1]:1; if(tmax<=tmin)tmax=tmin+1;
-  let Tmin=tempSeries.length?Math.min(...tempSeries):0, Tmax=tempSeries.length?Math.max(...tempSeries):1; if(Tmax<=Tmin)Tmax=Tmin+1;
-  pctx.beginPath(); pctx.moveTo(mL,mT); pctx.lineTo(mL,h-mB); pctx.lineTo(w-mR,h-mB); pctx.stroke();
-  pctx.font='12px system-ui'; pctx.fillStyle='#000'; pctx.fillText('T (°C)',6,mT+12); pctx.fillText('t (s)',w-40,h-2);
-  for(let k=0;k<=4;k++){ const ty=mT+(h-mT-mB)*(k/4), Tv=(Tmax-Tmin)*(1-k/4)+Tmin;
-    pctx.fillText(Tv.toFixed(1),2,ty+4); pctx.beginPath(); pctx.moveTo(mL-3,ty); pctx.lineTo(mL,ty); pctx.stroke(); }
-  for(let k=0;k<=4;k++){ const tx=mL+(w-mL-mR)*(k/4), tv=(tmax-tmin)*(k/4)+tmin;
-    pctx.fillText(tv.toFixed(1),tx-10,h-2); pctx.beginPath(); pctx.moveTo(tx,h-mB); pctx.lineTo(tx,h-mB+3); pctx.stroke(); }
-  if(timeSeries.length>1){ pctx.beginPath();
-    for(let i=0;i<timeSeries.length;i++){ const x=mL+(w-mL-mR)*((timeSeries[i]-tmin)/(tmax-tmin));
-      const y=mT+(h-mT-mB)*(1-((tempSeries[i]-Tmin)/(Tmax-Tmin))); if(i===0)pctx.moveTo(x,y); else pctx.lineTo(x,y);}
-    pctx.stroke(); }
-}
-
-/* ===== Suggest H & param changes ===== */
-function suggestH(){
-  const rho=1.2, mu=1.8e-5, Pr=0.71;
-  const v = parseFloat(document.getElementById('airVel').value);
-  const L = parseFloat(document.getElementById('widthM').value);
-  const Rex = rho*v*(0.5*L)/mu;
-  const deltaT = 5*(0.5*L)/Math.sqrt(Math.max(1, Rex*Pr));
-  const Heff = Math.min(0.05, Math.max(0.003, 3*deltaT));
-  document.getElementById('airH').value = Heff.toFixed(3);
-  updateTaEstimate();
-}
-document.getElementById('suggestH').addEventListener('click', suggestH);
-
-function onAnyParamChange(){ if(grid){ computeAeff(); } updateTaEstimate(); }
-['airVel','bothSides','airMix','airRho','airCp','airH','airTin','useWarmed','flowDir'].forEach(
-  id=>document.getElementById(id).addEventListener('change', onAnyParamChange)
-);
-
-function updateTaEstimate(){
-  const el = document.getElementById('taEst'); if (!el) return;
-  const v    = parseFloat(document.getElementById('airVel').value);
-  const rhoA = parseFloat(document.getElementById('airRho').value);
-  const cpA  = parseFloat(document.getElementById('airCp').value);
-  const H    = parseFloat(document.getElementById('airH').value);
-  let Qtot = 0;
-  for (const s of sources){
-    if (!s.cells || s.cells.length===0) continue;
-    const factor = (s.type==='sine' ? (1/Math.PI) : 1.0);
-    Qtot += s.amplitude * factor;
-  }
-  const mdot = Math.max(1e-12, rhoA * v * Math.max(1e-9, H));
-  const dTa = Qtot / (mdot * cpA);
-  el.textContent = `${dTa.toFixed(2)} K (rough outlet rise)`;
-}
-
-/* ===== Clearers ===== */
-document.getElementById('clearSources').addEventListener('click', ()=>{
-  sources.length=0; onSourcesChanged(); if(grid){ grid.Q.fill(0); }
-  redraw();
-});
-document.getElementById('clearFins').addEventListener('click', ()=>{
-  fins.length=0; updateFinsList(); if(grid){ computeAeff(); updateFinSchematic(); }
-  redraw();
-});
-
-/* ===== Init ===== */
-updateSourcesList(); updateFinsList();
-resizeCanvasToAspect();
-redraw(); updateTaEstimate();
-
-/* ===== EXPORT/IMPORT FUNCTIONS ===== */
-
-// Helper function to get formatted timestamp
-function getTimestamp() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  const hours = String(now.getHours()).padStart(2, '0');
-  const minutes = String(now.getMinutes()).padStart(2, '0');
-  const seconds = String(now.getSeconds()).padStart(2, '0');
-  return `${year}${month}${day}_${hours}${minutes}${seconds}`;
-}
-
-// 1. EXPORT JSON BUTTON
-document.getElementById('exportJsonBtn').addEventListener('click', () => {
-  const data = {
-    timestamp: new Date().toISOString(),
-    moduleType: '2d_heat_adi_warmed_air_fins',
-    geometry: {
-      widthM: parseFloat(document.getElementById('widthM').value),
-      heightM: parseFloat(document.getElementById('heightM').value),
-      thicknessM: parseFloat(document.getElementById('thicknessM').value),
-      material: document.getElementById('materialSelect').value
-    },
-    grid: {
-      nx: parseInt(document.getElementById('nx').value),
-      dt: parseFloat(document.getElementById('dt').value)
-    },
-    airflow: {
-      velocity: parseFloat(document.getElementById('airVel').value),
-      ambientT: parseFloat(document.getElementById('ambientT').value),
-      useWarmed: document.getElementById('useWarmed').checked,
-      flowDir: document.getElementById('flowDir').value,
-      bothSides: document.getElementById('bothSides').checked,
-      airH: parseFloat(document.getElementById('airH').value),
-      airRho: parseFloat(document.getElementById('airRho').value),
-      airCp: parseFloat(document.getElementById('airCp').value),
-      airTin: parseFloat(document.getElementById('airTin').value),
-      airMix: parseFloat(document.getElementById('airMix').value)
-    },
-    display: {
-      showTa: document.getElementById('showTa').checked,
-      showGrid: document.getElementById('showGrid').checked
-    },
-    probe: {
-      x: parseFloat(document.getElementById('probeX').value),
-      y: parseFloat(document.getElementById('probeY').value)
-    },
-    sources: sources.map(s => ({
-      rect: s.rect,
-      amplitude: s.amplitude,
-      type: s.type,
-      freq: s.freq,
-      label: s.label
-    })),
-    fins: fins.map(f => ({
-      rect: f.rect,
-      t: f.t,
-      L: f.L,
-      s: f.s,
-      k: f.k,
-      label: f.label
-    }))
-  };
-  
-  const jsonStr = JSON.stringify(data, null, 2);
-  const blob = new Blob([jsonStr], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `heat_adi_config_${getTimestamp()}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
-});
-
-// 2. IMPORT JSON BUTTON
-document.getElementById('importJsonBtn').addEventListener('click', () => {
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = '.json';
-  input.onchange = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const data = JSON.parse(event.target.result);
-        
-        // Geometry
-        if (data.geometry) {
-          document.getElementById('widthM').value = data.geometry.widthM;
-          document.getElementById('heightM').value = data.geometry.heightM;
-          document.getElementById('thicknessM').value = data.geometry.thicknessM;
-          document.getElementById('materialSelect').value = data.geometry.material;
-        }
-        
-        // Grid
-        if (data.grid) {
-          document.getElementById('nx').value = data.grid.nx;
-          document.getElementById('dt').value = data.grid.dt;
-        }
-        
-        // Airflow
-        if (data.airflow) {
-          document.getElementById('airVel').value = data.airflow.velocity;
-          document.getElementById('ambientT').value = data.airflow.ambientT;
-          document.getElementById('useWarmed').checked = data.airflow.useWarmed !== undefined ? data.airflow.useWarmed : true;
-          document.getElementById('flowDir').value = data.airflow.flowDir || 'LR';
-          document.getElementById('bothSides').checked = data.airflow.bothSides || false;
-          document.getElementById('airH').value = data.airflow.airH;
-          document.getElementById('airRho').value = data.airflow.airRho;
-          document.getElementById('airCp').value = data.airflow.airCp;
-          document.getElementById('airTin').value = data.airflow.airTin;
-          document.getElementById('airMix').value = data.airflow.airMix;
-        }
-        
-        // Display
-        if (data.display) {
-          document.getElementById('showTa').checked = data.display.showTa || false;
-          document.getElementById('showGrid').checked = data.display.showGrid !== undefined ? data.display.showGrid : true;
-        }
-        
-        // Probe
-        if (data.probe) {
-          document.getElementById('probeX').value = data.probe.x;
-          document.getElementById('probeY').value = data.probe.y;
-        }
-        
-        // Sources
-        if (data.sources) {
-          sources.length = 0;
-          data.sources.forEach(s => {
-            sources.push({
-              rect: s.rect,
-              amplitude: s.amplitude,
-              type: s.type,
-              freq: s.freq,
-              label: s.label,
-              cells: []
-            });
-          });
-          onSourcesChanged();
-        }
-        
-        // Fins
-        if (data.fins) {
-          fins.length = 0;
-          data.fins.forEach(f => {
-            fins.push({
-              rect: f.rect,
-              t: f.t,
-              L: f.L,
-              s: f.s,
-              k: f.k,
-              label: f.label,
-              cells: []
-            });
-          });
-          updateFinsList();
-        }
-        
-        // Rebuild grid
-        setupGrid();
-        
-        alert('Configuration loaded successfully!');
-      } catch (err) {
-        alert('Error loading JSON file: ' + err.message);
+  // 1. EXPORT JSON BUTTON
+  document.getElementById('exportJsonBtn').addEventListener('click', () => {
+    const data = {
+      timestamp: new Date().toISOString(),
+      moduleType: 'plenum_fan_matching_v2',
+      air: {
+        rho: parseFloat(document.getElementById('rho').value),
+        mu: parseFloat(document.getElementById('mu').value)
+      },
+      plenum: {
+        width_W: parseFloat(document.getElementById('plenumW').value),
+        height_H: parseFloat(document.getElementById('plenumH').value),
+        length_L: parseFloat(document.getElementById('plenumL').value)
+      },
+      inlet: {
+        width_w: parseFloat(document.getElementById('inletW').value),
+        height_h: parseFloat(document.getElementById('inletH').value),
+        position_x: parseFloat(document.getElementById('inletX').value)
+      },
+      heatSink: {
+        fin_height_b: parseFloat(document.getElementById('b').value),
+        fin_thickness_t: parseFloat(document.getElementById('tfin').value),
+        fin_spacing_s: parseFloat(document.getElementById('sfin').value),
+        fin_length_Lf: parseFloat(document.getElementById('Lfin').value),
+        hs_lead_edge_x: parseFloat(document.getElementById('xHS').value),
+        hs_width: parseFloat(document.getElementById('WHS').value)
+      },
+      fanCurve: readFanTable(),
+      velocity: {
+        nSlices: parseInt(document.getElementById('nSlices').value, 10)
       }
     };
-    reader.readAsText(file);
-  };
-  input.click();
-});
+    
+    const jsonStr = JSON.stringify(data, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `plenum_fan_config_${getTimestamp()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  });
 
-// 3. EXPORT CSV BUTTON (Temperature field + Time series)
-document.getElementById('exportCsvBtn').addEventListener('click', () => {
-  if (!grid || !grid.T) {
-    alert('No simulation data to export. Setup grid first.');
-    return;
-  }
-  
-  const timestamp = getTimestamp();
-  
-  // Create temperature field CSV
-  const { nx, ny, dx, dy, widthM, heightM, T } = grid;
-  let csv = 'X (m),Y (m),Temperature (°C)\n';
-  
-  for (let j = 0; j < ny; j++) {
-    for (let i = 0; i < nx; i++) {
-      const idx = j * nx + i;
-      const x = (i + 0.5) * dx;
-      const y = (j + 0.5) * dy;
-      const temp = T[idx];
-      csv += `${x.toFixed(6)},${y.toFixed(6)},${temp.toFixed(4)}\n`;
-    }
-  }
-  
-  // Download temperature field CSV
-  const blob = new Blob([csv], { type: 'text/csv' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `heat_adi_temperature_field_${timestamp}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
-  
-  // Also export probe time series if available
-  if (timeSeries.length > 0) {
-    const tsRows = ['Time (s),Probe Temperature (°C)', ...timeSeries.map((t, i) => `${t.toFixed(6)},${tempSeries[i].toFixed(4)}`)];
-    const tsBlob = new Blob([tsRows.join('\n')], { type: 'text/csv' });
-    const tsUrl = URL.createObjectURL(tsBlob);
-    const tsA = document.createElement('a');
-    tsA.href = tsUrl;
-    tsA.download = `heat_adi_probe_timeseries_${timestamp}.csv`;
-    tsA.click();
-    URL.revokeObjectURL(tsUrl);
-  }
-});
+  // 2. IMPORT JSON BUTTON
+  document.getElementById('importJsonBtn').addEventListener('click', () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const data = JSON.parse(event.target.result);
+          
+          // Air properties
+          if (data.air) {
+            document.getElementById('rho').value = data.air.rho;
+            document.getElementById('mu').value = data.air.mu;
+          }
+          
+          // Plenum
+          if (data.plenum) {
+            document.getElementById('plenumW').value = data.plenum.width_W;
+            document.getElementById('plenumH').value = data.plenum.height_H;
+            document.getElementById('plenumL').value = data.plenum.length_L;
+          }
+          
+          // Inlet
+          if (data.inlet) {
+            document.getElementById('inletW').value = data.inlet.width_w;
+            document.getElementById('inletH').value = data.inlet.height_h;
+            document.getElementById('inletX').value = data.inlet.position_x;
+          }
+          
+          // Heat Sink
+          if (data.heatSink) {
+            document.getElementById('b').value = data.heatSink.fin_height_b;
+            document.getElementById('tfin').value = data.heatSink.fin_thickness_t;
+            document.getElementById('sfin').value = data.heatSink.fin_spacing_s;
+            document.getElementById('Lfin').value = data.heatSink.fin_length_Lf;
+            document.getElementById('xHS').value = data.heatSink.hs_lead_edge_x;
+            document.getElementById('WHS').value = data.heatSink.hs_width;
+          }
+          
+          // Fan Curve
+          if (data.fanCurve && Array.isArray(data.fanCurve)) {
+            const tbody = document.querySelector('#fanTable tbody');
+            tbody.innerHTML = '';
+            data.fanCurve.forEach((pt, idx) => {
+              const tr = document.createElement('tr');
+              tr.innerHTML = `<td>${idx + 1}</td><td><input value="${pt.x}"></td><td><input value="${pt.y}"></td>`;
+              tbody.appendChild(tr);
+            });
+            refreshFanChart();
+          }
+          
+          // Velocity
+          if (data.velocity) {
+            document.getElementById('nSlices').value = data.velocity.nSlices;
+          }
+          
+          // Update 3D view
+          update3DGeometry();
+          
+          alert('Configuration loaded successfully!');
+        } catch (err) {
+          alert('Error loading JSON file: ' + err.message);
+        }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
+  });
 
-// 4. EXPORT ZIP BUTTON (CSV + Images + Config)
-document.getElementById('exportZipBtn').addEventListener('click', async () => {
-  if (!grid || !grid.T) {
-    alert('No simulation data to export. Setup grid first.');
-    return;
-  }
-  
-  if (typeof JSZip === 'undefined') {
-    alert('JSZip library not loaded. Please refresh the page.');
-    return;
-  }
-  
-  const zip = new JSZip();
-  const timestamp = getTimestamp();
-  
-  // 1. Add temperature field CSV
-  const { nx, ny, dx, dy, widthM, heightM, T } = grid;
-  let csv = 'X (m),Y (m),Temperature (°C)\n';
-  for (let j = 0; j < ny; j++) {
-    for (let i = 0; i < nx; i++) {
-      const idx = j * nx + i;
-      const x = (i + 0.5) * dx;
-      const y = (j + 0.5) * dy;
-      const temp = T[idx];
-      csv += `${x.toFixed(6)},${y.toFixed(6)},${temp.toFixed(4)}\n`;
+  // 3. EXPORT CSV BUTTON
+  document.getElementById('exportCsvBtn').addEventListener('click', () => {
+    const timestamp = getTimestamp();
+    
+    // Get current results
+    const Qstar = document.getElementById('Qstar').textContent;
+    const Dpstar = document.getElementById('Dpstar').textContent;
+    const Vin = document.getElementById('Vin').textContent;
+    const Vch = document.getElementById('Vch').textContent;
+    const Re_pl = document.getElementById('Re_pl').textContent;
+    const Re_ch = document.getElementById('Re_ch').textContent;
+    const HP = document.getElementById('HP').textContent;
+    
+    if (Qstar === '—') {
+      alert('No results to export. Please solve first.');
+      return;
     }
-  }
-  zip.file(`temperature_field_${timestamp}.csv`, csv);
-  
-  // 2. Add probe time series CSV if available
-  if (timeSeries.length > 0) {
-    const tsRows = ['Time (s),Probe Temperature (°C)', ...timeSeries.map((t, i) => `${t.toFixed(6)},${tempSeries[i].toFixed(4)}`)];
-    zip.file(`probe_timeseries_${timestamp}.csv`, tsRows.join('\n'));
-  }
-  
-  // 3. Add main canvas image (temperature field)
-  const mainDataUrl = canvas.toDataURL('image/png');
-  const mainBase64 = mainDataUrl.split(',')[1];
-  zip.file(`temperature_heatmap_${timestamp}.png`, mainBase64, { base64: true });
-  
-  // 4. Add temperature field without overlays
-  const showTaWas = document.getElementById('showTa').checked;
-  const showGridWas = document.getElementById('showGrid').checked;
-  document.getElementById('showTa').checked = false;
-  document.getElementById('showGrid').checked = false;
-  lastClickMarker = null;
-  redraw();
-  const cleanDataUrl = canvas.toDataURL('image/png');
-  const cleanBase64 = cleanDataUrl.split(',')[1];
-  zip.file(`temperature_heatmap_clean_${timestamp}.png`, cleanBase64, { base64: true });
-  
-  // 5. Add Ta (air temperature) heatmap if warmed air is enabled
-  if (document.getElementById('useWarmed').checked) {
-    document.getElementById('showTa').checked = true;
-    redraw();
-    const taDataUrl = canvas.toDataURL('image/png');
-    const taBase64 = taDataUrl.split(',')[1];
-    zip.file(`air_temperature_heatmap_${timestamp}.png`, taBase64, { base64: true });
-  }
-  
-  // Restore display state
-  document.getElementById('showTa').checked = showTaWas;
-  document.getElementById('showGrid').checked = showGridWas;
-  redraw();
-  
-  // 6. Add probe plot if available
-  if (timeSeries.length > 0) {
-    const plotDataUrl = plotCanvas.toDataURL('image/png');
-    const plotBase64 = plotDataUrl.split(',')[1];
-    zip.file(`probe_plot_${timestamp}.png`, plotBase64, { base64: true });
-  }
-  
-  // 7. Add fin schematic
-  const finSvg = document.getElementById('finSchematic');
-  const serializer = new XMLSerializer();
-  const svgString = serializer.serializeToString(finSvg);
-  zip.file(`fin_schematic_${timestamp}.svg`, svgString);
-  
-  // 8. Add configuration JSON
-  const config = {
-    timestamp: new Date().toISOString(),
-    moduleType: '2d_heat_adi_warmed_air_fins',
-    geometry: {
-      widthM: parseFloat(document.getElementById('widthM').value),
-      heightM: parseFloat(document.getElementById('heightM').value),
-      thicknessM: parseFloat(document.getElementById('thicknessM').value),
-      material: document.getElementById('materialSelect').value
-    },
-    materialProperties: grid ? {
-      k: grid.k,
-      rho: grid.rho,
-      cp: grid.cp,
-      alpha: grid.alpha
-    } : null,
-    grid: {
-      nx: grid ? grid.nx : parseInt(document.getElementById('nx').value),
-      ny: grid ? grid.ny : null,
-      dx: grid ? grid.dx : null,
-      dy: grid ? grid.dy : null,
-      dt_setting: parseFloat(document.getElementById('dt').value)
-    },
-    airflow: {
-      velocity: parseFloat(document.getElementById('airVel').value),
-      ambientT: parseFloat(document.getElementById('ambientT').value),
-      useWarmed: document.getElementById('useWarmed').checked,
-      flowDir: document.getElementById('flowDir').value,
-      bothSides: document.getElementById('bothSides').checked,
-      airH: parseFloat(document.getElementById('airH').value),
-      airRho: parseFloat(document.getElementById('airRho').value),
-      airCp: parseFloat(document.getElementById('airCp').value),
-      airTin: parseFloat(document.getElementById('airTin').value),
-      airMix: parseFloat(document.getElementById('airMix').value),
-      estimated_h: grid ? estimateHfromVelocity(parseFloat(document.getElementById('airVel').value)).toFixed(2) + ' W/m²K' : null
-    },
-    simulation: {
-      currentTime: simTime.toFixed(4) + ' s',
-      running: simRunning
-    },
-    sources: sources.map((s, idx) => ({
-      index: idx + 1,
-      label: s.label,
-      rect: s.rect,
-      amplitude: s.amplitude,
-      type: s.type,
-      frequency: s.freq
-    })),
-    fins: fins.map((f, idx) => ({
-      index: idx + 1,
-      label: f.label,
-      rect: f.rect,
-      thickness_t_m: f.t,
-      length_L_m: f.L,
-      spacing_s_m: f.s,
-      conductivity_k: f.k
-    })),
-    results: grid ? {
-      min_temp_C: Math.min(...grid.T).toFixed(2),
-      max_temp_C: Math.max(...grid.T).toFixed(2),
-      avg_temp_C: (grid.T.reduce((a, b) => a + b, 0) / grid.T.length).toFixed(2),
-      total_heat_sources: sources.length,
-      total_fin_regions: fins.length
-    } : null
-  };
-  zip.file(`config_${timestamp}.json`, JSON.stringify(config, null, 2));
-  
-  // 9. Add README
-  const totalPower = sources.reduce((sum, s) => {
-    const factor = (s.type === 'sine' ? (1 / Math.PI) : 1.0);
-    return sum + s.amplitude * factor;
-  }, 0);
-  
-  const readme = `2D Heat Solver with ADI, Warmed Air, and Fins - Export
+    
+    // Results CSV
+    let csv = 'Parameter,Value,Units\n';
+    csv += `Flow rate Q*,${Qstar},cfm\n`;
+    csv += `Back pressure Δp*,${Dpstar},inH₂O\n`;
+    csv += `Inlet velocity,${Vin},ft/s\n`;
+    csv += `Channel velocity avg,${Vch},ft/s\n`;
+    csv += `Reynolds plenum,${Re_pl},-\n`;
+    csv += `Reynolds channel,${Re_ch},-\n`;
+    csv += `Fan air power,${HP},HP\n`;
+    
+    // Download results CSV
+    const blob1 = new Blob([csv], { type: 'text/csv' });
+    const url1 = URL.createObjectURL(blob1);
+    const a1 = document.createElement('a');
+    a1.href = url1;
+    a1.download = `plenum_fan_results_${timestamp}.csv`;
+    a1.click();
+    URL.revokeObjectURL(url1);
+    
+    // Fan curve CSV
+    const fanPts = readFanTable();
+    let fanCsv = 'Q (cfm),Δp (inH₂O)\n';
+    fanPts.forEach(pt => {
+      fanCsv += `${pt.x},${pt.y}\n`;
+    });
+    
+    const blob2 = new Blob([fanCsv], { type: 'text/csv' });
+    const url2 = URL.createObjectURL(blob2);
+    const a2 = document.createElement('a');
+    a2.href = url2;
+    a2.download = `plenum_fan_curve_${timestamp}.csv`;
+    a2.click();
+    URL.revokeObjectURL(url2);
+    
+    // Velocity profile CSV if available
+    const velData = velConfig.data.datasets[0].data;
+    if (velData && velData.length > 0) {
+      let velCsv = 'x/Lf,V_ch (m/s)\n';
+      velData.forEach(pt => {
+        velCsv += `${pt.x.toFixed(4)},${pt.y.toFixed(4)}\n`;
+      });
+      
+      const blob3 = new Blob([velCsv], { type: 'text/csv' });
+      const url3 = URL.createObjectURL(blob3);
+      const a3 = document.createElement('a');
+      a3.href = url3;
+      a3.download = `plenum_velocity_profile_${timestamp}.csv`;
+      a3.click();
+      URL.revokeObjectURL(url3);
+    }
+  });
+
+  // 4. EXPORT ZIP BUTTON (CSV + Images + Config)
+  document.getElementById('exportZipBtn').addEventListener('click', async () => {
+    if (typeof JSZip === 'undefined') {
+      alert('JSZip library not loaded. Please refresh the page.');
+      return;
+    }
+    
+    const Qstar = document.getElementById('Qstar').textContent;
+    if (Qstar === '—') {
+      alert('No results to export. Please solve first.');
+      return;
+    }
+    
+    const zip = new JSZip();
+    const timestamp = getTimestamp();
+    
+    // 1. Results CSV
+    let resultsCsv = 'Parameter,Value,Units\n';
+    resultsCsv += `Flow rate Q*,${document.getElementById('Qstar').textContent},cfm\n`;
+    resultsCsv += `Back pressure Δp*,${document.getElementById('Dpstar').textContent},inH₂O\n`;
+    resultsCsv += `Inlet velocity,${document.getElementById('Vin').textContent},ft/s\n`;
+    resultsCsv += `Channel velocity avg,${document.getElementById('Vch').textContent},ft/s\n`;
+    resultsCsv += `Reynolds plenum,${document.getElementById('Re_pl').textContent},-\n`;
+    resultsCsv += `Reynolds channel,${document.getElementById('Re_ch').textContent},-\n`;
+    resultsCsv += `Fan air power,${document.getElementById('HP').textContent},HP\n`;
+    zip.file(`results_${timestamp}.csv`, resultsCsv);
+    
+    // 2. Fan curve CSV
+    const fanPts = readFanTable();
+    let fanCsv = 'Q (cfm),Δp (inH₂O)\n';
+    fanPts.forEach(pt => {
+      fanCsv += `${pt.x},${pt.y}\n`;
+    });
+    zip.file(`fan_curve_${timestamp}.csv`, fanCsv);
+    
+    // 3. Velocity profile CSV
+    const velData = velConfig.data.datasets[0].data;
+    if (velData && velData.length > 0) {
+      let velCsv = 'x/Lf,V_ch (m/s)\n';
+      velData.forEach(pt => {
+        velCsv += `${pt.x.toFixed(4)},${pt.y.toFixed(4)}\n`;
+      });
+      zip.file(`velocity_profile_${timestamp}.csv`, velCsv);
+    }
+    
+    // 4. Fan & System curves chart image
+    const curveCanvas = document.getElementById('curveChart');
+    const curveDataUrl = curveCanvas.toDataURL('image/png');
+    const curveBase64 = curveDataUrl.split(',')[1];
+    zip.file(`fan_system_curves_${timestamp}.png`, curveBase64, { base64: true });
+    
+    // 5. Velocity chart image
+    const velCanvas = document.getElementById('velChart');
+    const velImgUrl = velCanvas.toDataURL('image/png');
+    const velBase64 = velImgUrl.split(',')[1];
+    zip.file(`velocity_distribution_${timestamp}.png`, velBase64, { base64: true });
+    
+    // 6. 3D view image
+    if (renderer && renderer.domElement) {
+      const view3dUrl = renderer.domElement.toDataURL('image/png');
+      const view3dBase64 = view3dUrl.split(',')[1];
+      zip.file(`3d_geometry_view_${timestamp}.png`, view3dBase64, { base64: true });
+    }
+    
+    // 7. Configuration JSON
+    const config = {
+      timestamp: new Date().toISOString(),
+      moduleType: 'plenum_fan_matching_v2',
+      air: {
+        rho: parseFloat(document.getElementById('rho').value),
+        mu: parseFloat(document.getElementById('mu').value)
+      },
+      plenum: {
+        width_W_in: parseFloat(document.getElementById('plenumW').value),
+        height_H_in: parseFloat(document.getElementById('plenumH').value),
+        length_L_in: parseFloat(document.getElementById('plenumL').value)
+      },
+      inlet: {
+        width_w_in: parseFloat(document.getElementById('inletW').value),
+        height_h_in: parseFloat(document.getElementById('inletH').value),
+        position_x_in: parseFloat(document.getElementById('inletX').value)
+      },
+      heatSink: {
+        fin_height_b_in: parseFloat(document.getElementById('b').value),
+        fin_thickness_t_in: parseFloat(document.getElementById('tfin').value),
+        fin_spacing_s_in: parseFloat(document.getElementById('sfin').value),
+        fin_length_Lf_in: parseFloat(document.getElementById('Lfin').value),
+        hs_lead_edge_x_in: parseFloat(document.getElementById('xHS').value),
+        hs_width_in: parseFloat(document.getElementById('WHS').value)
+      },
+      fanCurve: readFanTable(),
+      velocity: {
+        nSlices: parseInt(document.getElementById('nSlices').value, 10)
+      },
+      results: {
+        flow_rate_Q_cfm: document.getElementById('Qstar').textContent,
+        back_pressure_dp_inH2O: document.getElementById('Dpstar').textContent,
+        inlet_velocity_ft_s: document.getElementById('Vin').textContent,
+        channel_velocity_avg_ft_s: document.getElementById('Vch').textContent,
+        reynolds_plenum: document.getElementById('Re_pl').textContent,
+        reynolds_channel: document.getElementById('Re_ch').textContent,
+        fan_air_power_HP: document.getElementById('HP').textContent
+      },
+      branchVelocities: lastBranchVels ? {
+        channels_m_s: lastBranchVels.Vch_m,
+        top_gap_m_s: lastBranchVels.Vtop_m,
+        side_gaps_m_s: lastBranchVels.Vside_m,
+        channels_ft_s: (lastBranchVels.Vch_m * 3.28084).toFixed(2),
+        top_gap_ft_s: (lastBranchVels.Vtop_m * 3.28084).toFixed(2),
+        side_gaps_ft_s: (lastBranchVels.Vside_m * 3.28084).toFixed(2)
+      } : null
+    };
+    zip.file(`config_${timestamp}.json`, JSON.stringify(config, null, 2));
+    
+    // 8. README
+    const readme = `Plenum / Fan Matching Analysis - V2 Simple Flow Export
 Generated: ${new Date().toLocaleString()}
 
 Contents:
-- temperature_field_${timestamp}.csv: Spatial temperature distribution (X, Y, T)
-${timeSeries.length > 0 ? `- probe_timeseries_${timestamp}.csv: Probe temperature vs time\n` : ''}
-- temperature_heatmap_${timestamp}.png: Temperature field visualization with overlays
-- temperature_heatmap_clean_${timestamp}.png: Temperature field without overlays
-${document.getElementById('useWarmed').checked ? `- air_temperature_heatmap_${timestamp}.png: Air temperature (Ta) field\n` : ''}
-${timeSeries.length > 0 ? `- probe_plot_${timestamp}.png: Probe temperature vs time plot\n` : ''}
-- fin_schematic_${timestamp}.svg: Fin geometry end-view (SVG)
-- config_${timestamp}.json: Complete simulation configuration and results
+- results_${timestamp}.csv: Operating point and key results
+- fan_curve_${timestamp}.csv: Fan curve data points
+- velocity_profile_${timestamp}.csv: Channel velocity distribution along fin length
+- fan_system_curves_${timestamp}.png: Fan and system curves with operating point
+- velocity_distribution_${timestamp}.png: Velocity profile chart
+- 3d_geometry_view_${timestamp}.png: 3D visualization of plenum and heat sink
+- config_${timestamp}.json: Complete configuration and results
 
-Simulation Parameters:
-- Plate dimensions: ${widthM.toFixed(3)} m × ${heightM.toFixed(3)} m × ${parseFloat(document.getElementById('thicknessM').value).toFixed(4)} m
-- Material: ${document.getElementById('materialSelect').value}
-${grid ? `  - Thermal conductivity k: ${grid.k} W/m·K\n` : ''}
-${grid ? `  - Density ρ: ${grid.rho} kg/m³\n` : ''}
-${grid ? `  - Specific heat cp: ${grid.cp} J/kg·K\n` : ''}
-${grid ? `  - Thermal diffusivity α: ${grid.alpha.toExponential(2)} m²/s\n` : ''}
-- Grid resolution: ${grid ? `${grid.nx} × ${grid.ny}` : `${document.getElementById('nx').value} cells`}
+System Configuration:
+Air Properties:
+- Density ρ: ${document.getElementById('rho').value} kg/m³
+- Viscosity μ: ${document.getElementById('mu').value} Pa·s
 
-Airflow Configuration:
-- Velocity: ${document.getElementById('airVel').value} m/s
-- Ambient temperature: ${document.getElementById('ambientT').value} °C
-- Warmed air model: ${document.getElementById('useWarmed').checked ? 'Enabled' : 'Disabled'}
-- Flow direction: ${document.getElementById('flowDir').value === 'LR' ? 'Left → Right' : 'Right → Left'}
-- Both sides: ${document.getElementById('bothSides').checked ? 'Yes' : 'No'}
-- Air gap height: ${document.getElementById('airH').value} m
-- Air properties: ρ=${document.getElementById('airRho').value} kg/m³, cp=${document.getElementById('airCp').value} J/kg·K
-${grid ? `- Estimated convection coefficient h: ${estimateHfromVelocity(parseFloat(document.getElementById('airVel').value)).toFixed(2)} W/m²K\n` : ''}
+Plenum Geometry (inches):
+- Width W: ${document.getElementById('plenumW').value} in
+- Height H: ${document.getElementById('plenumH').value} in
+- Length L: ${document.getElementById('plenumL').value} in
 
-Heat Sources (${sources.length}):
-${sources.map((s, i) => `  ${s.label}: ${s.amplitude.toFixed(2)} W, ${s.type}${s.type === 'sine' ? ` @ ${s.freq} Hz` : ''}`).join('\n')}
-${sources.length > 0 ? `  Total effective power: ${totalPower.toFixed(2)} W\n` : ''}
+Inlet Geometry (inches):
+- Width w: ${document.getElementById('inletW').value} in
+- Height h: ${document.getElementById('inletH').value} in
+- Position x: ${document.getElementById('inletX').value} in from start
 
-Fin Regions (${fins.length}):
-${fins.map((f, i) => `  ${f.label}: t=${f.t.toExponential(2)} m, L=${f.L.toFixed(3)} m, s=${f.s.toFixed(3)} m, k=${f.k} W/m·K`).join('\n')}
+Heat Sink (Finned) (inches):
+- Fin height b: ${document.getElementById('b').value} in
+- Fin thickness t: ${document.getElementById('tfin').value} in
+- Fin spacing s: ${document.getElementById('sfin').value} in
+- Fin length Lf: ${document.getElementById('Lfin').value} in
+- HS lead edge x: ${document.getElementById('xHS').value} in
+- HS width: ${document.getElementById('WHS').value} in
 
-${grid ? `Results:\n` : ''}
-${grid ? `- Minimum temperature: ${Math.min(...grid.T).toFixed(2)} °C\n` : ''}
-${grid ? `- Maximum temperature: ${Math.max(...grid.T).toFixed(2)} °C\n` : ''}
-${grid ? `- Average temperature: ${(grid.T.reduce((a, b) => a + b, 0) / grid.T.length).toFixed(2)} °C\n` : ''}
-${grid ? `- Simulation time: ${simTime.toFixed(4)} s\n` : ''}
+Operating Point Results:
+- Flow rate Q*: ${document.getElementById('Qstar').textContent} cfm
+- Back pressure Δp*: ${document.getElementById('Dpstar').textContent} inH₂O
+- Inlet velocity: ${document.getElementById('Vin').textContent} ft/s
+- Channel velocity (avg): ${document.getElementById('Vch').textContent} ft/s
+- Reynolds (plenum): ${document.getElementById('Re_pl').textContent}
+- Reynolds (channel): ${document.getElementById('Re_ch').textContent}
+- Fan air power: ${document.getElementById('HP').textContent} HP
 
-Probe Location:
-- X: ${document.getElementById('probeX').value} m
-- Y: ${document.getElementById('probeY').value} m
-${grid && timeSeries.length > 0 ? `- Data points logged: ${timeSeries.length}\n` : ''}
+${lastBranchVels ? `
+Branch Flow Distribution:
+- Channels: ${(lastBranchVels.Vch_m * 3.28084).toFixed(2)} ft/s
+- Top gap: ${(lastBranchVels.Vtop_m * 3.28084).toFixed(2)} ft/s
+- Side gaps: ${(lastBranchVels.Vside_m * 3.28084).toFixed(2)} ft/s
+` : ''}
 
 Notes:
-- ADI (Alternating Direction Implicit) method used for time integration
-- Warmed air model accounts for row-wise crossflow heating
-- Fin effectiveness calculated using classical fin theory
-- Time series data available if transient simulation was run
+- IP units (inches, cfm, inH₂O, ft/s) used for display
+- SI units used internally for calculations
+- 3-branch flow model: channels (through fins), top gap, side gaps
+- V2 plenum-over-HS manifold model for velocity distribution
+- Operating point found at fan/system curve intersection
 `;
-  zip.file('README.txt', readme);
-  
-  // Generate and download ZIP
-  try {
-    const content = await zip.generateAsync({ type: 'blob' });
-    const url = URL.createObjectURL(content);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `heat_adi_export_${timestamp}.zip`;
-    a.click();
-    URL.revokeObjectURL(url);
-  } catch (err) {
-    alert('Error creating ZIP file: ' + err.message);
-  }
-});
-
-
+    zip.file('README.txt', readme);
+    
+    // Generate and download ZIP
+    try {
+      const content = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(content);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `plenum_fan_export_${timestamp}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert('Error creating ZIP file: ' + err.message);
+    }
+  });
+</script>
 
 </script>
 </body>
 </html>
+
 
 
 
