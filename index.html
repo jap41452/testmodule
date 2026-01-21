@@ -44,6 +44,14 @@
   <span id="solveBadge" class="kpi">Ready.</span>
 </div>
 
+<div style="margin-top:8px;font-weight:600;font-size:13px;color:var(--muted)">Data Management</div>
+<div class="krow" style="margin-top:6px;gap:6px">
+  <button id="exportJsonBtn" style="background:#6b7280;font-size:12px;height:32px;padding:0 10px">Export JSON</button>
+  <button id="importJsonBtn" style="background:#6b7280;font-size:12px;height:32px;padding:0 10px">Import JSON</button>
+  <button id="exportCsvBtn" style="background:#6b7280;font-size:12px;height:32px;padding:0 10px">Export CSV</button>
+  <button id="exportPackageBtn" style="background:#6b7280;font-size:12px;height:32px;padding:0 10px">Export ZIP</button>
+</div>
+<input type="file" id="jsonFileInput" accept=".json" style="display:none;" />
 
     <label>Units</label>
     <select id="units">
@@ -981,6 +989,7 @@
 </script>
 </body>
 </html>
+
 
 
 
