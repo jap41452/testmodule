@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>SDOF Drop Shock</title>
+<title>1D Shock Response</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
 <style>
@@ -36,7 +36,7 @@
   .upper{
     display:grid;
     grid-template-columns: 260px 250px 1fr;
-    gap:10px;
+    gap:6px;
     padding:10px;
   }
 
@@ -56,7 +56,7 @@
     transform: rotate(45deg);
     margin-left:2px;
   }
-  input{
+  input, select{
     width:100%;
     height:22px;
     padding:2px 6px;
@@ -65,6 +65,7 @@
     background:#fff;
     box-sizing:border-box;
   }
+  select{ padding:1px 4px; }
 
   .summaryRows{
     display:grid;
@@ -84,8 +85,8 @@
     align-items:flex-start;
   }
   canvas#schem{
-    width: 220px;
-    height: 150px;
+    width: 340px;
+    height: 220px;
     background: var(--panel);
   }
 
@@ -132,12 +133,109 @@
     padding: 0 10px 8px;
     font-size:11px;
     opacity:.8;
+    margin-top:12px;
+    line-height:1.25;
+  }
+
+  /* PSD panel shown only for Random */
+  .psdPanel{
+    display:none;
+    margin-top:10px;
+    padding:8px;
+    border:1px solid #333;
+    background:#efefef;
+    grid-column: 1 / -1; /* span all 3 columns */
+  }
+  .psdTitle{
+    font-size:12px;
+    font-weight:700;
+    margin-bottom:6px;
+  }
+  .psdTbl{
+    width:100%;
+    border-collapse:collapse;
+    font-size:12px;
+  }
+  .psdTbl th, .psdTbl td{
+    border:1px solid #333;
+    padding:3px 4px;
+    background:#fff;
+  }
+  .psdTbl th{
+    background:#dedede;
+    font-weight:700;
+    text-align:center;
+  }
+  .psdTbl input{
+    height:20px;
+    font-size:12px;
+    border:1px solid #333;
+  }
+  .psdBtnRow{
+    display:flex;
+    gap:8px;
+    margin-top:8px;
+    align-items:center;
+  }
+  .psdNote{
+    font-size:11px;
+    opacity:.85;
+    line-height:1.25;
+  }
+
+  /* Random PSD panel: 2-column layout */
+  .psdGrid{
+    display:grid;
+    grid-template-columns: 320px 1fr;
+    gap:12px;
+    align-items:start;
+  }
+
+  .psdLeft{ min-width: 0; }
+
+  .psdRight{
+    display:grid;
+    grid-template-columns: 1fr 1fr;
+    gap:10px;
+    align-items:stretch;
+  }
+
+  .psdChartBox{
+    border:1px solid #333;
+    background:#fff;
+    padding:2px;
+    height:220px;
+    box-sizing:border-box;
+    overflow:hidden;
+    display:flex;
+    flex-direction:column;
+  }
+  .psdChartTitle{
+    font-size:11px;
+    font-weight:700;
+    margin: 0 0 2px 0;
+  }
+
+  #psdChart, #randChart{
+    display:block;
+    width:100% !important;
+    flex: 1 1 auto;
+    height: auto !important;
   }
 
   @media (max-width: 860px){
-    .upper{ grid-template-columns: 1fr; }
-    canvas#schem{ width: 260px; height: 170px; }
-    .ctl{ margin-left:0; }
+    .psdGrid{ grid-template-columns: 1fr; }
+    .psdRight{ grid-template-columns: 1fr; }
+    .psdChartBox{ height: 250px; }
+  }
+  
+  #buildRandom{
+    height: 34px;
+    padding: 0 14px;
+    font-size: 13px;
+    line-height: 34px;
+    white-space: nowrap;
+    min-width: 120px;
   }
 </style>
 </head>
@@ -145,7 +243,7 @@
 <body>
 <div class="wrap">
   <div class="topbar">
-    <div>SDOF Drop Shock</div>
+    <div>1D Shock Response</div>
     <div class="r">XL4sim</div>
   </div>
 
@@ -153,22 +251,41 @@
     <div>
       <div class="rows" style="padding:4px 2px 0;">
         <div class="lab"><div style="width:18px;text-align:right;font-weight:700;">W</div><div class="tri"></div></div>
-        <div><input id="W" type="number" step="any" value="100"></div>
+        <div><input id="W" type="number" step="any" value="10"></div>
 
         <div class="lab"><div style="width:18px;text-align:right;font-weight:700;">k</div><div class="tri"></div></div>
-        <div><input id="k" type="number" step="any" value="1000"></div>
+        <div><input id="k" type="number" step="any" value="2000"></div>
 
         <div class="lab"><div style="width:18px;text-align:right;font-weight:700;">c</div><div class="tri"></div></div>
-        <div><input id="c" type="number" step="any" value="4"></div>
+        <div><input id="c" type="number" step="any" value="5"></div>
 
-        <div class="lab"><div style="width:18px;text-align:right;font-weight:700;">G</div><div class="tri"></div></div>
-        <div><input id="g" type="number" step="any" value="386.4"></div>
+        <div class="lab"><div style="width:18px;text-align:right;font-weight:700;">g</div><div class="tri"></div></div>
+        <div><input id="g" type="number" step="any" value="386.09"></div>
 
-        <div class="lab"><div style="width:18px;text-align:right;font-weight:700;">h</div><div class="tri"></div></div>
-        <div><input id="h" type="number" step="any" value="1"></div>
+        <div class="lab"><div style="width:18px;text-align:right;font-weight:700;">G<sub>pk</sub></div><div class="tri"></div></div>
+        <div><input id="Gpk" type="number" step="any" value="10"></div>
 
-        <div class="lab"><div style="width:18px;text-align:right;font-weight:700;">V<sub>0</sub></div><div class="tri"></div></div>
-        <div><input id="v0" type="number" step="any" value="10"></div>
+        <div class="lab"><div style="width:18px;text-align:right;font-weight:700;">T<sub>p</sub></div><div class="tri"></div></div>
+        <div><input id="Tp" type="number" step="any" value="20"></div>
+
+        <div class="lab"><div style="width:18px;text-align:right;font-weight:700;">&#916;t</div><div class="tri"></div></div>
+        <div><input id="dt" type="number" step="any" value="0.05"></div>
+
+        <div class="lab"><div style="width:18px;text-align:right;font-weight:700;">shape</div><div class="tri"></div></div>
+        <div>
+          <select id="shape">
+            <option value="halfSine">1/2 sine</option>
+            <option value="triangular">triangular</option>
+            <option value="rectangular">rectangular</option>
+            <option value="sawtooth">sawtooth</option>
+            <option value="random">Random</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="hint">
+        Inputs: W, k, c, gravitational constant g, peak shock level G<sub>pk</sub> in g’s,
+        pulse duration T<sub>p</sub> in ms (ignored for Random), integration step &#916;t in ms.
       </div>
     </div>
 
@@ -183,36 +300,76 @@
         <div class="sumLab"><div style="width:64px;font-weight:700;">&#950;</div><div class="tri"></div></div>
         <div class="sumVal" id="zeta">—</div>
 
-        <div class="sumLab"><div style="width:110px;font-weight:700;">initial contact t</div><div class="tri"></div></div>
-        <div class="sumVal" id="tC">—</div>
+        <div class="sumLab"><div style="width:110px;font-weight:700;">t stop</div><div class="tri"></div></div>
+        <div class="sumVal" id="tStop">—</div>
 
-        <div class="sumLab"><div style="width:64px;font-weight:700;">g max</div><div class="tri"></div></div>
-        <div class="sumVal" id="gmax">—</div>
+        <div class="sumLab"><div style="width:110px;font-weight:700;">base g max</div><div class="tri"></div></div>
+        <div class="sumVal" id="gmaxB">—</div>
 
-        <div class="sumLab"><div style="width:64px;font-weight:700;">&#916; max</div><div class="tri"></div></div>
-        <div class="sumVal" id="dmax">—</div>
+        <div class="sumLab"><div style="width:110px;font-weight:700;">weight g max</div><div class="tri"></div></div>
+        <div class="sumVal" id="gmaxW">—</div>
       </div>
 
       <div class="hint">
-        Derived live from inputs. Auto-stop: 20 cycles from initial contact.
+        Derived live from inputs. Auto-stop: pulse + 20 response cycles (or Random duration = 100 response cycles).
       </div>
     </div>
 
     <div class="schem">
-      <canvas id="schem" width="440" height="300"></canvas>
+      <canvas id="schem" width="520" height="340"></canvas>
     </div>
-  </div>
 
-  <div class="controls">
+    <div class="psdPanel" id="psdPanel">
+      <div class="psdGrid">
+        <div class="psdLeft">
+          <div class="psdTitle">Random input PSD (up to 5 points)</div>
+
+          <table class="psdTbl">
+            <thead>
+              <tr>
+                <th style="width:50%">Frequency (Hz)</th>
+                <th style="width:50%">PSD (g²/Hz)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td><input id="f1" type="number" step="any" value="10"></td><td><input id="s1" type="number" step="any" value="0.010"></td></tr>
+              <tr><td><input id="f2" type="number" step="any" value="30"></td><td><input id="s2" type="number" step="any" value="0.020"></td></tr>
+              <tr><td><input id="f3" type="number" step="any" value="60"></td><td><input id="s3" type="number" step="any" value="0.010"></td></tr>
+              <tr><td><input id="f4" type="number" step="any" value=""></td><td><input id="s4" type="number" step="any" value=""></td></tr>
+              <tr><td><input id="f5" type="number" step="any" value=""></td><td><input id="s5" type="number" step="any" value=""></td></tr>
+            </tbody>
+          </table>
+
+          <div class="psdBtnRow">
+            <button class="btn" id="buildRandom">Build Random</button>
+            <div class="psdNote" id="psdStatus">
+              Provide 2–5 points, increasing frequency. Click “Build Random” to preview and arm the base input.
+            </div>
+          </div>
+        </div>
+
+        <div class="psdRight" id="psdCharts" style="display:none;">
+          <div class="psdChartBox">
+            <div class="psdChartTitle">PSD (g²/Hz)</div>
+            <canvas id="psdChart"></canvas>
+          </div>
+          <div class="psdChartBox">
+            <div class="psdChartTitle">Random base accel, g(t)</div>
+            <canvas id="randChart"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div><div class="controls">
     <button class="btn" id="run">Run</button>
     <button class="btn" id="pause" disabled>Pause</button>
     <button class="btn" id="stop" disabled>Stop</button>
     <button class="btn" id="reset">Reset</button>
-
-
-<button class="btn" id="btnJson" disabled>Export JSON</button>
+    
+<button class="btn" id="btnJson" disabled>JSON</button>
 <button class="btn" id="btnImport">Import JSON</button>
-<button class="btn" id="btnCsv" disabled>Export CSV</button>
+<button class="btn" id="btnCsv" disabled>CSV</button>
+
 
     <div class="ctl">
       <div style="font-weight:700;">Animation speed</div>
@@ -226,9 +383,7 @@
       <canvas id="chart"></canvas>
     </div>
   </div>
-</div>
-
-<script>
+</div><script>
 (() => {
   const $ = (id) => document.getElementById(id);
   const fmt = (x, n=3) => {
@@ -239,35 +394,65 @@
     if (ax >= 10)   return x.toFixed(2);
     return x.toFixed(n);
   };
+  const clamp = (x,a,b)=>Math.max(a,Math.min(b,x));
 
-  const defaults = { W:100, k:1000, c:4, g:386.4, h:1, v0:10, speed:1.0 };
+  const defaults = {
+    W:10, k:2000, c:5, g:386.09, Gpk:10, Tp:20, dt:0.05, shape:"halfSine", speed:1.0
+  };
 
-  const inp = { W: $("W"), k: $("k"), c: $("c"), g: $("g"), h: $("h"), v0: $("v0") };
-  const out = { fn: $("fn"), cc: $("cc"), zeta: $("zeta"), tC: $("tC"), gmax: $("gmax"), dmax: $("dmax") };
+  const inp = {
+    W: $("W"), k: $("k"), c: $("c"), g: $("g"),
+    Gpk: $("Gpk"), Tp: $("Tp"), dt: $("dt"), shape: $("shape")
+  };
 
-const btnRun = $("run"), btnPause = $("pause"), btnStop = $("stop"), btnReset = $("reset");
-// Export Buttons
-const btnJson = $("btnJson"), btnImport = $("btnImport"), btnCsv = $("btnCsv");
+  const out = {
+    fn: $("fn"), cc: $("cc"), zeta: $("zeta"),
+    tStop: $("tStop"), gmaxB: $("gmaxB"), gmaxW: $("gmaxW")
+  };
 
+  const psdPanel = $("psdPanel");
+  const buildRandomBtn = $("buildRandom");
+  const psdStatus = $("psdStatus");
 
+  const psdChartsWrap = $("psdCharts");
+  let psdChartObj = null;
+  let randChartObj = null;
 
-  
+  const btnRun = $("run"), btnPause = $("pause"), btnStop = $("stop"), btnReset = $("reset");
+  const btnJson = $("btnJson"), btnCsv = $("btnCsv");
   const speed = $("speed"), speedLbl = $("speedLbl");
 
-  // Soft-reset target: inputs as of the last time Run was clicked
-  let lastRunInputs = null;
-  
-  // Data snapshot for export
   let frozenRunData = null; 
+  let lastRunInputs = null;
+  let randomInput = null; // {t:[], abase:[], dt, tStop, gMaxB, meta:{fmin,fmax,nbins}}
 
-  // Chart
+  const RESPONSE_CYCLES = {
+    random: 100,
+    deterministic: 20
+  };
+
+  //Chart
   const chart = new Chart($("chart").getContext("2d"), {
     type: "line",
     data: {
-      labels: [],
       datasets: [
-        { label: "Displacement, y", data: [], borderWidth: 2, pointRadius: 0, tension: 0.05, yAxisID: "yDisp" },
-        { label: "Acceleration", data: [], borderWidth: 2, pointRadius: 0, tension: 0.05, borderDash: [6,4], yAxisID: "yG" }
+        {
+          label: "Base Accel, a_b (g)",
+          data: [],
+          borderWidth: 2,
+          pointRadius: 0,
+          tension: 0.05,
+          yAxisID: "yG"
+        },
+        {
+          label: "Weight Accel, a_w (g)",
+          data: [],
+          borderWidth: 2,
+          pointRadius: 0,
+          tension: 0.05,
+          borderDash: [6,4],
+          yAxisID: "yG"
+        }
       ]
     },
     options: {
@@ -275,116 +460,275 @@ const btnJson = $("btnJson"), btnImport = $("btnImport"), btnCsv = $("btnCsv");
       maintainAspectRatio: false,
       animation: false,
       interaction: { mode: "index", intersect: false },
+      layout: { padding: { bottom: 8 } },
       plugins: { legend: { position: "top" } },
       scales: {
-        x: { title: { display: true, text: "Time, sec." }, ticks: { maxTicksLimit: 10 } },
-        yDisp: { position: "left", title: { display: true, text: "Displacement" } },
-        yG: { position: "right", title: { display: true, text: "Accelerometer Reading, g's" }, grid: { drawOnChartArea:false } }
+        x: {
+          type: "linear",
+          title: { display: true, text: "Time, sec." },
+          ticks: { maxTicksLimit: 10 }
+        },
+        yG: { position: "left", title: { display: true, text: "Acceleration, g's" } }
       }
     }
   });
 
-  // Physics
-  function computeContactTime(h, v0, g){
-    const a = 0.5*g, b = v0, c = -h;
-    const disc = b*b - 4*a*c;
-    if (disc < 0) return NaN;
-    const t1 = (-b + Math.sqrt(disc)) / (2*a);
-    const t2 = (-b - Math.sqrt(disc)) / (2*a);
-    const cand = [t1,t2].filter(t => t >= 0).sort((p,q)=>p-q);
-    return cand.length ? cand[0] : NaN;
+
+  // Shock shapes (single pulse 0..Tp)
+  function shapeVal(s, kind){
+    s = clamp(s, 0, 1);
+    switch(kind){
+      case "halfSine":   return Math.sin(Math.PI*s);
+      case "triangular": return (s<=0.5) ? (2*s) : (2*(1-s));
+      case "rectangular":return 1;
+      case "sawtooth":   return (1 - s);
+      default:           return Math.sin(Math.PI*s);
+    }
+  }
+  function baseAccelPulse_g(t, Tp, Gpk, kind){
+    if (t < 0 || t > Tp) return 0;
+    return Gpk * shapeVal(t/Tp, kind);
   }
 
-  function simulateFromInputs(){
+  // RK4
+  function rk4Step(t, X, h, pars){
+    const {m,c,k,g, abase_g_func} = pars;
+    function deriv(tt, XX){
+      const z  = XX[0];
+      const zd = XX[1];
+      const y  = XX[2];
+      const yd = XX[3];
+      const ab_g = abase_g_func(tt);
+      const ab = ab_g * g;
+      const zdd = (-c*zd - k*z)/m - ab;
+      const ydd = ab;
+      return [zd, zdd, yd, ydd];
+    }
+    const k1 = deriv(t, X);
+    const X2 = X.map((xi,i)=>xi + 0.5*h*k1[i]);
+    const k2 = deriv(t + 0.5*h, X2);
+    const X3 = X.map((xi,i)=>xi + 0.5*h*k2[i]);
+    const k3 = deriv(t + 0.5*h, X3);
+    const X4 = X.map((xi,i)=>xi + h*k3[i]);
+    const k4 = deriv(t + h, X4);
+    return X.map((xi,i)=> xi + (h/6)*(k1[i] + 2*k2[i] + 2*k3[i] + k4[i]));
+  }
+
+  function computeKPI(){
     const W = +inp.W.value;
     const k = +inp.k.value;
     const c = +inp.c.value;
     const g = +inp.g.value;
-    const h = +inp.h.value;
-    const v0 = +inp.v0.value;
-
-    if (!(W>0) || !(k>0) || !(g>0) || !(h>=0)) return null;
-
+    if (!(W>0) || !(k>0) || !(g>0)) return null;
     const m = W/g;
     const wn = Math.sqrt(k/m);
     const fn = wn/(2*Math.PI);
     const cc = 2*m*wn;
-    const zeta = c/cc;
-
-    const tC = (h===0) ? 0 : computeContactTime(h, v0, g);
-    const vC = isFinite(tC) ? (v0 + g*tC) : NaN;
+    const zeta = (cc>0) ? (c/cc) : 0;
     const Tn = 1/Math.max(1e-12, fn);
-    const cyclesToContact = isFinite(tC) ? (fn * tC) : NaN;
+    return {W,k,c,g,m,wn,fn,cc,zeta,Tn};
+  }
 
-    const cycles = 20;
-    const tStop = (isFinite(tC) ? tC : 0) + cycles / Math.max(1e-12, fn);
+  // ---------- Random PSD utilities ----------
+  function readPSDPoints(){
+    const readNum = (id) => {
+      const s = ($(id).value || "").trim();
+      if (s === "") return NaN;
+      const v = parseFloat(s);
+      return Number.isFinite(v) ? v : NaN;
+    };
+    const rows = [
+      { f: readNum("f1"), s: readNum("s1") },
+      { f: readNum("f2"), s: readNum("s2") },
+      { f: readNum("f3"), s: readNum("s3") },
+      { f: readNum("f4"), s: readNum("s4") },
+      { f: readNum("f5"), s: readNum("s5") }
+    ];
+    const pts = rows.filter(r => Number.isFinite(r.f) && Number.isFinite(r.s));
+    if (pts.length < 2) return { ok:false, msg:"Enter at least 2 PSD points." };
+    for (let i=0; i<pts.length; i++){
+      if (!(pts[i].f > 0)) return { ok:false, msg:"Frequencies must be > 0." };
+      if (!(pts[i].s >= 0)) return { ok:false, msg:"PSD values must be ≥ 0." };
+      if (i>0 && !(pts[i].f > pts[i-1].f)) return { ok:false, msg:"Frequencies must be strictly increasing." };
+    }
+    return { ok:true, pts };
+  }
 
-    const dt = Math.max(1e-5, Math.min(0.0005, 1/(fn*550 + 250)));
+  function interpPSD(f, pts){
+    if (f <= pts[0].f) return pts[0].s;
+    if (f >= pts[pts.length-1].f) return pts[pts.length-1].s;
+    for (let i=0;i<pts.length-1;i++){
+      const f1 = pts[i].f, f2 = pts[i+1].f;
+      if (f >= f1 && f <= f2){
+        const s1 = pts[i].s, s2 = pts[i+1].s;
+        const a = (f - f1)/(f2 - f1);
+        return s1 + a*(s2 - s1);
+      }
+    }
+    return 0;
+  }
 
-    const t = [], y = [], v = [], a = [], gRead = [];
+  function buildRandomTimeHistory(kpi){
+    const chk = readPSDPoints();
+    if (!chk.ok) return {ok:false, msg:chk.msg};
+    const pts = chk.pts;
+    const dt_ms = +inp.dt.value;
+    if (!(dt_ms>0)) return {ok:false, msg:"Δt must be > 0."};
 
-    const nFF = Math.max(0, Math.ceil(((isFinite(tC)?tC:0))/dt));
-    for (let i=0; i<=nFF; i++){
-      const tt = i*dt;
-      const yy = -h + v0*tt + 0.5*g*tt*tt;
-      const vv = v0 + g*tt;
-      const aa = g;
-      t.push(tt); y.push(yy); v.push(vv); a.push(aa);
-      gRead.push(Math.abs(aa)/g);
+    const cycles = RESPONSE_CYCLES.random;
+    const tStop = cycles * kpi.Tn;
+    let dt = dt_ms/1000;
+    const fmax = pts[pts.length-1].f;
+    const dtNy = 1/(2*fmax + 1e-12);
+    const dtQual = 1/(12*fmax + 1e-12);
+    dt = Math.min(dt, dtNy, dtQual, kpi.Tn/240);
+    dt = Math.max(dt, 1e-6);
+
+    const n = Math.ceil(tStop/dt) + 1;
+    const t = new Array(n);
+    const nbins = 256;
+    const fmin = pts[0].f;
+    const fspan = Math.max(1e-9, (fmax - fmin));
+    const df = fspan/(nbins-1);
+    const freqs = new Array(nbins);
+    const amps  = new Array(nbins);
+    const phs   = new Array(nbins);
+
+    for (let i=0;i<nbins;i++){
+      const fi = fmin + i*df;
+      const Si = Math.max(0, interpPSD(fi, pts));
+      freqs[i] = fi;
+      amps[i]  = Math.sqrt(2*Si*df);
+      phs[i]   = 2*Math.PI*Math.random();
+    }
+    const abase = new Array(n);
+    let gMaxB = 0;
+    for (let k=0;k<n;k++){
+      const tt = k*dt;
+      t[k] = tt;
+      let val = 0;
+      for (let i=0;i<nbins;i++){
+        val += amps[i]*Math.cos(2*Math.PI*freqs[i]*tt + phs[i]);
+      }
+      abase[k] = val;
+      gMaxB = Math.max(gMaxB, Math.abs(val));
+    }
+    return {ok:true, t, abase, dt, tStop, gMaxB, meta:{fmin,fmax,nbins,df}, psdPts: pts};
+  }
+
+  function abaseFromRandom(tt){
+    if (!randomInput) return 0;
+    const dt = randomInput.dt;
+    const a = randomInput.abase;
+    const n = a.length;
+    if (tt <= 0) return a[0];
+    const idx = tt/dt;
+    const i0 = Math.floor(idx);
+    if (i0 >= n-1) return a[n-1];
+    const f = idx - i0;
+    return a[i0]*(1-f) + a[i0+1]*f;
+  }
+
+  // ---------- Simulation ----------
+  function simulateFromInputs(){
+    const kpi = computeKPI();
+    if (!kpi) return null;
+    const {W,k,c,g,m,fn,cc,zeta,Tn} = kpi;
+    const shape = inp.shape.value;
+    const Gpk = +inp.Gpk.value;
+    const Tp_ms = +inp.Tp.value;
+    const dt_ms = +inp.dt.value;
+    if (!(dt_ms>0)) return null;
+
+    let tStop = 0;
+    let dt = dt_ms/1000;
+    let abase_g_func = null;
+
+    if (shape === "random"){
+      if(!randomInput) return { __needsRandom: true };
+      dt = randomInput.dt;
+      tStop = randomInput.tStop;
+      abase_g_func = abaseFromRandom;
+    } else {
+      const cycles = RESPONSE_CYCLES.deterministic;
+      const Tp = (Tp_ms>0) ? (Tp_ms/1000) : 0.02;
+      dt = Math.max(1e-6, Math.min(dt, Tp/60, Tn/240));
+      tStop = Tp + cycles*Tn;
+      abase_g_func = (tt)=>baseAccelPulse_g(tt, Tp, Gpk, shape);
     }
 
-    function acc(yy,vv){ return g - (c/m)*vv - (k/m)*yy; }
-    let tt = isFinite(tC) ? tC : 0;
-    let yy = 0;
-    let vv = isFinite(tC) ? (v0 + g*tC) : v0;
+    const n = Math.ceil(tStop/dt) + 1;
+    const t = new Array(n);
+    const z = new Array(n);
+    const zd = new Array(n);
+    const y = new Array(n);
+    const yd = new Array(n);
+    const abase = new Array(n);
+    const aweight = new Array(n);
 
-    while (tt < tStop - 0.5*dt){
-      const k1y = vv;
-      const k1v = acc(yy, vv);
+    let X = [0,0,0,0];
+    let tt = 0;
+    let gMaxB = 0;
+    let gMaxW = 0;
 
-      const k2y = vv + 0.5*dt*k1v;
-      const k2v = acc(yy + 0.5*dt*k1y, vv + 0.5*dt*k1v);
+    for(let i=0;i<n;i++){
+      const zi  = X[0];
+      const zdi = X[1];
+      const ab_g = abase_g_func(tt);
+      const ab = ab_g * g;
+      const zdd = (-c*zdi - k*zi)/m - ab;
+      const xdd = zdd + ab;
 
-      const k3y = vv + 0.5*dt*k2v;
-      const k3v = acc(yy + 0.5*dt*k2y, vv + 0.5*dt*k2v);
+      t[i]=tt;
+      z[i]=zi; zd[i]=zdi;
+      y[i]=X[2]; yd[i]=X[3];
+      abase[i]=ab_g;
+      aweight[i]=xdd/g;
 
-      const k4y = vv + dt*k3v;
-      const k4v = acc(yy + dt*k3y, vv + dt*k3v);
+      gMaxB = Math.max(gMaxB, Math.abs(ab_g));
+      gMaxW = Math.max(gMaxW, Math.abs(aweight[i]));
 
-      yy = yy + (dt/6)*(k1y + 2*k2y + 2*k3y + k4y);
-      vv = vv + (dt/6)*(k1v + 2*k2v + 2*k3v + k4v);
-      tt = tt + dt;
-
-      const aa = acc(yy, vv);
-
-      t.push(tt); y.push(yy); v.push(vv); a.push(aa);
-      gRead.push(Math.abs(aa)/g);
+      X = rk4Step(tt, X, dt, {m,c,k,g, abase_g_func});
+      tt += dt;
     }
 
-    const yMax = Math.max(...y);
-    const gMax = Math.max(...gRead);
-
-    return { W,k,c,g,h,v0, m, wn, fn, cc, zeta, tC, vC, Tn, cyclesToContact, tStop, dt, t, y, v, a, gRead, yMax, gMax };
+    return {
+        W,k,c,g,Gpk, Tp_ms, dt_ms, dt_used:dt, shape, 
+        m, fn, cc, zeta, Tn, tStop, 
+        t,z,zd,y,yd, abase, aweight, gMaxB, gMaxW,
+        randomMeta: (shape==='random' && randomInput) ? randomInput.meta : null,
+        psdPts: (shape==='random' && randomInput) ? randomInput.psdPts : null
+    };
   }
 
   function writeSummary(sim){
-    if (!sim){
-      out.fn.textContent="—"; out.cc.textContent="—"; out.zeta.textContent="—";
-      out.tC.textContent="—"; out.gmax.textContent="—"; out.dmax.textContent="—";
+    if (!sim || sim.__needsRandom){
+      const kpi = sim && sim.kpi ? sim.kpi : computeKPI();
+      if (!kpi){
+        out.fn.textContent="—"; out.cc.textContent="—"; out.zeta.textContent="—";
+        out.tStop.textContent="—"; out.gmaxB.textContent="—"; out.gmaxW.textContent="—";
+        return;
+      }
+      out.fn.innerHTML   = fmt(kpi.fn,3) + " Hz";
+      out.cc.textContent = fmt(kpi.cc,3);
+      out.zeta.innerHTML = fmt(kpi.zeta*100,1) + " %";
+      out.tStop.textContent = fmt(20*kpi.Tn,3) + " s";
+      out.gmaxB.innerHTML = (randomInput ? fmt(randomInput.gMaxB,2) + " g" : "—");
+      out.gmaxW.innerHTML = "—";
       return;
     }
-    out.fn.innerHTML = fmt(sim.fn,3) + " Hz";
+    out.fn.innerHTML   = fmt(sim.fn,3) + " Hz";
     out.cc.textContent = fmt(sim.cc,3);
     out.zeta.innerHTML = fmt(sim.zeta*100,1) + " %";
-    out.tC.textContent = fmt(sim.tC,4) + " s";
-    out.gmax.innerHTML = fmt(sim.gMax,2) + " g";
-    out.dmax.textContent = fmt(sim.yMax,4);
+    out.tStop.textContent = fmt(sim.tStop,3) + " s";
+    out.gmaxB.innerHTML = fmt(sim.gMaxB,2) + " g";
+    out.gmaxW.innerHTML = fmt(sim.gMaxW,2) + " g";
   }
 
-  // Schematic
+  // ---------- Schematic ----------
   const canv = $("schem");
   const ctx = canv.getContext("2d");
-  function clamp(x,a,b){ return Math.max(a, Math.min(b, x)); }
+
   function roundRect(x,y,w,h,r){
     const rr = Math.min(r, w/2, h/2);
     ctx.beginPath();
@@ -400,7 +744,7 @@ const btnJson = $("btnJson"), btnImport = $("btnImport"), btnCsv = $("btnCsv");
   function drawSpring(x, yTop, yBot){
     ctx.strokeStyle = "#111827";
     ctx.lineWidth = 2;
-    const turns = 8, amp = 14;
+    const turns = 9, amp = 14;
     const dy = yBot - yTop;
     const seg = dy / (turns*2);
     ctx.beginPath();
@@ -418,96 +762,263 @@ const btnJson = $("btnJson"), btnImport = $("btnImport"), btnCsv = $("btnCsv");
     ctx.strokeStyle = "#111827";
     ctx.lineWidth = 2;
     const mid = (yTop + yBot)/2;
-    ctx.beginPath(); ctx.moveTo(x,yTop); ctx.lineTo(x, mid-28); ctx.stroke();
-    ctx.beginPath(); ctx.rect(x-18, mid-28, 36, 22); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x,yTop); ctx.lineTo(x, mid-30); ctx.stroke();
+    ctx.beginPath(); ctx.rect(x-18, mid-30, 36, 24); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(x, mid-6); ctx.lineTo(x, yBot); ctx.stroke();
   }
 
-  // SHIFT ENTIRE GRAPHIC DOWN to prevent clipping
-  const SCENE_TOP_SHIFT = 48; 
+  const SCENE_TOP_SHIFT = 26;
 
+  function drawSchematic(sim, tNow, zNow){
+    const w = canv.width, h = canv.height;
+    ctx.clearRect(0,0,w,h);
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--panel").trim() || "#d9d9d9";
+    ctx.fillRect(0,0,w,h);
 
-function drawSchematic(sim, tNow, yNow, vNow){
-  const w = canv.width, h = canv.height;
+    ctx.save();
+    ctx.translate(0, SCENE_TOP_SHIFT);
 
-  // background
-  ctx.clearRect(0,0,w,h);
-  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--panel").trim() || "#d9d9d9";
-  ctx.fillRect(0,0,w,h);
+    const xMid = Math.round(w*0.72);
+    const groundY = Math.round(h*0.86);
+    ctx.strokeStyle = "#111827";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(Math.round(w*0.48), groundY);
+    ctx.lineTo(Math.round(w*0.94), groundY);
+    ctx.stroke();
 
-  // OPTIONAL: vertical shift
-  ctx.save();
-  ctx.translate(0, SCENE_TOP_SHIFT);
+    const baseW = 210, baseH = 70;
+    const baseY = groundY - baseH - 10;
+    const xBase = xMid - baseW/2;
 
-  // --- Minimal geometry ---
-  const baseY = Math.round(h*0.82);      // ground elevation
-  const xMid  = Math.round(w*0.70);      // center of the mechanism
-  const yTop0 = Math.round(h*0.42);      // un-deflected top plate location (contact plane)
+    ctx.fillStyle = "#b9c7df";
+    ctx.strokeStyle = "#111827";
+    ctx.lineWidth = 3;
+    roundRect(xBase, baseY, baseW, baseH, 16);
 
-  // Ground line
-  ctx.strokeStyle = "#111827";
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.moveTo(Math.round(w*0.45), baseY);
-  ctx.lineTo(Math.round(w*0.92), baseY);
-  ctx.stroke();
+    const bw = 170, bh = 76;
+    const xMass = xMid - bw/2;
+    const gap0 = 120;
+    const massY0 = baseY - gap0 - bh;
 
-  // Scale for visual deflection
-  const yMaxVis = sim ? Math.max(1e-6, sim.yMax) : Math.max(1e-6, (+inp.h.value || 1));
-  const plateMaxPix = Math.round((baseY - yTop0) * 0.60);
+    let zScale = 1;
+    if (sim){
+      const zSpan = Math.max(1e-9, ...sim.z.map(v=>Math.abs(v)));
+      zScale = (0.22*h)/zSpan;
+    }
 
-  // Plate deflection only when in contact (y >= 0)
-  const yPlatePhys = Math.max(0, yNow);
-  const yPlatePix = yTop0 + clamp(yPlatePhys / yMaxVis, 0, 1.25) * plateMaxPix;
+    const massY = massY0 + (sim ? (zNow * zScale) : 0);
+    const yAttachBase = baseY - 6;
+    const yAttachMass = massY + bh + 6;
+    const xDamper = Math.round(xMid - 42);
+    const xSpring = Math.round(xMid + 42);
+    drawDamper(xDamper, yAttachMass, yAttachBase);
+    drawSpring(xSpring, yAttachMass, yAttachBase);
 
-  // Top plate
-  ctx.strokeStyle = "#111827";
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.moveTo(xMid - 95, yPlatePix);
-  ctx.lineTo(xMid + 95, yPlatePix);
-  ctx.stroke();
+    ctx.fillStyle = "#cfd5dd";
+    ctx.strokeStyle = "#111827";
+    ctx.lineWidth = 3;
+    roundRect(xMass, massY, bw, bh, 18);
 
-  // Spring + Damper under the weight
-  const xDamper = Math.round(xMid - 35);
-  const xSpring = Math.round(xMid + 35);
-  drawDamper(xDamper, yPlatePix, baseY);
-  drawSpring(xSpring, yPlatePix, baseY);
+    ctx.fillStyle = "#111827";
+    ctx.font = "700 13px Arial, Helvetica, sans-serif";
+    ctx.fillText("W", xMass + 12, massY + 22);
+    ctx.font = "700 12px Arial, Helvetica, sans-serif";
+    ctx.fillText("base", xBase + 12, baseY + 22);
 
-  // Weight block
-  const bw = 150, bh = 70;
-  let yMassTop;
-  if (yNow < 0){
-    // free fall
-    const hIn = Math.max(1e-6, (+inp.h.value || 1));
-    const freeFallPix = clamp((-yNow)/hIn, 0, 1.5) * Math.round(h*0.25);
-    yMassTop = Math.round(yTop0 - 14 - bh - freeFallPix);
-  } else {
-    // contact
-    yMassTop = Math.round(yPlatePix - bh - 4);
+    ctx.font = "800 16px Arial, Helvetica, sans-serif";
+    ctx.fillText("t = " + fmt(tNow,4) + " s", Math.round(w*0.30), Math.round(h*0.12));
+
+    ctx.restore();
   }
-  const xMass = xMid - bw/2;
 
-  ctx.fillStyle = "#cfd5dd";
-  ctx.strokeStyle = "#111827";
-  ctx.lineWidth = 3;
-  roundRect(xMass, yMassTop, bw, bh, 16);
+// --- IMPORT FUNCTION ---
+const btnImport = $("btnImport");
 
-  ctx.restore();
-}
+btnImport.addEventListener("click", () => {
+  // Create a file input element
+  const fileInput = document.createElement("input");
+  fileInput.type = "file";
+  fileInput.accept = ".json,application/json";
+  
+  fileInput.addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const data = JSON.parse(event.target.result);
+        
+        // Validate it's our format
+        if (!data.inputs || !data.derivedValues) {
+          alert("Invalid JSON format. Please select a file exported from this module.");
+          return;
+        }
+        
+        // Populate basic inputs
+        inp.W.value = data.inputs.W;
+        inp.k.value = data.inputs.k;
+        inp.c.value = data.inputs.c;
+        inp.g.value = data.inputs.g;
+        inp.Gpk.value = data.inputs.Gpk;
+        inp.Tp.value = data.inputs.Tp_ms;
+        inp.dt.value = data.inputs.dt_ms;
+        inp.shape.value = data.inputs.shape;
+        
+        // If it was a Random simulation, repopulate PSD table
+        if (data.inputs.shape === "random" && data.randomMetadata && data.randomMetadata.psdTable) {
+          const psdTable = data.randomMetadata.psdTable;
+          
+          // Clear all PSD fields first
+          ["f1","s1","f2","s2","f3","s3","f4","s4","f5","s5"].forEach(id => $(id).value = "");
+          
+          // Populate available points
+          psdTable.forEach((pt, i) => {
+            if (i < 5) {
+              $(`f${i+1}`).value = pt.f;
+              $(`s${i+1}`).value = pt.s;
+            }
+          });
+          
+          // Update UI and rebuild random input
+          updateRandomUI();
+          
+          // Auto-build the random input
+          const kpi = computeKPI();
+          if (kpi) {
+            const res = buildRandomTimeHistory(kpi);
+            if (res.ok) {
+              randomInput = {
+                t: res.t,
+                abase: res.abase,
+                dt: res.dt,
+                tStop: res.tStop,
+                gMaxB: res.gMaxB,
+                meta: res.meta,
+                psdPts: res.psdPts
+              };
+              renderRandomCharts();
+              psdStatus.textContent = "Random input rebuilt from imported data. Click Run to simulate.";
+            }
+          }
+        } else {
+          updateRandomUI();
+        }
+        
+        // Recompute and update display
+        recomputeLive();
+        
+        alert("Data imported successfully! Click Run to simulate.");
+        
+      } catch (err) {
+        alert("Error reading JSON file: " + err.message);
+      }
+    };
+    
+    reader.readAsText(file);
+  });
+  
+  // Trigger the file picker
+  fileInput.click();
+});
 
-  // Live recompute (debounced)
+
+
+  // ---------- Random charts ----------
+  function destroyRandomCharts(){
+    if (psdChartObj){ psdChartObj.destroy(); psdChartObj = null; }
+    if (randChartObj){ randChartObj.destroy(); randChartObj = null; }
+    if (psdChartsWrap) psdChartsWrap.style.display = "none";
+  }
+
+  function makePSDSeriesFromPoints(pts){
+    return { f: pts.map(p => p.f), s: pts.map(p => p.s) };
+  }
+
+  function renderRandomCharts(){
+    const chk = readPSDPoints();
+    if (!chk.ok) return;
+    const pts = chk.pts;
+    const c1 = $("psdChart");
+    const c2 = $("randChart");
+    if (!c1 || !c2) return;
+
+    destroyRandomCharts();
+    psdChartsWrap.style.display = "grid";
+
+    const psdSeries = makePSDSeriesFromPoints(pts);
+    psdChartObj = new Chart(c1.getContext("2d"), {
+      type: "line",
+      data: {
+        labels: psdSeries.f.map(v => String(v)),
+        datasets: [{ data: psdSeries.s, borderWidth: 2, pointRadius: 2, tension: 0 }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        layout: { padding: { bottom: 18 } },
+        plugins: { legend: { display:false } },
+        scales: {
+          x: { title: { display:true, text:"Frequency (Hz)" } },
+          y: { title: { display:true, text:"g²/Hz" } }
+        }
+      }
+    });
+
+    const t = randomInput.t;
+    const a = randomInput.abase;
+    const maxPts = 2500;
+    const step = Math.max(1, Math.floor(t.length / maxPts));
+
+    const tPlot = [];
+    const aPlot = [];
+    for (let i=0; i<t.length; i+=step){
+      tPlot.push(t[i]);
+      aPlot.push(a[i]);
+    }
+
+    randChartObj = new Chart(c2.getContext("2d"), {
+      type: "line",
+      data: {
+        labels: tPlot.map(v => v.toFixed(4)),
+        datasets: [{ data: aPlot, borderWidth: 2, pointRadius: 0, tension: 0 }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        layout: { padding: { bottom: 18 } },
+        plugins: { legend: { display:false } },
+        scales: {
+          x: { title: { display:true, text:"Time (s)" }, ticks: { maxTicksLimit: 6 } },
+          y: { title: { display:true, text:"g" } }
+        }
+      }
+    });
+  }
+
+  function updateRandomUI(){
+    const isRand = (inp.shape.value === "random");
+    psdPanel.style.display = isRand ? "block" : "none";
+    buildRandomBtn.disabled = !isRand;
+    if (!isRand) destroyRandomCharts();
+    psdStatus.textContent = !isRand
+      ? "Provide 2–5 points, increasing frequency. Click “Build Random g(t)” to preview and arm the base input."
+      : (randomInput
+          ? "Random input is built and armed. Click Run to simulate using this base acceleration."
+          : "Provide 2–5 points, increasing frequency. Click “Build Random g(t)” to preview and arm the base input.");
+  }
+
+  // ---------- Live recompute ----------
   let simReady = null;
   let debounceTimer = null;
 
   function recomputeLive(){
     simReady = simulateFromInputs();
     writeSummary(simReady);
-
-    // Pre-run schematic: t=0, y=-h, v=v0
-    const h0 = +inp.h.value || 0;
-    const v0 = +inp.v0.value || 0;
-    drawSchematic(simReady, 0, -Math.max(0,h0), v0);
+    drawSchematic(simReady && !simReady.__needsRandom ? simReady : null, 0, 0);
   }
 
   function requestRecompute(){
@@ -518,10 +1029,56 @@ function drawSchematic(sim, tNow, yNow, vNow){
 
   Object.values(inp).forEach(el => {
     el.addEventListener("input", requestRecompute);
-    el.addEventListener("change", requestRecompute);
+    el.addEventListener("change", ()=>{
+      if (el === inp.shape) updateRandomUI();
+      requestRecompute();
+    });
   });
 
-  // Animation
+  ["f1","s1","f2","s2","f3","s3","f4","s4","f5","s5"].forEach(id=>{
+    $(id).addEventListener("input", ()=>{
+      if (inp.shape.value === "random"){
+        psdStatus.textContent = randomInput
+          ? "PSD edited. Click “Build Random g(t)” again to rebuild/refresh the random time history."
+          : "Provide 2–5 points, increasing frequency. Click “Build Random g(t)” to preview and arm the base input.";
+      }
+    });
+  });
+
+  // ---------- Build Random button ----------
+  buildRandomBtn.addEventListener("click", ()=>{
+    if (anim.running) return;
+    const kpi = computeKPI();
+    if (!kpi){
+      psdStatus.textContent = "Enter valid W, k, and g before building Random input.";
+      return;
+    }
+    const res = buildRandomTimeHistory(kpi);
+    if (!res.ok){
+      psdStatus.textContent = res.msg;
+      randomInput = null;
+      recomputeLive();
+      return;
+    }
+    randomInput = {
+      t: res.t,
+      abase: res.abase,
+      dt: res.dt,
+      tStop: res.tStop,
+      gMaxB: res.gMaxB,
+      meta: res.meta,
+      psdPts: res.psdPts
+    };
+    renderRandomCharts();
+    const basePts = randomInput.t.map((tt,i)=>({ x: tt, y: randomInput.abase[i] }));
+    chart.data.datasets[0].data = basePts;
+    chart.data.datasets[1].data = []; 
+    chart.update();
+    psdStatus.textContent = `Random input built and armed. dt=${fmt(randomInput.dt,4)} s, duration=${fmt(randomInput.tStop,3)} s, base g max=${fmt(randomInput.gMaxB,2)} g. Click Run to simulate.`;
+    recomputeLive();
+  });
+
+  // ---------- Animation ----------
   function setButtons(running, paused){
     btnRun.disabled = running && !paused;
     btnPause.disabled = !running;
@@ -533,33 +1090,36 @@ function drawSchematic(sim, tNow, yNow, vNow){
   let raf = null;
 
   function updateChartTo(idx){
-    chart.data.labels = simReady.t.slice(0, idx+1).map(x => x.toFixed(4));
-    chart.data.datasets[0].data = simReady.y.slice(0, idx+1);
-    chart.data.datasets[1].data = simReady.gRead.slice(0, idx+1);
+    const n = idx + 1;
+    const basePts = new Array(n);
+    const wPts    = new Array(n);
+    for (let i=0; i<n; i++){
+      basePts[i] = { x: simReady.t[i], y: simReady.abase[i] };
+      wPts[i]    = { x: simReady.t[i], y: simReady.aweight[i] };
+    }
+    chart.data.datasets[0].data = basePts;
+    chart.data.datasets[1].data = wPts;
     chart.update();
   }
 
   function start(){
-    // Commit current inputs as the "last run" state (used by Reset)
     lastRunInputs = {
-      W:  +inp.W.value,
-      k:  +inp.k.value,
-      c:  +inp.c.value,
-      g:  +inp.g.value,
-      h:  +inp.h.value,
-      v0: +inp.v0.value
+      W:+inp.W.value, k:+inp.k.value, c:+inp.c.value, g:+inp.g.value,
+      Gpk:+inp.Gpk.value, Tp:+inp.Tp.value, dt:+inp.dt.value, shape:inp.shape.value
     };
-
+    simReady = simulateFromInputs();
     if (!simReady){
-       recomputeLive();
-       if (!simReady) return;
+      recomputeLive();
+      return;
     }
-
-    // Capture snapshot for Export
+    if (simReady.__needsRandom){
+      alert("Random is selected. Click “Build Random g(t)” first to generate the base acceleration time history.");
+      return;
+    }
     frozenRunData = simReady;
     btnJson.disabled = false;
     btnCsv.disabled = false;
-
+    
     chart.data.labels = [];
     chart.data.datasets[0].data = [];
     chart.data.datasets[1].data = [];
@@ -573,36 +1133,29 @@ function drawSchematic(sim, tNow, yNow, vNow){
 
     const step = () => {
       if (!anim.running) return;
-
       const spd = +speed.value;
       const now = performance.now();
-
       if (!anim.paused){
         const dtSec = ((now - anim.t0)/1000) * spd;
         anim.t0 = now;
-
         const tTarget = simReady.t[anim.idx] + dtSec;
         while (anim.idx < simReady.t.length-1 && simReady.t[anim.idx] < tTarget){
           anim.idx++;
         }
-
         if (anim.idx >= simReady.t.length-1){
           anim.idx = simReady.t.length-1;
           updateChartTo(anim.idx);
-          drawSchematic(simReady, simReady.t[anim.idx], simReady.y[anim.idx], simReady.v[anim.idx]);
-          stop(true);
+          drawSchematic(simReady, simReady.t[anim.idx], simReady.z[anim.idx]);
+          stop();
           return;
         }
       } else {
         anim.t0 = now;
       }
-
       updateChartTo(anim.idx);
-      drawSchematic(simReady, simReady.t[anim.idx], simReady.y[anim.idx], simReady.v[anim.idx]);
-
+      drawSchematic(simReady, simReady.t[anim.idx], simReady.z[anim.idx]);
       raf = requestAnimationFrame(step);
     };
-
     cancelAnimationFrame(raf);
     raf = requestAnimationFrame(step);
   }
@@ -613,47 +1166,39 @@ function drawSchematic(sim, tNow, yNow, vNow){
     setButtons(false,false);
     cancelAnimationFrame(raf);
     raf = null;
-
-    if (simReady){
+    if (simReady && !simReady.__needsRandom){
       updateChartTo(simReady.t.length-1);
-      drawSchematic(simReady, simReady.t.at(-1), simReady.y.at(-1), simReady.v.at(-1));
+      drawSchematic(simReady, simReady.t.at(-1), simReady.z.at(-1));
     }
   }
 
   function hardReset(){
-    // stop animation
     anim.running = false;
     anim.paused = false;
     setButtons(false,false);
-    cancelAnimationFrame(raf);
-    raf = null;
-
-    // Disable exports on reset
     btnJson.disabled = true;
     btnCsv.disabled = true;
     frozenRunData = null;
-
-    // restore inputs to the last Run values (soft reset)
+    cancelAnimationFrame(raf);
+    raf = null;
     const src = lastRunInputs || defaults;
-
-    inp.W.value  = src.W;
-    inp.k.value  = src.k;
-    inp.c.value  = src.c;
-    inp.g.value  = src.g;
-    inp.h.value  = src.h;
-    inp.v0.value = src.v0;
-
-    // clear plot
+    inp.W.value = src.W;
+    inp.k.value = src.k;
+    inp.c.value = src.c;
+    inp.g.value = src.g;
+    inp.Gpk.value = src.Gpk;
+    inp.Tp.value = src.Tp;
+    inp.dt.value = src.dt;
+    inp.shape.value = src.shape;
+    updateRandomUI();
     chart.data.labels = [];
     chart.data.datasets[0].data = [];
     chart.data.datasets[1].data = [];
     chart.update();
-
-    // recompute + redraw initial
     recomputeLive();
   }
 
-  // --- EXPORT FUNCTIONS ---
+// --- EXPORT FUNCTIONS ---
 
   function downloadFile(content, fileName, mimeType) {
     const a = document.createElement("a");
@@ -670,91 +1215,43 @@ function drawSchematic(sim, tNow, yNow, vNow){
     const d = frozenRunData;
     const exportObj = {
       provenance: {
-        module: "SDOF Drop Shock",
+        module: "1D Shock Response",
         version: "1.0",
         timestamp: new Date().toISOString()
       },
-
-
-
-
       inputs: {
-        W: d.W, k: d.k, c: d.c, g: d.g, 
-        h: d.h, v0: d.v0
+        W: d.W, k: d.k, c: d.c, g: d.g, Gpk: d.Gpk, 
+        Tp_ms: d.Tp_ms, dt_ms: d.dt_ms, shape: d.shape
       },
+      randomMetadata: d.randomMeta ? {
+        ...d.randomMeta, 
+        psdTable: d.psdPts 
+      } : null,
       derivedValues: {
-        m: d.m, wn: d.wn, fn: d.fn, cc: d.cc, zeta: d.zeta, 
-        tC: d.tC, vC: d.vC, Tn: d.Tn, tStop: d.tStop,
-        maxima: { gMax: d.gMax, yMax: d.yMax }
+        m: d.m, wn: d.wn, fn: d.fn, cc: d.cc, zeta: d.zeta, Tn: d.Tn,
+        tStop: d.tStop, dt_used: d.dt_used,
+        maxima: { gMaxB: d.gMaxB, gMaxW: d.gMaxW }
       },
       results: {
         t: d.t,
-        y: d.y,
-        a_g: d.a.map(val => val/d.g) // Exporting acceleration in Gs (signed)
+        abase_g: d.abase,
+        aweight_g: d.aweight
       }
     };
-    downloadFile(JSON.stringify(exportObj, null, 2), "drop_shock_data.json", "application/json");
+    downloadFile(JSON.stringify(exportObj, null, 2), "simulation_data.json", "application/json");
   });
 
   btnCsv.addEventListener("click", () => {
     if(!frozenRunData) return;
     const d = frozenRunData;
-    // Columns: Time, Displacement, Acceleration(g)
-    let csv = "t_sec,disp,accel_g\n";
+
+    // Time History CSV Only
+    let csv = "t_sec,abase_g,aweight\n";
     for(let i=0; i<d.t.length; i++){
-      // Note: converting raw acceleration 'a' to Gs by dividing by gravity input 'g'
-      csv += `${d.t[i]},${d.y[i]},${d.a[i]/d.g}\n`;
+      csv += `${d.t[i]},${d.abase[i]},${d.aweight[i]}\n`;
     }
-    downloadFile(csv, "drop_shock_history.csv", "text/csv");
+    downloadFile(csv, "time_history.csv", "text/csv");
   });
-
-btnImport.addEventListener("click", () => {
-  const input = document.createElement("input");
-  input.type = "file";
-  input.accept = ".json";
-  
-  input.onchange = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      try {
-        const imported = JSON.parse(evt.target.result);
-        
-        // Check if this has the expected structure
-        if (!imported.inputs) {
-          alert("Invalid JSON format: missing 'inputs' object");
-          return;
-        }
-        
-        // Populate input fields from imported data
-        const inputs = imported.inputs;
-        if (inputs.W !== undefined)  inp.W.value  = inputs.W;
-        if (inputs.k !== undefined)  inp.k.value  = inputs.k;
-        if (inputs.c !== undefined)  inp.c.value  = inputs.c;
-        if (inputs.g !== undefined)  inp.g.value  = inputs.g;
-        if (inputs.h !== undefined)  inp.h.value  = inputs.h;
-        if (inputs.v0 !== undefined) inp.v0.value = inputs.v0;
-        
-        // Trigger recompute to update summary and schematic
-        recomputeLive();
-        
-        alert("Configuration imported successfully!");
-        
-      } catch (err) {
-        console.error("Import error:", err);
-        alert("Error importing JSON: " + err.message);
-      }
-    };
-    
-    reader.readAsText(file);
-  };
-  
-  input.click();
-});
-
-
 
   btnRun.addEventListener("click", start);
   btnPause.addEventListener("click", () => {
@@ -767,13 +1264,17 @@ btnImport.addEventListener("click", () => {
 
   speed.addEventListener("input", () => speedLbl.textContent = (+speed.value).toFixed(1) + "×");
 
-  // initial
+  // init
   speedLbl.textContent = (+speed.value).toFixed(1) + "×";
+  updateRandomUI();
   recomputeLive();
 })();
 </script>
+
+
 </body>
 </html>
+
 
 
 
