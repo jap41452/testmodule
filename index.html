@@ -854,6 +854,19 @@ function exportData(fmt){
     params: {...sim.params},
     timestamp: new Date().toISOString()
   };
+  
+  if(fmt==='csv'){
+    const lines = [cols.join(',')];
+    for(const r of rows){ lines.push(r.map(v=> Number.isFinite(v)? (+v).toFixed(6) : '').join(',')); }
+    const blob = new Blob([lines.join('\n')], {type:'text/csv'});
+    download(blob, safeFilename('drop-shock-data.csv'));
+  } else {
+    const payload = {meta, columns: cols, rows};
+    const blob = new Blob([JSON.stringify(payload)], {type:'application/json'});
+    download(blob, safeFilename('drop-shock-data.json'));
+  }
+}
+
 
 
   // --------------------------- UI wiring ---------------------------
@@ -1053,6 +1066,7 @@ if(btnImport && fileInput){
   </script>
 </body>
 </html>
+
 
 
 
