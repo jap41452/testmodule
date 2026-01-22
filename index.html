@@ -1,1071 +1,1274 @@
-!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>3D Drop Shock</title>
+  <title>Base Shake — Random PSD</title>
   <style>
     :root{
-      --bg:#ffffff; --panel:#f7f7f7; --ink:#000000; --muted:#555555; --accent:#0b73c8; --ok:#28a745; --warn:#d68a00;
-      --border:#d9d9d9; --hud:#ffffff; --hudText:#000000; --setup-col:420px;
+      --panel-w:320px; --panel-h:620px;
+      --ink:#111; --muted:#666; --accent:#0b73c8; --border:#d9d9d9; --panel:#f7f7f7;
+      --radius:14px; --gap:12px; --pad:14px; --input-h:38px; --seg-h:48px;
     }
-    *{box-sizing:border-box}
-    body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
-    header{padding:14px 18px;border-bottom:1px solid var(--border);background:#f0f0f0}
-    header h1{margin:0;font-size:18px;letter-spacing:.3px}
-
-    /* ------ Two-column layout (Setup fixed left, Box on right) ------ */
-    .wrap{
-      display:grid;
-      grid-template-columns: var(--setup-col) minmax(600px,1fr);  /* ← right column is box+spring */
-      grid-template-areas:"controls view" "accel spring";
-      gap:16px; padding:16px; align-items:start;
-    }
-    .panel{background:var(--panel);border:1px solid var(--border);border-radius:8px; padding:14px; min-width:0;}
-    .panel h2{margin:0 0 16px 0; font-size:15px; color:#000}
-    .grid{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); column-gap:10px; row-gap:20px;}
-
-    /* spacing between label and input */
-    label{
-      font-size:12px;
-      color:var(--muted);
-      display:block;
-      margin-bottom:12px;   /* space between label and input */
-    }
-
-    /* Units preset row: align select + SI button */
-    .units-row{
-      display:flex;
-      gap:8px;
-      align-items:center;
-      flex-wrap:nowrap;
-    }
-    .units-row select{ flex:1 1 auto; min-width:0; }
-    .units-row .btn{ flex:0 0 auto; width:auto; }
-
-    /* inputs are full width; buttons are auto width */
-    input[type="number"], input[type="range"], select, textarea{
-      width:100%; padding:8px 10px; border-radius:6px; border:1px solid #bfbfbf; background:#fff; color:var(--ink);
-      min-height:36px; line-height:1.2;
-    }
-    .btn{
-      padding:8px 10px; border:1px solid #bfbfbf; border-radius:6px; background:#fff; color:#000; cursor:pointer;
-      width:auto;  /* IMPORTANT: prevents overlap */
-    }
-
-    input[type="range"]{padding:0}
-    textarea{min-height:120px; font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12px}
-    .row{display:flex; gap:8px; flex-wrap:wrap}
-    /* Make setup buttons 1/3 width each */
-    .row .btn{flex:0 0 calc(33% - 8px);min-width:0}
-    .btn:hover{background:#f2f2f2}
-    .btn.active{outline:2px solid var(--accent)}
-    .btn.good{border-color:#1e8558}
-    .btn.warn{border-color:#8a5f1a}
-    .u-small{font-size:12px;color:var(--muted)}
-
-    /* Box canvas panel */
-    #viewWrap{position:relative;aspect-ratio:1/1;min-height:520px;border-radius:8px;overflow:hidden;background:#fff; width:100%;}
-    #view{width:100%;height:100%;display:block;background:#ffffff}
-    #axes{width:32px;height:32px;display:block;background:#fff;border:1px solid var(--border);border-radius:6px}
-    #hud{
-      position:absolute; right:150px; top:130px; left:auto; bottom:auto;
-      background:var(--hud); border:1px solid var(--border); border-radius:6px; padding:8px 10px; color:var(--hudText);
-      font-size:12px !important; line-height:1.25 !important; white-space:nowrap; z-index:5;
-    }
-    #hud .k{color:#000}
-    #status{position:static;display:inline-block;margin-left:8px;border:1px solid var(--border);border-radius:6px;padding:6px 10px;background:#fff;color:#000}
-    .note{padding:10px 12px;border:1px dashed var(--border);border-radius:6px;color:#333; margin-top:10px;background:#fafafa}
-
-    /* Grid placement to keep box panel in the upper-right */
-    #controlsPanel{grid-area:controls; min-height:600px;}  /* ← Setup panel height */
-    #viewWrap{grid-area:view}
-    #accelPanel{grid-area:accel}
-    #springPanel{grid-area:spring; width:100%;}
-
-    /* Plot panels */
-    .plot{position:relative;height:260px; min-width:0;}
-    .plot canvas{width:100%;height:100%;display:block;background:#fff;border-radius:6px;cursor:crosshair}
-    .legend{font-size:12px;color:#555;margin-top:6px;display:flex;gap:12px;flex-wrap:wrap}
-    .legend .swatch{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px}
+    *{box-sizing:border-box;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+    body{margin:0;background:#f3f4f6;color:var(--ink)}
+    .wrap{display:flex;align-items:flex-start;gap:18px;flex-wrap:nowrap;overflow-x:auto;padding:16px}
+    .panel{width:var(--panel-w);min-width:var(--panel-w);height:var(--panel-h);background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:var(--pad);box-shadow:0 6px 24px rgba(0,0,0,.06);display:flex;flex-direction:column;flex-shrink:0}
+    .wrap > div:not(.panel){flex:1 1 560px;min-width:560px}
+    h2{margin:0 0 18px;font-size:18px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--gap)}
+    .row{display:contents}
+    label{font-size:12px;color:var(--muted);display:block;margin-bottom:10px}
+    .input,.seg{border:1px solid var(--border);border-radius:10px;background:#fff;display:flex;align-items:center;justify-content:center;padding:0 10px}
+    .input{height:var(--input-h)}
+    .input input,.input select,.input textarea{width:100%;height:100%;border:0;outline:0;background:transparent;font-size:14px;color:var(--ink)}
+    .input.readonly{background:#f0f2f5}
+    .input.readonly input{color:#666;pointer-events:none}
+    .colspan-2{grid-column:1 / span 2}
+    .btn{border:1px solid var(--border);background:#fff;border-radius:10px;height:40px;cursor:pointer;width:100%;font-size:14px}
+    .btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+    .btn.primary:hover{filter:brightness(1.05)}
+    .btn.sm{height:32px;padding:0 10px;border-radius:8px}
+    .btnbar{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .dropdown{border:1px solid var(--border);border-radius:10px;background:#fff;padding:10px;margin-top:10px}
+    #view{width:500px;height:400px;background:#fff;border:1px solid var(--border);border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.06)}
+    .toolbar{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+    .toolbar button{border:1px solid var(--border);background:#fff;border-radius:8px;padding:4px 8px;cursor:pointer}
+    .toolbar label{font:12px system-ui;color:#444}
+    .readout{font:12px system-ui;color:#333;margin:4px 0 0 0}
+    .toast{position:fixed;left:16px;bottom:16px;max-width:60ch;background:#111;color:#fff;padding:10px 12px;border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.2);opacity:0;transform:translateY(8px);transition:opacity .2s ease, transform .2s ease;pointer-events:none;font:13px system-ui}
+    .toast.show{opacity:0.95;transform:translateY(0)}
+    #exportBtns{display:flex;gap:8px;margin:8px 0 16px}
+    #exportBtns .btn{width:120px}
+    #view,#accelPlot,#springPlot,#psdPlot{max-width:100%;height:auto}
+    @media (max-width:980px){.wrap{flex-wrap:wrap}.wrap > div:not(.panel){min-width:100%;flex-basis:100%}}
   </style>
 </head>
 <body>
-  <header>
-    <h1>3D Drop Shock</h1>
-  </header>
-
   <div class="wrap">
-    <!-- Left column: Controls -->
-    <section id="controlsPanel" class="panel" aria-label="Controls">
-      <h2>Setup</h2>
-      <div class="grid" style="margin-bottom:10px">
-        <div>
-          <label>Units preset</label>
-          <div class="units-row">
-            <select id="units">
-              <option value="us">US (in, lbf, s)</option>
-              <option value="si">SI (m, N, s)</option>
-            </select>
-            <button id="btnSI" class="btn">SI</button>
+    <div class="panel" role="region" aria-label="Random PSD control panel">
+      <h2>Random PSD</h2>
+      <div class="grid">
+        <div class="row">
+          <div><label for="weight">Weight</label><div class="input"><input id="weight" type="number" value="100" /></div></div>
+          <div><label for="mass">Mass</label><div class="input readonly"><input id="mass" type="text" readonly /></div></div>
+        </div>
+        <div class="row">
+          <div><label for="lx">Lx (width)</label><div class="input"><input id="lx" type="number" value="12" /></div></div>
+          <div><label for="ly">Ly (length)</label><div class="input"><input id="ly" type="number" value="6" /></div></div>
+        </div>
+        <div class="row">
+          <div><label for="lz">Lz (height)</label><div class="input"><input id="lz" type="number" value="3" /></div></div>
+        </div>
+        <div class="row">
+          <div><label for="k00">Spring k (0,0)</label><div class="input"><input id="k00" type="number" value="100" /></div></div>
+          <div><label for="kLx0">Spring k (Lx,0)</label><div class="input"><input id="kLx0" type="number" value="200" /></div></div>
+        </div>
+        <div class="row">
+          <div><label for="k0Ly">Spring k (0,Ly)</label><div class="input"><input id="k0Ly" type="number" value="300" /></div></div>
+          <div><label for="kLxLy">Spring k (Lx,Ly)</label><div class="input"><input id="kLxLy" type="number" value="400" /></div></div>
+        </div>
+        <div class="row">
+          <div><label for="damping">Critical damping, %</label><div class="input"><input id="damping" type="number" value="10" /></div></div>
+          <div><label for="gval">Gravity, G</label><div class="input readonly"><input id="gval" type="text" value="386.09 in/s²" readonly /></div></div>
+        </div>
+
+        <div class="colspan-2">
+          <div class="dropdown" id="psdPanel">
+            <div class="grid" style="grid-template-columns:1fr 1fr; gap:12px;">
+              <div class="colspan-2">
+                <label for="psdSpec">PSD points (one-sided, G²/Hz) — “f, S” per line</label>
+                <div class="input" style="height:auto;padding:0;">
+<textarea id="psdSpec" style="width:100%;height:110px;border:0;outline:0;resize:vertical;padding:8px;font:12px/1.3 system-ui;">5, 1e-4
+20, 1e-3
+80, 6e-4
+200, 1e-4</textarea>
+                </div>
+              </div>
+              <div>
+                <label for="psdFs">Sample rate, Hz</label>
+                <div class="input"><input id="psdFs" type="number" step="any" value="1000"></div>
+              </div>
+              <div>
+                <label for="psdDur">Duration, s</label>
+                <div class="input"><input id="psdDur" type="number" step="any" value="20"></div>
+              </div>
+              <div>
+                <label for="psdSeed">Random seed</label>
+                <div class="input"><input id="psdSeed" type="number" step="1" value="42"></div>
+              </div>
+              <div>
+                <label for="psdTaper">Taper (Tukey), %</label>
+                <div class="input"><input id="psdTaper" type="number" step="1" value="2"></div>
+              </div>
+              <div class="colspan-2 btnbar">
+                <button id="psdMake" class="btn">Generate Time History</button>
+                <button id="simulateBtn" class="btn primary">Simulate</button>
+              </div>
+              <div class="colspan-2">
+                <div id="psdInfo" class="readout">—</div>
+              </div>
+            </div>
           </div>
         </div>
-        <div>
-          <label>Gravity G</label>
-          <input id="G" type="number" step="any" value="386.09" />
-        </div>
-        <div>
-          <label>Weight W (lbf or N)</label>
-          <input id="W" type="number" step="any" value="100" />
-        </div>
-        <div>
-          <label>Mass m (auto W/G)</label>
-          <input id="m" type="number" step="any" value="0.0259" disabled />
-        </div>
-        <div>
-          <label>Lx (width)</label>
-          <input id="Lx" type="number" step="any" value="48" />
-        </div>
-        <div>
-          <label>Ly (depth)</label>
-          <input id="Ly" type="number" step="any" value="48" />
-        </div>
-        <div>
-          <label>Lz (height)</label>
-          <input id="Lz" type="number" step="any" value="24" />
-        </div>
-        <div>
-          <label>Drop height h</label>
-          <input id="h" type="number" step="any" value="6" />
-        </div>
-        <div>
-          <label>Corner spring k (per corner)</label>
-          <input id="k" type="number" step="any" value="50" />
-        </div>
-        <div>
-          <label>Corner damping c (per corner)</label>
-          <input id="c" type="number" step="any" value="0.2" />
-        </div>
-        <div>
-          <label>Init tilt θx (deg)</label>
-          <input id="thx" type="number" step="any" value="2" />
-        </div>
-        <div>
-          <label>Init tilt θy (deg)</label>
-          <input id="thy" type="number" step="any" value="3" />
-        </div>
       </div>
 
-      <div class="row" style="margin-top:8px">
-        <button id="btnReset" class="btn">Reset (t=0)</button>
-        <button id="btnStart" class="btn good">Start</button>
-        <button id="btnPause" class="btn warn">Pause</button>
+      <div id="maxAccelPanel" class="dropdown" style="margin-top:10px; padding:10px;">
+        <div style="font-weight:600; margin-bottom:6px;">Max |Acceleration| (G)</div>
+        <div id="maxCenter" class="readout">Center: —</div>
+        <div id="maxC00" class="readout">(0,0): —</div>
+        <div id="maxCLx0" class="readout">(Lx,0): —</div>
+        <div id="maxC0Ly" class="readout">(0,Ly): —</div>
+        <div id="maxCLxLy" class="readout">(Lx,Ly): —</div>
       </div>
-    </section>
+    </div>
 
-    <!-- Left column: CG Acceleration plot -->
-    <section id="accelPanel" class="panel" aria-label="CG Acceleration">
-      <h2>CG acceleration (G) vs time</h2>
-      <div class="plot"><canvas id="accelPlot"></canvas></div>
-    </section>
+    <div>
+      <div class="toolbar">
+        <label for="respScale">Response scale</label>
+        <input id="respScale" type="range" min="0" max="10" step="0.1" value="1" style="width:125px;">
+        <label for="simSpeed">Speed</label>
+        <input id="simSpeed" type="range" min="0" max="4" step="0.05" value="1" style="width:125px;">
+        <button id="resetView">Reset View</button>
+      </div>
 
-    <!-- Right column: Box viewport -->
-    <section id="viewWrap" class="panel" aria-label="Viewport">
-      <div id="viewControls" class="grid" style="margin-bottom:10px">
-        <div>
-          <label>Azimuth (deg) <span id="azOut" class="u-small"></span></label>
-          <input id="az" type="range" min="-180" max="180" value="-35" />
-        </div>
-        <div>
-          <label>Elevation (deg) <span id="elOut" class="u-small"></span></label>
-          <input id="el" type="range" min="-100" max="170" value="-67" />
-        </div>
-        <div>
-          <label>Zoom</label>
-          <input id="zoom" type="range" min="0" max="50" value="20" />
-          <div id="zoomHint" class="u-small"></div>
-          <div class="u-small" style="display:flex;align-items:center;gap:8px;margin-top:4px">
-            <label style="display:flex;align-items:center;gap:6px;margin:0">
-              <input id="fit" type="checkbox" checked /> Auto-fit when oversized
-            </label>
-            <button id="status" class="btn u-small" style="padding:6px 10px">Ready</button>
-          </div>
-        </div>
-        <div>
-          <label>Speed (× T_ref/60)</label>
-          <input id="speed" type="range" min="0.1" max="4" step="0.1" value="1" />
-        </div>
-       
 
- <div>
-  <label>Axes</label>
-  <div style="display:flex;align-items:center;gap:8px">
-    <canvas id="axes" width="32" height="32"></canvas>
-    <button id="btnCSV" class="btn u-small" title="Download data as CSV">CSV</button>
-    <button id="btnJSON" class="btn u-small" title="Download data as JSON">JSON</button>
-    <button id="btnImportJSON" class="btn u-small" title="Import configuration from JSON">Import</button>
-  </div>
+<div id="exportBtns">
+  <button id="exportJSON" class="btn sm">Export JSON</button>
+  <button id="importJSON" class="btn sm">Import JSON</button>
+  <button id="exportCSV" class="btn sm">Export CSV</button>
 </div>
-<input type="file" id="fileInput" accept=".json" style="display:none">     
 
-</div>
-      <canvas id="view"></canvas>
-      <div id="hud" class="u-small">
-        <div><span class="k">t</span> = <span id="tOut">0.000</span> s</div>
-        <div><span class="k">z(min corner)</span> = <span id="zmin">—</span></div>
-        <div><span class="k">ζ</span> ≈ <span id="zeta">—</span></div>
-        <div><span class="k">f_max</span> = <span id="fmax">—</span> Hz</div>
-        <div><span class="k">t_drop</span> ≈ <span id="tdrop">—</span> s</div>
-        <div><span class="k">t_end</span> ≈ <span id="tend">—</span> s</div>
-      </div>
-    </section>
 
-    <!-- Right column below: Spring loads plot -->
-    <section id="springPanel" class="panel" aria-label="Corner Spring Loads">
-      <h2>Corner spring loads vs time</h2>
-      <div class="plot"><canvas id="springPlot"></canvas></div>
-      <div class="legend">
-        <span><span class="swatch" style="background:#1f77b4"></span>Corner 0</span>
-        <span><span class="swatch" style="background:#ff7f0e"></span>Corner 1</span>
-        <span><span class="swatch" style="background:#2ca02c"></span>Corner 2</span>
-        <span><span class="swatch" style="background:#d62728"></span>Corner 3</span>
+      <canvas id="view" width="500" height="400"></canvas>
+
+      <div id="plots" style="margin-top:12px; display:grid; grid-template-columns:1fr; gap:12px; width:500px;">
+        <canvas id="accelPlot"  width="500" height="220" style="background:#fff;border:1px solid #d9d9d9;border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.06)"></canvas>
+        <canvas id="springPlot" width="500" height="220" style="background:#fff;border:1px solid #d9d9d9;border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.06)"></canvas>
+        <canvas id="psdPlot"    width="500" height="220" style="background:#fff;border:1px solid #d9d9d9;border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.06)"></canvas>
+        <div id="readout" class="readout"></div>
       </div>
-    </section>
+    </div>
   </div>
 
-
-
-
-
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <script>
-  // --------------------------- Math helpers (vec3 / mat3 / quat) ---------------------------
-  const V = {
-    add:(a,b)=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]],
-    sub:(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]],
-    mul:(a,s)=>[a[0]*s,a[1]*s,a[2]*s],
-    dot:(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2],
-    cross:(a,b)=>[a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]],
-    norm:(a)=>Math.hypot(a[0],a[1],a[2]),
-    unit:(a)=>{const n=V.norm(a)||1; return [a[0]/n,a[1]/n,a[2]/n]},
-    matMul:(M,v)=>[M[0]*v[0]+M[1]*v[1]+M[2]*v[2], M[3]*v[0]+M[4]*v[1]+M[5]*v[2], M[6]*v[0]+M[7]*v[1]+M[8]*v[2]],
-    matMul3:(A,B)=>{
-      const C=new Array(9);
-      for(let r=0;r<3;r++) for(let c=0;c<3;c++){
-        C[3*r+c]=A[3*r+0]*B[0+c]+A[3*r+1]*B[3+c]+A[3*r+2]*B[6+c];
-      }
-      return C;
-    },
-    matT:(M)=>[M[0],M[3],M[6], M[1],M[4],M[7], M[2],M[5],M[8]],
-    matInv:(m)=>{ // 3x3 inverse
-      const a=m[0],b=m[1],c=m[2], d=m[3],e=m[4],f=m[5], g=m[6],h=m[7],i=m[8];
-      const A=e*i-f*h, B=-(d*i-f*g), C=d*h-e*g,
-            D=-(b*i-c*h), E=a*i-c*g, F=-(a*h-b*g),
-            G=b*f-c*e, H=-(a*f-b*e), I=a*e-b*d;
-      const det=a*A + b*B + c*C; const invDet = 1/(det||1e-12);
-      return [A*invDet, D*invDet, G*invDet, B*invDet, E*invDet, H*invDet, C*invDet, F*invDet, I*invDet];
-    }
-  };
+  (function(){
+    const lx=document.getElementById('lx'), ly=document.getElementById('ly'), lz=document.getElementById('lz');
+    const k00=document.getElementById('k00'), kLx0=document.getElementById('kLx0'), k0Ly=document.getElementById('k0Ly'), kLxLy=document.getElementById('kLxLy');
+    const canvas=document.getElementById('view'); const ctx=canvas.getContext('2d');
+    const resetBtn=document.getElementById('resetView');
+    const simSpeed=document.getElementById('simSpeed');
+    const respScaleEl=document.getElementById('respScale');
 
-  const Q = {
-    norm:(q)=>Math.hypot(q[0],q[1],q[2],q[3]),
-    normalize:(q)=>{const n=Q.norm(q)||1; return [q[0]/n,q[1]/n,q[2]/n,q[3]/n]},
-    mul:(a,b)=>[ a[0]*b[0]-a[1]*b[1]-a[2]*b[2]-a[3]*b[3],
-                 a[0]*b[1]+a[1]*b[0]+a[2]*b[3]-a[3]*b[2],
-                 a[0]*b[2]-a[1]*b[3]+a[2]*b[0]+a[3]*b[1],
-                 a[0]*b[3]+a[1]*b[2]-a[2]*b[1]+a[3]*b[0] ],
-    fromEuler:(rx,ry,rz)=>{ // degrees → quaternion (world XYZ order)
-      const d=Math.PI/180; rx*=d; ry*=d; rz*=d;
-      const qx=[Math.cos(rx/2), Math.sin(rx/2),0,0];
-      const qy=[Math.cos(ry/2), 0,Math.sin(ry/2),0];
-      const qz=[Math.cos(rz/2), 0,0,Math.sin(rz/2)];
-      return Q.normalize(Q.mul(qz,Q.mul(qy,qx)));
-    },
-    toMat3:(q)=>{ // quaternion (w,x,y,z) → 3x3 rotation (body→world)
-      const w=q[0], x=q[1], y=q[2], z=q[3];
-      const xx=x*x, yy=y*y, zz=z*z;
-      const xy=x*y, xz=x*z, yz=y*z;
-      const wx=w*x, wy=w*y, wz=w*z;
-      return [
-        1-2*(yy+zz), 2*(xy - wz),   2*(xz + wy),
-        2*(xy + wz),   1-2*(xx+zz), 2*(yz - wx),
-        2*(xz - wy),   2*(yz + wx),   1-2*(xx+yy)
+    const weightEl=document.getElementById('weight'); const massEl=document.getElementById('mass'); const gEl=document.getElementById('gval');
+
+const exportJSONBtn = document.getElementById('exportJSON');
+const importJSONBtn = document.getElementById('importJSON');
+const exportCSVBtn  = document.getElementById('exportCSV');
+const simulateBtn   = document.getElementById('simulateBtn');
+const psdMake       = document.getElementById('psdMake');
+    const accelPlot = document.getElementById('accelPlot');
+    const springPlot = document.getElementById('springPlot');
+    const psdPlot   = document.getElementById('psdPlot');
+    const accelPlotCtx = accelPlot.getContext('2d');
+    const springPlotCtx = springPlot.getContext('2d');
+    const psdPlotCtx = psdPlot.getContext('2d');
+    const readoutEl = document.getElementById('readout');
+
+    const maxCenterEl = document.getElementById('maxCenter');
+    const maxC00El    = document.getElementById('maxC00');
+    const maxCLx0El   = document.getElementById('maxCLx0');
+    const maxC0LyEl   = document.getElementById('maxC0Ly');
+    const maxCLxLyEl  = document.getElementById('maxCLxLy');
+
+    const psdPanel = document.getElementById('psdPanel');
+    const psdSpec  = document.getElementById('psdSpec');
+    const psdFs    = document.getElementById('psdFs');
+    const psdDur   = document.getElementById('psdDur');
+    const psdSeed  = document.getElementById('psdSeed');
+    const psdTaper = document.getElementById('psdTaper');
+    const psdInfo  = document.getElementById('psdInfo');
+
+    const toastEl=document.getElementById('toast');
+    let toastTimer=null;
+    function showToast(msg){
+      toastEl.textContent=msg; toastEl.classList.add('show');
+      clearTimeout(toastTimer); toastTimer=setTimeout(()=>toastEl.classList.remove('show'), 2000);
+    }
+
+    let unitMode='US';
+    const g=function(){ return 386.09; };
+    function computeMass(){ const W=parseFloat(weightEl.value); massEl.value = Number.isFinite(W) ? Number((W/g()).toPrecision(6)).toString() : ''; }
+    weightEl.addEventListener('input', computeMass);
+
+    function vals(){
+      return {
+        Lx:parseFloat(lx.value)||12,
+        Ly:parseFloat(ly.value)||6,
+        Lz:parseFloat(lz.value)||3,
+        K:[parseFloat(k00.value)||100, parseFloat(kLx0.value)||200, parseFloat(k0Ly.value)||300, parseFloat(kLxLy.value)||400]
+      };
+    }
+
+    let yaw=0.8, pitch=-1.0; let baseScale=30, zoom=1.5, scale=30; let panX=-100, panY=125;
+    function fitScale(){
+      const v=vals();
+      const maxDim=Math.max(v.Lx,v.Ly,v.Lz,1);
+      baseScale=Math.min(canvas.width,canvas.height)*0.375/maxDim;
+      scale=baseScale*zoom;
+    }
+    function project(arr){
+      const x=arr[0], y=arr[1], z=arr[2];
+      const cz=Math.cos(yaw), sz=Math.sin(yaw); let nx=x*cz-y*sz, ny=x*sz+y*cz, nz=z;
+      const cx=Math.cos(pitch), sx=Math.sin(pitch); let ny2=ny*cx-nz*sx;
+      const px=canvas.width*0.5 + panX + scale*nx;
+      const py=canvas.height*0.5 + panY - scale*ny2;
+      return [px,py];
+    }
+    function kStroke(K,val){ const pos=K.filter(function(v){return v>0;}); if(!pos.length) return 2; const kmin=Math.min.apply(null,pos), kmax=Math.max.apply(null,pos); if(kmax===kmin) return 4; const t=(val-kmin)/(kmax-kmin); return 1+2*t; }
+
+    function drawSpringSymbol(x,y,z0,z1,stroke,color,Lz){
+      ctx.strokeStyle=color; ctx.lineWidth=stroke; ctx.lineCap='round';
+      const pA=project([x,y,z0]), pB=project([x,y,z1]); ctx.beginPath(); ctx.moveTo(pA[0],pA[1]); ctx.lineTo(pB[0],pB[1]); ctx.stroke();
+      const ticks=3, startT=0.25, endT=0.65, len=0.20*Lz;
+      for(let i=0;i<ticks;i++){
+        const t=startT+(endT-startT)*i/(ticks-1), z=z0+(z1-z0)*t;
+        const p1=project([x-0.5*len,y,z]), p2=project([x+0.5*len,y,z]);
+        ctx.beginPath(); ctx.moveTo(p1[0],p1[1]); ctx.lineTo(p2[0],p2[1]); ctx.stroke();
+      }
+      ctx.fillStyle=color; const pb=project([x,y,z0]); ctx.beginPath(); ctx.arc(pb[0],pb[1],Math.max(3,stroke*0.6),0,Math.PI*2); ctx.fill();
+    }
+
+    function drawBaseBox(Lx,Ly,Lz){
+      const z0=0, z1=-0.25*Lz;
+      const V=[[0,0,z0],[Lx,0,z0],[Lx,Ly,z0],[0,Ly,z0],[0,0,z1],[Lx,0,z1],[Lx,Ly,z1],[0,Ly,z1]];
+      const faces=[[0,1,2,3],[4,5,6,7],[0,1,5,4],[1,2,6,5],[2,3,7,6],[3,0,4,7]];
+      ctx.fillStyle='rgba(0,0,0,0.75)';
+      faces.forEach(function(f){ ctx.beginPath(); const p0=project(V[f[0]]); ctx.moveTo(p0[0],p0[1]); for(let i=1;i<f.length;i++){ const p=project(V[f[i]]); ctx.lineTo(p[0],p[1]); } ctx.closePath(); ctx.fill(); });
+      const E=[[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]];
+      ctx.strokeStyle='#000'; ctx.lineWidth=2; ctx.lineJoin='round';
+      E.forEach(function(e){ const a=e[0], b=e[1]; const p1=project(V[a]), p2=project(V[b]); ctx.beginPath(); ctx.moveTo(p1[0],p1[1]); ctx.lineTo(p2[0],p2[1]); ctx.stroke(); });
+    }
+
+    function drawTopRigid(zRel,thx,thy,Lx,Ly,Lz,scaleGain){
+      const z = zRel * scaleGain, thxV = thx * scaleGain, thyV = thy * scaleGain;
+      const Vlocal=[[0,0,0],[Lx,0,0],[Lx,Ly,0],[0,Ly,0],[0,0,Lz],[Lx,0,Lz],[Lx,Ly,Lz],[0,Ly,Lz]];
+      const cx=Lx/2, cy=Ly/2; const cY=Math.cos(thyV), sY=Math.sin(thyV); const cX=Math.cos(thxV), sX=Math.sin(thxV);
+      function rotV(v){ const x=v[0], y=v[1], z0=v[2]; let X=x-cx, Y=y-cy, Z=z0; let X1= X*cY + Z*sY; let Y1= Y; let Z1=-X*sY + Z*cY; let X2= X1; let Y2= Y1*cX - Z1*sX; let Z2= Y1*sX + Z1*cX; return [X2+cx, Y2+cy, Z2+z]; }
+      const V=Vlocal.map(rotV);
+      const faces=[[0,1,2,3],[4,5,6,7],[0,1,5,4],[1,2,6,5],[2,3,7,6],[3,0,4,7]];
+      ctx.fillStyle='rgba(200,200,200,0.5)';
+      faces.forEach(function(f){ ctx.beginPath(); const p0=project(V[f[0]]); ctx.moveTo(p0[0],p0[1]); for(let i=1;i<f.length;i++){ const p=project(V[f[i]]); ctx.lineTo(p[0],p[1]); } ctx.closePath(); ctx.fill(); });
+      const E=[[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]];
+      ctx.strokeStyle='#111'; ctx.lineWidth=2; ctx.lineJoin='round';
+      E.forEach(function(e){ const a=e[0], b=e[1]; const p1=project(V[a]), p2=project(V[b]); ctx.beginPath(); ctx.moveTo(p1[0],p1[1]); ctx.lineTo(p2[0],p2[1]); ctx.stroke(); });
+      drawTopRigid.lowerCorners=[V[0],V[1],V[2],V[3]]; drawTopRigid.upperCorners=[V[4],V[5],V[6],V[7]];
+    }
+
+    function drawWaveformPreview(){
+      const pad=12, w=210, h=150; const x0=canvas.width - w - pad, y0=pad;
+      ctx.fillStyle='rgba(255,255,255,0.95)'; ctx.strokeStyle='#bbb'; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.rect(x0,y0,w,h); ctx.fill(); ctx.stroke();
+
+      ctx.fillStyle='#111'; ctx.font='12px system-ui'; ctx.textAlign='left'; ctx.textBaseline='alphabetic';
+      ctx.fillText("Random PSD: a(G) vs t(s)", x0+10, y0+18);
+
+      const gx=x0+36, gy=y0+28, gw=w-46, gh=h-92;
+      ctx.strokeStyle='#ddd'; ctx.strokeRect(gx,gy,gw,gh);
+
+      let tarr = randPSD_t, yarr = randPSD_y;
+      if (!tarr || !yarr || tarr.length<2){
+        ctx.fillStyle='#666'; ctx.fillText("Generate time history to preview", gx, gy+gh/2);
+        return;
+      }
+      const tmax = Math.max(1, Math.min(tarr[tarr.length-1], 2));
+      let idxEnd = 1; while(idxEnd < tarr.length && tarr[idxEnd] < tmax) idxEnd++;
+      const t = Array.prototype.slice.call(tarr,0,idxEnd);
+      const y = Array.prototype.slice.call(yarr,0,idxEnd);
+
+      const tmin= t[0], tmx = t[t.length-1];
+      let ymin=0, ymax=0;
+      for (let i=0;i<y.length;i++){ ymin=Math.min(ymin,y[i]); ymax=Math.max(ymax,y[i]); }
+      if (ymax - ymin < 1e-9){ ymax = ymin + 1; }
+
+      ctx.fillStyle='#444'; ctx.textAlign='right'; ctx.textBaseline='alphabetic';
+      ctx.fillText(tmx.toPrecision(3), gx+gw-2, gy+gh+14);
+      ctx.textAlign='left'; ctx.fillText("t (s)", gx+gw-74, gy+gh+14);
+      ctx.save(); ctx.translate(gx-22, gy+58); ctx.rotate(-Math.PI/2); ctx.textAlign='left'; ctx.textBaseline='alphabetic'; ctx.fillText("a (G)", 0,0); ctx.restore();
+      ctx.textAlign='right'; ctx.textBaseline='top'; ctx.fillText(ymax.toPrecision(3), gx-6, gy-2);
+
+      ctx.beginPath();
+      for(let i=0;i<t.length;i++){
+        const px = gx + (t[i]-tmin)/(tmx-tmin || 1)*gw;
+        const py = gy + gh - (y[i]-ymin)/(ymax-ymin || 1)*gh;
+        if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+      }
+      ctx.strokeStyle='#0b73c8'; ctx.lineWidth=2; ctx.stroke();
+    }
+
+    function parsePSDTextarea(){
+      const pts=[];
+      (psdSpec.value||'').split('\n').forEach(function(line){
+        const m=line.trim().match(/^([^,#]+)\s*[, ]\s*([^,#]+)$/);
+        if(m){
+          const f=+m[1], S=+m[2];
+          if(isFinite(f)&&f>0&&isFinite(S)&&S>0) pts.push({f:f,S:S});
+        }
+      });
+      pts.sort(function(a,b){return a.f-b.f;});
+      return pts;
+    }
+
+    function renderPSDPlot(pts){
+      const ctx = psdPlotCtx, W=ctx.canvas.width, H=ctx.canvas.height;
+      ctx.clearRect(0,0,W,H);
+      ctx.fillStyle='rgba(255,255,255,0.95)'; ctx.fillRect(0,0,W,H);
+      ctx.strokeStyle='#bbb'; ctx.strokeRect(0,0,W,H);
+      ctx.fillStyle='#111'; ctx.font='12px system-ui';
+      ctx.fillText("Input PSD (G²/Hz) vs frequency (Hz) — log–log", 10, 16);
+
+      const padL=70, padR=12, padT=24, padB=28;
+      const gx=padL, gy=padT, gw=W-padL-padR, gh=H-padT-padB;
+      ctx.strokeStyle='#ddd'; ctx.strokeRect(gx,gy,gw,gh);
+
+      if(!pts || pts.length<2){
+        ctx.fillStyle='#666'; ctx.fillText("Enter ≥2 points to plot", gx+8, gy+gh/2);
+        return;
+      }
+
+      const fmin = Math.min.apply(null, pts.map(function(p){return p.f;}));
+      const fmax = Math.max.apply(null, pts.map(function(p){return p.f;}));
+      const smin = Math.min.apply(null, pts.map(function(p){return p.S;}));
+      const smax = Math.max.apply(null, pts.map(function(p){return p.S;}));
+      const lfmin=Math.log10(fmin), lfmax=Math.log10(fmax);
+      const lsmin=Math.log10(smin), lsmax=Math.log10(smax);
+
+      function xOf(f){ return gx + ( (Math.log10(f)-lfmin)/(lfmax-lfmin||1) )*gw; }
+      function yOf(S){ return gy + gh - ( (Math.log10(S)-lsmin)/(lsmax-lsmin||1) )*gh; }
+
+      ctx.fillStyle='#444'; ctx.textAlign='center'; ctx.textBaseline='top';
+      for(let d=Math.pow(10,Math.floor(lfmin)); d<=Math.pow(10,Math.ceil(lfmax))+1e-9; d*=10){
+        const xx=xOf(d); ctx.fillText(d.toPrecision(1), xx, gy+gh+6);
+        for(let m=2;m<10;m++){
+          const ff=d*m; if(ff>=fmin && ff<=fmax){
+            const xm=xOf(ff); ctx.strokeStyle='#eee'; ctx.beginPath(); ctx.moveTo(xm,gy); ctx.lineTo(xm,gy+gh); ctx.stroke();
+          }
+        }
+      }
+      ctx.textAlign='right'; ctx.textBaseline='middle';
+      for(let d=Math.pow(10,Math.floor(lsmin)); d<=Math.pow(10,Math.ceil(lsmax))+1e-30; d*=10){
+        const yy=yOf(d); ctx.fillText(d.toExponential(0), gx-6, yy);
+      }
+
+      ctx.beginPath();
+      for(let i=0;i<pts.length;i++){
+        const px=xOf(pts[i].f), py=yOf(pts[i].S);
+        if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+      }
+      ctx.strokeStyle='#0b73c8'; ctx.lineWidth=2; ctx.stroke();
+
+      ctx.fillStyle='#444'; ctx.textAlign='left'; ctx.textBaseline='alphabetic';
+      ctx.fillText('Frequency (Hz, log)', gx+gw-120, gy+gh+20);
+      ctx.save(); ctx.translate(gx-44, gy+80); ctx.rotate(-Math.PI/2);
+      ctx.fillText('PSD (G²/Hz, log)', 0, 0); ctx.restore();
+    }
+    psdSpec.addEventListener('input', function(){renderPSDPlot(parsePSDTextarea());});
+
+    function generateTimeHistoryFromPSD(psdPoints, fs, duration, seed, opts) {
+      seed = (typeof seed==='number') ? seed : 12345;
+      opts = opts || {};
+      if (!Array.isArray(psdPoints) || psdPoints.length < 2) {
+        throw new Error("psdPoints must be an array of {f,S} with length >= 2");
+      }
+      const taperFrac = Math.max(0, Math.min(0.2, (opts.taper != null ? opts.taper : 0.02)));
+      const keepMean = !!opts.keepMean;
+      function mulberry32(a){ return function(){ let t = a += 0x6D2B79F5; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+      const rand = mulberry32((seed|0) || 1);
+
+      const pts = psdPoints
+        .map(function(p){ return { f: +p.f, S: Math.max(+p.S, 1e-30) }; })
+        .filter(function(p){ return Number.isFinite(p.f) && Number.isFinite(p.S) && p.f > 0; })
+        .sort(function(a,b){ return a.f - b.f; });
+
+      const fminSpec = pts[0].f;
+      const fmaxSpec = pts[pts.length-1].f;
+
+      const log10 = function(x){ return Math.log(x) / Math.LN10; };
+      const segs = [];
+      for (let i=0;i<pts.length-1;i++){
+        const f1 = pts[i].f, f2 = pts[i+1].f;
+        const s1 = pts[i].S, s2 = pts[i+1].S;
+        const Lf1 = log10(f1), Lf2 = log10(f2);
+        const Ls1 = log10(Math.max(s1,1e-30)), Ls2 = log10(Math.max(s2,1e-30));
+        const m = (Ls2 - Ls1) / (Lf2 - Lf1);
+        const b = Ls1 - m * Lf1;
+        segs.push({ f1:f1, f2:f2, m:m, b:b });
+      }
+      function Sof(f){
+        if (f <= fminSpec || f >= fmaxSpec) return 0;
+        for (let i=0;i<segs.length;i++){
+          const s=segs[i];
+          if (f >= s.f1 && f <= s.f2){
+            const Ls = s.m * log10(f) + s.b;
+            return Math.max(1e-30, Math.pow(10, Ls));
+          }
+        }
+        return 0;
+      }
+
+      const N = Math.max(2, Math.floor(fs * duration));
+      const dt = 1 / fs;
+      const t = new Float64Array(N);
+      for (let n=0;n<N;n++) t[n] = n*dt;
+
+      const df = fs / N;
+      const fNy = fs/2;
+      const fstart = Math.max(df, fminSpec);
+      const fend   = Math.min(fNy - df*1e-9, fmaxSpec);
+      if (fstart >= fend) {
+        return { t: t, y: new Float64Array(N), phases: new Float64Array(0), info: { fmin:0, fmax:0, df:df, N:N } };
+      }
+      const K = Math.max(1, Math.floor((fend - fstart)/df) + 1);
+      const freq = new Float64Array(K);
+      for (let k=0;k<K;k++) freq[k] = fstart + k*df;
+
+      const A = new Float64Array(K);
+      for (let k=0;k<K;k++) A[k] = Math.sqrt(2 * Sof(freq[k]) * df);
+
+      const phases = new Float64Array(K);
+      for (let k=0;k<K;k++) phases[k] = 2*Math.PI*rand();
+
+      const y = new Float64Array(N);
+      for (let k=0;k<K;k++){
+        const w = 2*Math.PI*freq[k];
+        const Ak = A[k];
+        const ph = phases[k];
+        for (let n=0;n<N;n++){
+          y[n] += Ak * Math.cos(w*t[n] + ph);
+        }
+      }
+
+      if (!keepMean){
+        let mean = 0;
+        for (let n=0;n<N;n++) mean += y[n];
+        mean /= N;
+        for (let n=0;n<N;n++) y[n] -= mean;
+      }
+
+      if (taperFrac > 0){
+        const alpha = Math.max(0, Math.min(1, taperFrac*2));
+        for (let n=0;n<N;n++){
+          const r = n/(N-1);
+          let w;
+          if (r < alpha/2){
+            w = 0.5 * (1 + Math.cos(Math.PI*(2*r/alpha - 1)));
+          } else if (r <= 1 - alpha/2){
+            w = 1;
+          } else {
+            w = 0.5 * (1 + Math.cos(Math.PI*(2*r/alpha - 2/alpha + 1)));
+          }
+          y[n] *= w;
+        }
+      }
+      return { t: t, y: y, phases: phases, info: { fmin:fstart, fmax:fend, df:df, N:N } };
+    }
+
+    let randPSD_lookup = null;
+    let randPSD_t = null, randPSD_y = null;
+
+    document.getElementById('psdMake').addEventListener('click', function(){
+      try{
+        const pts = parsePSDTextarea();
+        if (pts.length < 2){ showToast('Add at least two PSD points'); return; }
+
+        const fs   = Math.max(1, parseFloat(psdFs.value) || 1000);
+        const dur  = Math.max(0.1, parseFloat(psdDur.value) || 20);
+        const seed = Math.floor(parseFloat(psdSeed.value) || 42);
+        const taperPct = Math.max(0, Math.min(20, parseFloat(psdTaper.value) || 2));
+
+        const out = generateTimeHistoryFromPSD(pts, fs, dur, seed, { taper: taperPct/100 });
+        const t = out.t, y = out.y, info = out.info;
+
+        randPSD_t = t; randPSD_y = y;
+        randPSD_lookup = makeTimeHistoryLookup(t, y);
+
+        let rms = 0; for (let i=0;i<y.length;i++) rms += y[i]*y[i]; rms = Math.sqrt(rms / y.length);
+        psdInfo.textContent = 'Generated: N='+t.length+', Δt='+(1/fs).toPrecision(3)+' s, f∈['+info.fmin.toPrecision(3)+', '+info.fmax.toPrecision(3)+'] Hz, RMS≈'+rms.toPrecision(3)+' g';
+        showToast('Random PSD time history ready');
+
+        renderPSDPlot(pts);
+        draw();
+      } catch(e){
+        console.error(e);
+        showToast('PSD generation error — check console');
+      }
+    });
+
+    function makeTimeHistoryLookup(t, y){
+      const N = t.length;
+      return function a_of(tq){
+        if (tq <= t[0]) return y[0];
+        if (tq >= t[N-1]) return y[N-1];
+        let lo=0, hi=N-1;
+        while(hi - lo > 1){
+          const mid = (lo + hi) >> 1;
+          if (t[mid] <= tq) lo = mid; else hi = mid;
+        }
+        const a = (tq - t[lo]) / (t[hi] - t[lo] || 1);
+        return y[lo] + a * (y[hi] - y[lo]);
+      };
+    }
+
+    function cornersAboutCOM(Lx, Ly){ const hx=Lx/2, hy=Ly/2; return [[-hx,-hy],[hx,-hy],[-hx,hy],[hx,hy]]; }
+
+    function makeDynamics(){
+      const W=parseFloat(weightEl.value)||0; const mTop=W/g();
+      const v=vals(); const Lx=v.Lx, Ly=v.Ly, Lz=v.Lz; const K=v.K;
+      const k00v=K[0], kLx0v=K[1], k0Lyv=K[2], kLxLyv=K[3]; const mBase=100*mTop;
+      const Ix=(mTop/12)*(Ly*Ly+Lz*Lz); const Iy=(mTop/12)*(Lx*Lx+Lz*Lz);
+
+      const zeta=((parseFloat(document.getElementById('damping').value)||0)/100);
+      const m_eq=mTop/4;
+      const c00=2*zeta*Math.sqrt(Math.max(k00v,0)*m_eq);
+      const cLx0=2*zeta*Math.sqrt(Math.max(kLx0v,0)*m_eq);
+      const c0Ly=2*zeta*Math.sqrt(Math.max(k0Lyv,0)*m_eq);
+      const cLxLy=2*zeta*Math.sqrt(Math.max(kLxLyv,0)*m_eq);
+      const Cspr=[c00,cLx0,c0Ly,cLxLy];
+      const kList=[k00v,kLx0v,k0Lyv,kLxLyv];
+      const corners=cornersAboutCOM(Lx,Ly);
+
+      const kAvg=(k00v+kLx0v+k0Lyv+kLxLyv)/4;
+      const kGround=0.1*kAvg;
+      const cGround=2*zeta*Math.sqrt(Math.max(kGround,0)*mBase);
+
+      return function f(t,y){
+        const z=y[0], thx=y[1], thy=y[2], vz=y[3], wx=y[4], wy=y[5], zb=y[6], vb=y[7];
+
+        const dispTop=new Array(4), velTop=new Array(4);
+        for(let i=0;i<4;i++){
+          const xi=corners[i][0], yi=corners[i][1];
+          dispTop[i]= z + (-thx*yi) + (thy*xi);
+          velTop[i] = vz + (-wx *yi) + (wy *xi);
+        }
+
+        const ab = (typeof randPSD_lookup === 'function' ? randPSD_lookup(t) : 0) * g();
+
+        const Fi=new Array(4);
+        for(let i=0;i<4;i++){
+          const rel=dispTop[i]-zb;
+          const relv=velTop[i]-vb;
+          Fi[i]= -(kList[i]*rel + Cspr[i]*relv);
+        }
+
+        let Fz=0, TauX=0, TauY=0;
+        for(let i=0;i<4;i++){
+          const xi=corners[i][0], yi=corners[i][1], F=Fi[i];
+          Fz+=F; TauX+=(-yi)*F; TauY+=(xi)*F;
+        }
+
+        const az  = (mTop > 0) ? (Fz / mTop) : 0;
+        const awx = (Ix   > 0) ? (TauX / Ix) : 0;
+        const awy = (Iy   > 0) ? (TauY / Iy) : 0;
+
+        const Fg  = -kGround * zb - cGround * vb;
+        const dzb = vb;
+        const dvb = (mBase > 0) ? (ab + (-Fz + Fg) / mBase) : ab;
+
+        return new Float64Array([ vz, wx, wy,  az, awx, awy,  dzb, dvb ]);
+      };
+    }
+
+    function rkf45Integrate(f, t0, y0, tEnd, dtInit, rtol, atol) {
+      dtInit = (dtInit!=null)?dtInit:0.0001; rtol = (rtol!=null)?rtol:.5e-5; atol=(atol!=null)?atol:1e-8;
+      const a2=1/5,a3=3/10,a4=3/5,a5=1,a6=7/8;
+      const b21=1/5; const b31=3/40,b32=9/40; const b41=3/10,b42=-9/10,b43=6/5;
+      const b51=-11/54,b52=5/2,b53=-70/27,b54=35/27;
+      const b61=1631/55296,b62=175/512,b63=575/13824,b64=44275/110592,b65=253/4096;
+      const c1=37/378,c3=250/621,c4=125/594,c6=512/1771;
+      const c1s=2825/27648,c3s=18575/48384,c4s=13525/55296,c5s=277/14336,c6s=1/4;
+
+      const n = y0.length;
+      let t = t0, y = Float64Array.from(y0);
+      let h = Math.max(1e-6, Math.min(dtInit, Math.max(1e-6, tEnd - t0)));
+      const hMin = 1e-8;
+      const outT = [t], outY = [Array.from(y)];
+      let rejectStreak = 0, steps = 0;
+      const MAX_STEPS = 400000;
+
+      function add(a,b){ const r=new Float64Array(a.length); for(let i=0;i<a.length;i++) r[i]=a[i]+b[i]; return r; }
+      function scaleVec(a,s){ const r=new Float64Array(a.length); for(let i=0;i<a.length;i++) r[i]=a[i]*s; return r; }
+      function scaledErr(y5,y4,yCur){
+        let s=0;
+        for(let i=0;i<n;i++){
+          const denom = atol + rtol * Math.max(Math.abs(yCur[i]), Math.abs(y5[i]));
+          const d = (y5[i] - y4[i]) / (denom || 1e-16);
+          if (!Number.isFinite(d)) return Number.POSITIVE_INFINITY;
+          s += d*d;
+        }
+        return Math.sqrt(s / n);
+      }
+
+      while (t < tEnd) {
+        if (++steps > MAX_STEPS) break;
+        if (t + h > tEnd) h = tEnd - t;
+
+        const k1=f(t,y);
+        const k2=f(t+a2*h, add(y, scaleVec(k1,h*b21)));
+        const k3=f(t+a3*h, add(y, add(scaleVec(k1,h*b31), scaleVec(k2,h*b32))));
+        const k4=f(t+a4*h, add(y, add(add(scaleVec(k1,h*b41), scaleVec(k2,h*b42)), scaleVec(k3,h*b43))));
+        const k5=f(t+a5*h, add(y, add(add(add(scaleVec(k1,h*b51), scaleVec(k2,h*b52)), scaleVec(k3,h*b53)), scaleVec(k4,h*b54))));
+        const k6=f(t+a6*h, add(y, add(add(add(add(scaleVec(k1,h*b61), scaleVec(k2,h%b62)), scaleVec(k3,h*b63)), scaleVec(k4,h*b64)), scaleVec(k5,h*b65))));
+
+        const y5=add(y, add(add(add(scaleVec(k1,h*c1), scaleVec(k3,h*c3)), scaleVec(k4,h*c4)), scaleVec(k6,h*c6)));
+        const y4=add(y, add(add(add(add(scaleVec(k1,h*c1s), scaleVec(k3,h*c3s)), scaleVec(k4,h*c4s)), scaleVec(k5,h*c5s)), scaleVec(k6,h*c6s)));
+
+        let err = scaledErr(y5,y4,y);
+        if (!Number.isFinite(err)) err = Number.POSITIVE_INFINITY;
+
+        if (err <= 1){
+          t += h; y = y5; outT.push(t); outY.push(Array.from(y));
+          let s = 0.9 * Math.pow(1/Math.max(err,1e-12), 0.2);
+          s = Math.min(5, Math.max(0.2, s)); h = Math.max(hMin, h*s);
+        } else {
+          let s = 0.9 * Math.pow(1/Math.max(err,1e-12), 0.2);
+          s = Math.min(1, Math.max(0.1, s)); h = Math.max(hMin, h*s);
+        }
+      }
+      return { t: outT, y: outY };
+    }
+
+    let tSimNow=0, overlayVisible=true, simData=null, simStartWall=0, playing=false, currentY=null;
+    let lastTimes=null, lastAzG=null, lastFseries=null, cursorTime=null;
+    let maxCenterG=0, maxCornerG=[0,0,0,0];
+
+    function resetMaxAccelPanel(){
+      maxCenterG=0; maxCornerG=[0,0,0,0];
+      maxCenterEl.textContent='Center: —';
+      maxC00El.textContent='(0,0): —';
+      maxCLx0El.textContent='(Lx,0): —';
+      maxC0LyEl.textContent='(0,Ly): —';
+      maxCLxLyEl.textContent='(Lx,Ly): —';
+    }
+
+    function responseAtSample(y) {
+      const v=vals(); const Lx=v.Lx, Ly=v.Ly, K=v.K;
+      const k00v=K[0],kLx0v=K[1],k0Lyv=K[2],kLxLyv=K[3];
+      const W = +weightEl.value || 0; const mTop = W / g();
+      const z=y[0], thx=y[1], thy=y[2], vz=y[3], wx=y[4], wy=y[5], zb=y[6], vb=y[7];
+      const corners = (function(Lx, Ly){ const hx=Lx/2, hy=Ly/2; return [[-hx,-hy],[hx,-hy],[-hx,hy],[hx,hy]]; })(Lx, Ly);
+
+      const zeta = ((+document.getElementById('damping').value || 0) / 100);
+      const m_eq = mTop/4;
+      const Cspr = [
+        2*zeta*Math.sqrt(Math.max(k00v,0)*m_eq),
+        2*zeta*Math.sqrt(Math.max(kLx0v,0)*m_eq),
+        2*zeta*Math.sqrt(Math.max(k0Lyv,0)*m_eq),
+        2*zeta*Math.sqrt(Math.max(kLxLyv,0)*m_eq),
       ];
-    }
-  };
+      const kList = [k00v,kLx0v,k0Lyv,kLxLyv];
 
-  // --------------------------- Simulation state ---------------------------
-  const edges = [ // 12 edges as index pairs on the 8-corner list below
-    [0,1],[1,3],[3,2],[2,0], // bottom rectangle
-    [4,5],[5,7],[7,6],[6,4], // top rectangle
-    [0,4],[1,5],[2,6],[3,7]  // verticals
-  ];
-
-  const springColors=['#1f77b4','#ff7f0e','#2ca02c','#d62728'];
-
-  const sim = {
-    params: {
-      m: 0.0259, G:386.09, W:100,
-      Lx:48, Ly:48, Lz:24, h:6,
-      k:50, c:0.2,
-      thx:2, thy:3
-    },
-    state: null,
-    t: 0,
-    hRK: 1e-4,
-    tol: 1e-4,
-    hmin: 1e-5,
-    hmax: 1e-2,
-    maxSteps: 3000,
-    trail: [],
-    running: false,
-  };
-  // Timeseries buffers for plots
-  const plots = { accel: [], springs: [[],[],[],[]] };
-
-  function inertiaBoxBody(m,Lx,Ly,Lz){
-    const x=Lx, y=Ly, z=Lz;
-    const Ixx = (m/12)*(y*y + z*z);
-    const Iyy = (m/12)*(x*x + z*z);
-    const Izz = (m/12)*(x*x + y*y);
-    return [ Ixx,0,0, 0,Iyy,0, 0,0,Izz ];
-  }
-
-  // --- Natural frequency helpers (heave, pitch, roll, diagonal tilt) ---
-  function naturalFrequencies(p){
-    const m = Math.max(1e-12, p.m||0);
-    const k = Math.max(0, p.k||0);
-    const Lx=p.Lx||0, Ly=p.Ly||0, Lz=p.Lz||0;
-    const I = inertiaBoxBody(m, Lx, Ly, Lz);
-    const Ixx = I[0], Iyy = I[4];
-    const twoPi = 2*Math.PI;
-    const fz = (k>0 && m>0) ? Math.sqrt(4*k/m)/twoPi : 0;          // heave (4 springs in parallel)
-    const fx = (k>0 && Ixx>0) ? Math.sqrt(k*Ly*Ly/Ixx)/twoPi : 0;  // pitch about x
-    const fy = (k>0 && Iyy>0) ? Math.sqrt(k*Lx*Lx/Iyy)/twoPi : 0;  // roll about y
-    const Iavg = 0.5*(Ixx+Iyy);
-    const Kdiag = 0.5*k*(Lx*Lx + Ly*Ly);                           // diagonal axis
-    const fdiag = (Kdiag>0 && Iavg>0) ? Math.sqrt(Kdiag/Iavg)/twoPi : 0;
-    const list = [fz, fx, fy, fdiag].filter(f=>f>0);
-    const fmin = list.length ? Math.min(...list) : 0;
-    const fmax = list.length ? Math.max(...list) : 0;
-    return {fz, fx, fy, fdiag, fmin, fmax};
-  }
-
-  // Use highest natural frequency to set the RKF45 max time step: dt_max = (1/f_max)/20 = T/20
-  function applyTimeStepLimit(){
-    const nf = naturalFrequencies(sim.params);
-    const dtMax = nf.fmax > 0 ? (1/(nf.fmax*20)) : 1e-2;
-    sim.hmax = dtMax;
-    const hlimEl = document.getElementById('hlim');
-    if(hlimEl){
-      const parts = hlimEl.value.split(',');
-      const hmin = parseFloat(parts[0]);
-      const hminOut = Number.isFinite(hmin) ? hmin : sim.hmin;
-      hlimEl.value = `${hminOut}, ${dtMax.toExponential(2)}`;
-    }
-  }
-
-  function refTimes(){
-    const nf = naturalFrequencies(sim.params);
-    const g = Math.max(1e-9, sim.params.G||0);
-    const h = Math.max(0, sim.params.h||0);
-    const tDrop = Math.sqrt(2*h/g);
-    const Tn_max = nf.fmax>0 ? 1/nf.fmax : 0;
-    const Tref = (Tn_max>0 && tDrop>0) ? Math.min(Tn_max, tDrop) : (Tn_max || tDrop || 0);
-    return {nf, Tn:Tn_max, tDrop, Tref};
-  }
-  function updateRunLimit(){
-    const {nf, tDrop} = refTimes();
-    const fLow = nf.fmin>0 ? nf.fmin : (nf.fmax>0 ? nf.fmax : 0);
-    const Tlow = fLow>0 ? 1/fLow : 0;
-    sim.tEnd = (tDrop||0) + 10*(Tlow||0);
-  }
-
-  function initialState(){
-    const p = sim.params;
-    const m = p.W / p.G; // consistent units; show in UI
-    p.m = m;
-    // orientation first
-    const q = Q.fromEuler(p.thx||0, p.thy||0, 0);
-    const R = rotationWorld(q);
-    // compute lowest-corner offset in world z for this orientation
-    let minRelZ = Infinity;
-    for(const cb of bodyCorners(p.Lx, p.Ly, p.Lz)){
-      const z = V.matMul(R, cb)[2];
-      if(z < minRelZ) minRelZ = z;
-    }
-    // Set center height so that the lowest corner is exactly at height h
-    const r = [0,0, p.h - minRelZ];
-    const v = [0,0, 0];
-    const w = [0,0,0];
-    const Ibody = inertiaBoxBody(m, p.Lx, p.Ly, p.Lz);
-    return { r, v, q, w, Ibody };
-  }
-
-  function bodyCorners(Lx,Ly,Lz){
-    const x=Lx/2, y=Ly/2, z=Lz/2;
-    return [
-      [-x,-y,-z], [ x,-y,-z], [-x, y,-z], [ x, y,-z],
-      [-x,-y, z], [ x,-y, z], [-x, y, z], [ x, y, z],
-    ];
-  }
-
-  function rotationWorld(q){ return Q.toMat3(q); }
-
-  function contactForces(state, params){
-    const {r,v,q,w} = state; const R=rotationWorld(q);
-    const cornersB = bodyCorners(params.Lx, params.Ly, params.Lz);
-    let F=[0,0,-params.m*params.G];
-    let T=[0,0,0];
-    let zmin=Infinity;
-    const cornerF=[0,0,0,0];
-
-    for(let idx=0; idx<cornersB.length; idx++){
-      const cb = cornersB[idx];
-      const rw = V.matMul(R, cb);
-      const pw = V.add(r, rw);
-      const vw = V.add(v, V.cross(w, rw));
-      zmin = Math.min(zmin, pw[2]);
-      const pen = Math.max(0, -pw[2]);
-      if(pen > 0){
-        const vn = vw[2];
-        let fz = params.k*pen - params.c*vn;
-        if(fz < 0) fz = 0;
-        const f = [0,0,fz];
-        F = V.add(F, f);
-        const tau = V.cross(rw, f);
-        T = V.add(T, tau);
-        if(idx < 4) cornerF[idx] += fz;
+      const dispTop=new Array(4), velTop=new Array(4);
+      for(let i=0;i<4;i++){
+        const xi=corners[i][0], yi=corners[i][1];
+        dispTop[i]= z + (-thx*yi) + (thy*xi);
+        velTop[i] = vz + (-wx *yi) + (wy *xi);
       }
-    }
-    return {F,T,zmin,cornerF};
-  }
 
-  function fRigid(t, y, extra){
-    const p = sim.params; const m=p.m;
-    const r=[y[0],y[1],y[2]]; const v=[y[3],y[4],y[5]]; const q=Q.normalize([y[6],y[7],y[8],y[9]]); const w=[y[10],y[11],y[12]];
-    const state={r,v,q,w,Ibody:extra.Ibody};
-    const {F,T} = contactForces(state, p);
-    const R = rotationWorld(q);
-    const Iw = V.matMul3( V.matMul3(R, extra.Ibody), V.matT(R) );
-    const IwInv = V.matInv(Iw);
-
-    const rdot = v;
-    const vdot = [F[0]/m, F[1]/m, F[2]/m];
-    const wIw = V.matMul(Iw, w);
-    const crossTerm = V.cross(w, wIw);
-    const wdot = V.matMul(IwInv, V.sub(T, crossTerm));
-    const qw=[0, w[0], w[1], w[2]];
-    const qdot = Q.mul(qw, q).map((v,i)=>0.5*v);
-
-    return [rdot[0],rdot[1],rdot[2], vdot[0],vdot[1],vdot[2], qdot[0],qdot[1],qdot[2],qdot[3], wdot[0],wdot[1],wdot[2]];
-  }
-
-  // --------------------------- RKF45 (Cash–Karp) ---------------------------
-  function rkf45Step(f, t, y, h, extra){
-    const b21=1/5,
-          b31=3/40, b32=9/40,
-          b41=3/10, b42=-9/10, b43=6/5,
-          b51=-11/54, b52=5/2, b53=-70/27, b54=35/27,
-          b61=1631/55296, b62=175/512, b63=575/13824, b64=44275/110592, b65=253/4096;
-    const c1=37/378, c3=250/621, c4=125/594, c6=512/1771;
-    const c1p=2825/27648, c3p=18575/48384, c4p=13525/55296, c5p=277/14336, c6p=1/4;
-
-    const k1 = f(t, y, extra);
-    const y2 = y.map((yi,i)=> yi + h*b21*k1[i]);
-    const k2 = f(t + h*1/5, y2, extra);
-    const y3 = y.map((yi,i)=> yi + h*(b31*k1[i] + b32*k2[i]));
-    const k3 = f(t + h*3/10, y3, extra);
-    const y4 = y.map((yi,i)=> yi + h*(b41*k1[i] + b42*k2[i] + b43*k3[i]));
-    const k4 = f(t + h*3/5, y4, extra);
-    const y5 = y.map((yi,i)=> yi + h*(b51*k1[i] + b52*k2[i] + b53*k3[i] + b54*k4[i]));
-    const k5 = f(t + h*1, y5, extra);
-    const y6 = y.map((yi,i)=> yi + h*(b61*k1[i] + b62*k2[i] + b63*k3[i] + b64*k4[i] + b65*k5[i]));
-    const k6 = f(t + h*7/8, y6, extra);
-
-    const y5th = y.map((yi,i)=> yi + h*(c1*k1[i] + c3*k3[i] + c4*k4[i] + c6*k6[i]));
-    const y4th = y.map((yi,i)=> yi + h*(c1p*k1[i] + c3p*k3[i] + c4p*k4[i] + c5p*k5[i] + c6p*k6[i]));
-
-    const err = Math.sqrt( y5th.reduce((s,yi,i)=>{ const e=yi - y4th[i]; return s + e*e; }, 0) / y.length );
-    return { yNext:y5th, err };
-  }
-
-  function advanceRKF(targetDt){
-    const extra={Ibody: sim.state.Ibody};
-    const t1 = sim.t + targetDt;
-    const maxSteps = sim.maxSteps || 3000;
-    let steps=0;
-
-    while(sim.t < t1 && steps < maxSteps){
-      let h = Math.min(sim.hRK, t1 - sim.t, sim.hmax);
-      if(h < sim.hmin) h = sim.hmin;
-      const y = packState(sim.state);
-      const {yNext, err} = rkf45Step(fRigid, sim.t, y, h, extra);
-      const tol = sim.tol;
-      const safety = 0.9; const pow = 0.2;
-      const scale = err>1e-20 ? safety * Math.pow(tol/err, pow) : 2.0;
-      const accept = err <= tol;
-      if(accept){
-        sim.state = unpackState(yNext, sim.state);
-        sim.t += h;
-        sim.hRK = Math.min(sim.hmax, Math.max(sim.hmin, h * Math.min(2.0, Math.max(0.1, scale))));
-      } else {
-        sim.hRK = Math.max(sim.hmin, h * Math.max(0.1, Math.min(1.0, scale)));
+      const Fi = new Array(4);
+      for (let i=0;i<4;i++){
+        const rel = dispTop[i] - zb;
+        const relv= velTop[i] - vb;
+        Fi[i] = -(kList[i]*rel + Cspr[i]*relv);
       }
-      steps++;
-      if(!accept && steps>maxSteps) break;
-    }
-  }
 
-  function packState(s){ return [ s.r[0],s.r[1],s.r[2], s.v[0],s.v[1],s.v[2], s.q[0],s.q[1],s.q[2],s.q[3], s.w[0],s.w[1],s.w[2] ]; }
-  function unpackState(y, prev){
-    const r=[y[0],y[1],y[2]]; const v=[y[3],y[4],y[5]]; const q=Q.normalize([y[6],y[7],y[8],y[9]]); const w=[y[10],y[11],y[12]];
-    return { r, v, q, w, Ibody: prev.Ibody };
-  }
+      const Fz = Fi.reduce(function(s,v){return s+v;},0);
+      const TauX = (-corners[0][1])*Fi[0] + (-corners[1][1])*Fi[1] + (-corners[2][1])*Fi[2] + (-corners[3][1])*Fi[3];
+      const TauY = ( corners[0][0])*Fi[0] + ( corners[1][0])*Fi[1] + ( corners[2][0])*Fi[2] + ( corners[3][0])*Fi[3];
 
-  // --------------------------- Rendering (orthographic) ---------------------------
-  const canvas = document.getElementById('view');
-  const ctx = canvas.getContext('2d');
-  const viewWrap = document.getElementById('viewWrap');
+      const Ix = (mTop/12) * (Ly*Ly + (+lz.value||3) * (+lz.value||3));
+      const Iy = (mTop/12) * (Lx*Lx + (+lz.value||3) * (+lz.value||3));
 
-  const sizeCache = {w:0,h:0,dpr:1};
-  let roPending = false;
+      const az  = (mTop>0)? (Fz/mTop) : 0;
+      const awx = (Ix  >0)? (TauX/Ix) : 0;
+      const awy = (Iy  >0)? (TauY/Iy) : 0;
 
-  function resize(force=false){
-    const rect = viewWrap.getBoundingClientRect();
-    const cssW = Math.max(1, Math.floor(rect.width));
-    const cssH = Math.max(1, Math.floor(rect.height));
-    const dpr = Math.max(1, window.devicePixelRatio||1);
-    if(!force && cssW===sizeCache.w && cssH===sizeCache.h && dpr===sizeCache.dpr) return;
-    sizeCache.w = cssW; sizeCache.h = cssH; sizeCache.dpr = dpr;
-    canvas.width = Math.max(1, Math.floor(cssW * dpr));
-    canvas.height = Math.max(1, Math.floor(cssH * dpr));
-    ctx.setTransform(dpr,0,0,dpr,0,0);
-    draw();
-  }
-
-  const ro = new ResizeObserver(()=>{
-    if(roPending) return;
-    roPending = true;
-    requestAnimationFrame(()=>{ roPending=false; resize(); });
-  });
-  if(viewWrap) ro.observe(viewWrap);
-  window.addEventListener('resize', ()=>resize());
-
-  function projSetup(){
-    const az = (+document.getElementById('az').value) * Math.PI/180;
-    const el = (+document.getElementById('el').value) * Math.PI/180;
-    const Ra = [ Math.cos(az), -Math.sin(az), 0,
-                 Math.sin(az),  Math.cos(az), 0,
-                 0,             0,            1 ];
-    const Rx = [ 1,0,0, 0,Math.cos(el),-Math.sin(el), 0,Math.sin(el),Math.cos(el) ];
-    const Rv = V.matMul3(Rx, Ra);
-
-    const zoomEl = document.getElementById('zoom');
-    const zoomSlider = zoomEl ? (+zoomEl.value||140) : 140;
-    const zoomGain = 3; // render ~3× larger at the same slider position
-    let zoom = zoomSlider * zoomGain;
-    const fitOn = document.getElementById('fit') ? document.getElementById('fit').checked : false;
-    let autoFit = false;
-
-    const cx = sizeCache.w/2, cy = sizeCache.h/2 - 50;
-
-    if(fitOn && sim && sim.state){
-      const p = sim.params;
-      const Rb = rotationWorld(sim.state.q);
-      const r  = sim.state.r;
-      const cornersB = bodyCorners(p.Lx, p.Ly, p.Lz);
-      let maxX = 1e-6, maxY = 1e-6;
-      for(const cb of cornersB){
-        const pw = V.add(r, V.matMul(Rb, cb));
-        const pv = V.matMul(Rv, pw);
-        if(!Number.isFinite(pv[0]) || !Number.isFinite(pv[1])) continue;
-        maxX = Math.max(maxX, Math.abs(pv[0]));
-        maxY = Math.max(maxY, Math.abs(pv[1]));
+      const aCorners = new Array(4);
+      for (let i=0;i<4;i++){
+        const xi=corners[i][0], yi=corners[i][1];
+        aCorners[i] = az + (-awx * yi) + (awy * xi);
       }
-      const pad = 24;
-      const halfW = Math.max(10, Math.min(cx - pad, (sizeCache.w - cx) - pad));
-      const halfH = Math.max(10, Math.min(cy - pad, (sizeCache.h - cy) - pad));
-      const fitX = halfW / maxX;
-      const fitY = halfH / maxY;
-      const fitZoom = 0.98 * Math.min(fitX, fitY);
-      if(Number.isFinite(fitZoom) && fitZoom > 0){
-        const userZoom = zoom; zoom = Math.min(zoom, fitZoom); autoFit = zoom < userZoom - 1e-6;
+      return { az: az, aCorners: aCorners, Fi: Fi };
+    }
+
+    function drawAxes(){
+      const origin=[60,60], L=45;
+      function rot(v){ const x=v[0], y=v[1], z=v[2]; const cz=Math.cos(yaw), sz=Math.sin(yaw); let nx=x*cz-y*sz, ny=x*sz+y*cz, nz=z; const cx=Math.cos(pitch), sx=Math.sin(pitch); let ny2=ny*cx-nz*sx; return [nx,-ny2]; }
+      const axes={X:rot([1,0,0]), Y:rot([0,1,0]), Z:rot([0,0,1])};
+      ctx.lineWidth=2; ctx.lineCap='round'; const colors={X:'#ef4444',Y:'#16a34a',Z:'#0b73c8'};
+      ['X','Y','Z'].forEach(function(k){
+        const v=axes[k]; ctx.strokeStyle=colors[k]; ctx.beginPath(); ctx.moveTo(origin[0],origin[1]); ctx.lineTo(origin[0]+v[0]*L,origin[1]+v[1]*L); ctx.stroke();
+        ctx.fillStyle=colors[k]; ctx.font='12px system-ui'; ctx.fillText(k,origin[0]+v[0]*L+4,origin[1]+v[1]*L+4);
+      });
+    }
+
+    function drawWithState(y){
+      fitScale(); ctx.clearRect(0,0,canvas.width,canvas.height);
+      const v=vals(); const Lx=v.Lx, Ly=v.Ly, Lz=v.Lz, K=v.K;
+      const z=y[0], thx=y[1], thy=y[2], zb=y[6];
+      const zRel = z - zb;
+      const gain = parseFloat(respScaleEl.value)||0;
+
+      drawBaseBox(Lx,Ly,Lz);
+      const strokeFor=function(val){return kStroke(K,val);};
+      const corners2=[[0,0],[Lx,0],[Lx,Ly],[0,Ly]];
+      const cols=['#1d4ed8','#ef4444','#16a34a','#f59e0b'];
+      const kvals=[K[0],K[1],K[2],K[3]];
+
+      drawTopRigid(zRel, thx, thy, Lx, Ly, Lz, gain);
+
+      for(let i=0;i<4;i++){
+        const pair=corners2[i]; const x=pair[0], yc=pair[1];
+        let topZ;
+        if(drawTopRigid.lowerCorners && drawTopRigid.upperCorners){
+          const low=drawTopRigid.lowerCorners[i], up=drawTopRigid.upperCorners[i];
+          topZ= low[2] + 0.25*(up[2]-low[2]);
+        } else {
+          topZ = zRel*gain + 0.25*Lz;
+        }
+        drawSpringSymbol(x,yc,0,topZ,strokeFor(kvals[i]),cols[i],Lz);
       }
+
+      drawAxes();
+      drawWaveformPreview();
+      ctx.fillStyle='#111'; ctx.font='12px system-ui';
+      ctx.fillText('t: '+tSimNow.toFixed(3)+' s', 66, canvas.height-13);
     }
 
-    const zh = document.getElementById('zoomHint'); if(zh) zh.textContent = autoFit ? 'Auto-fit active' : '';
-    return {Rv, zoom, cx, cy};
-  }
+    function draw(){
+      fitScale(); ctx.clearRect(0,0,canvas.width,canvas.height);
+      const v=vals(); const Lx=v.Lx, Ly=v.Ly, Lz=v.Lz, K=v.K;
 
-  function worldToScreen(p){
-    const {Rv, zoom, cx, cy}  = projSetup();
-    const pv = V.matMul(Rv, p);
-    return [ cx + zoom*pv[0], cy - zoom*pv[1] ];
-  }
+      drawBaseBox(Lx,Ly,Lz);
 
-  function draw(){
-    drawAxesMini();
-    updateAngleReadouts();
-    const w = sizeCache.w, h = sizeCache.h;
-    ctx.clearRect(0,0,w,h);
+      const V=[[0,0,0],[Lx,0,0],[Lx,Ly,0],[0,Ly,0],[0,0,Lz],[Lx,0,Lz],[Lx,Ly,Lz],[0,Ly,Lz]];
+      const faces=[[0,1,2,3],[4,5,6,7],[0,1,5,4],[1,2,6,5],[2,3,7,6],[3,0,4,7]];
+      ctx.fillStyle='rgba(200,200,200,0.5)';
+      faces.forEach(function(f){ ctx.beginPath(); const p0=project(V[f[0]]); ctx.moveTo(p0[0],p0[1]); for(let i=1;i<f.length;i++){ const p=project(V[f[i]]); ctx.lineTo(p[0],p[1]); } ctx.closePath(); ctx.fill(); });
+      const E=[[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]];
+      ctx.strokeStyle='#111'; ctx.lineWidth=2; ctx.lineJoin='round';
+      E.forEach(function(e){ const a=e[0], b=e[1]; const p1=project(V[a]), p2=project(V[b]); ctx.beginPath(); ctx.moveTo(p1[0],p1[1]); ctx.lineTo(p2[0],p2[1]); ctx.stroke(); });
 
-    // Ground plane + grid
-    const gridSize = 10, n=12;
-    const planeSize = gridSize * n;
-    const quad = [
-      worldToScreen([-planeSize, -planeSize, 0]),
-      worldToScreen([ planeSize, -planeSize, 0]),
-      worldToScreen([ planeSize,  planeSize, 0]),
-      worldToScreen([-planeSize,  planeSize, 0]),
-    ];
-    ctx.fillStyle = 'rgba(0,0,0,0.06)';
-    ctx.beginPath();
-    ctx.moveTo(quad[0][0], quad[0][1]);
-    for(let i=1;i<quad.length;i++) ctx.lineTo(quad[i][0], quad[i][1]);
-    ctx.closePath();
-    ctx.fill();
+      const zEnd=0.25*Lz; const strokeFor=function(val){return kStroke(K,val);};
+      [{x:0,y:0,k:K[0],c:'#1d4ed8'},{x:Lx,y:0,k:K[1],c:'#ef4444'},{x:0,y:Ly,k:K[2],c:'#16a34a'},{x:Lx,y:Ly,k:K[3],c:'#f59e0b'}]
+        .forEach(function(s){drawSpringSymbol(s.x,s.y,0,zEnd,strokeFor(s.k),s.c,Lz);});
 
-    ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(0,0,0,0.12)';
-    for(let gx=-n; gx<=n; gx++){
-      const p1w=[gx*gridSize, -n*gridSize, 0];
-      const p2w=[gx*gridSize,  n*gridSize, 0];
-      const p1=worldToScreen(p1w), p2=worldToScreen(p2w);
-      ctx.beginPath(); ctx.moveTo(...p1); ctx.lineTo(...p2); ctx.stroke();
-    }
-    for(let gy=-n; gy<=n; gy++){
-      const p1w=[-n*gridSize, gy*gridSize, 0];
-      const p2w=[ n*gridSize, gy*gridSize, 0];
-      const p1=worldToScreen(p1w), p2=worldToScreen(p2w);
-      ctx.beginPath(); ctx.moveTo(...p1); ctx.lineTo(...p2); ctx.stroke();
+      drawAxes();
+      drawWaveformPreview();
     }
 
-    if(!sim.state) return;
+    function renderAccelPlot(t, aG, tCursor, overlayTH, grmsText){
+      tCursor = (tCursor!=null)?tCursor:null;
+      overlayTH = overlayTH || null;
+      grmsText = grmsText || null;
 
-    const R = rotationWorld(sim.state.q);
-    const r = sim.state.r;
-    const cornersB = bodyCorners(sim.params.Lx, sim.params.Ly, sim.params.Lz);
-    const cornersW = cornersB.map(cb=> V.add(r, V.matMul(R, cb)) );
-    const pts = cornersW.map(worldToScreen);
+      const ctx = accelPlotCtx, W=ctx.canvas.width, H=ctx.canvas.height;
+      ctx.clearRect(0,0,W,H);
+      ctx.fillStyle='rgba(255,255,255,0.95)'; ctx.fillRect(0,0,W,H);
+      ctx.strokeStyle='#bbb'; ctx.strokeRect(0,0,W,H);
 
-    // springs visual
-    const drawSpringBarsAlong = (p0, p1, widthPx=14, spacingPx=6)=>{
-      const dx = p1[0]-p0[0], dy = p1[1]-p0[1];
-      const L = Math.hypot(dx, dy) || 1;
-      const tx = dx / L, ty = dy / L;
-      const nx = -ty, ny = tx;
-      const pad = 3;
-      const usable = Math.max(0, L - 2*pad);
-      const N = Math.max(3, Math.round(usable / spacingPx));
-      for(let i=0;i<N;i++){
-        const d = pad + (N===1 ? 0 : usable * (i/(N-1)));
-        const cx = p0[0] + tx*d;
-        const cy = p0[1] + ty*d;
-        const hx = (widthPx/2) * nx;
-        const hy = (widthPx/2) * ny;
+      ctx.fillStyle='#111'; ctx.font='12px system-ui';
+      let title = "Top center acceleration (G) vs time (s)";
+      if (grmsText) title += ' — ' + grmsText;
+      ctx.fillText(title, 10, 16);
+
+      const padL=70, padR=12, padT=24, padB=28;
+      const gx=padL, gy=padT, gw=W-padL-padR, gh=H-padT-padB;
+
+      const tmin=t[0], tmax=t[t.length-1];
+
+      let yMin = Math.min.apply(null, [0].concat(aG));
+      let yMax = Math.max.apply(null, [0].concat(aG));
+      if (overlayTH && overlayTH.y && overlayTH.y.length > 0){
+        let thMin = Infinity, thMax = -Infinity;
+        const oy = overlayTH.y;
+        for (let i=0;i<oy.length;i++){
+          const v = oy[i];
+          if (v < thMin) thMin = v;
+          if (v > thMax) thMax = v;
+        }
+        yMin = Math.min(yMin, thMin);
+        yMax = Math.max(yMax, thMax);
+      }
+      const yPad=(yMax-yMin)*0.1+1e-9;
+      const ymin=yMin-yPad, ymax=yMax+yPad;
+
+      ctx.strokeStyle='#ddd'; ctx.lineWidth=1; ctx.strokeRect(gx,gy,gw,gh);
+
+      ctx.fillStyle='#444'; ctx.textAlign='center'; ctx.textBaseline='top';
+      for(let i=0;i<=5;i++){
+        const tt=tmin+(i/5)*(tmax-tmin);
+        const px=gx+(tt-tmin)/(tmax-tmin||1)*gw;
+        ctx.fillText(tt.toPrecision(3), px, gy+gh+6);
+      }
+      ctx.textAlign='right'; ctx.textBaseline='middle';
+      for(let i=0;i<=4;i++){
+        const yy=ymin+(i/4)*(ymax-ymin);
+        const py=gy+gh-(yy-ymin)/(ymax-ymin||1)*gh;
+        ctx.fillText(yy.toPrecision(3), gx-6, py);
+      }
+
+      ctx.beginPath();
+      for(let i=0;i<t.length;i++){
+        const px=gx+(t[i]-tmin)/(tmax-tmin||1)*gw;
+        const py=gy+gh-(aG[i]-ymin)/(ymax-ymin||1)*gh;
+        if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+      }
+      ctx.strokeStyle='#0b73c8'; ctx.lineWidth=2; ctx.stroke();
+
+      if (overlayTH && overlayTH.t && overlayTH.y && overlayTH.t.length>1){
+        const T0=Math.max(tmin, overlayTH.t[0]);
+        const T1=Math.min(tmax, overlayTH.t[overlayTH.t.length-1]);
+        if (T1>T0){
+          ctx.beginPath();
+          for(let i=0;i<overlayTH.t.length;i++){
+            const tt=overlayTH.t[i];
+            if (tt<T0||tt>T1) continue;
+            const px=gx+(tt-tmin)/(tmax-tmin||1)*gw;
+            const py=gy+gh-(overlayTH.y[i]-ymin)/(ymax-ymin||1)*gh;
+            if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+          }
+          ctx.strokeStyle='rgba(0,0,0,0.45)'; ctx.lineWidth=1.25; ctx.stroke();
+
+          ctx.fillStyle='rgba(0,0,0,0.55)'; ctx.fillRect(gx+8, gy+8, 18, 3);
+          ctx.fillStyle='#333'; ctx.fillText('base accel (G)', gx+30, gy+13);
+        }
+      }
+
+      if (tCursor!=null){
+        const clamped=Math.max(tmin,Math.min(tmax,tCursor));
+        const cx=gx+(clamped-tmin)/(tmax-tmin||1)*gw;
+        ctx.save(); ctx.setLineDash([6,4]); ctx.strokeStyle='#111';
+        ctx.beginPath(); ctx.moveTo(cx,gy); ctx.lineTo(cx,gy+gh); ctx.stroke();
+        ctx.setLineDash([]); ctx.fillStyle='#111'; ctx.font='11px system-ui';
+        ctx.textAlign='left'; ctx.textBaseline='bottom';
+        ctx.fillText('t='+clamped.toFixed(3)+' s', Math.min(cx+6, gx+gw-60), gy+gh-4);
+        ctx.restore();
+      }
+
+      ctx.fillStyle='#444'; ctx.textAlign='left'; ctx.textBaseline='alphabetic';
+      ctx.fillText('t (s)', gx+gw-40, gy+gh+20);
+      ctx.save(); ctx.translate(gx-40, gy+80); ctx.rotate(-Math.PI/2);
+      ctx.fillText('Accel (G)', 0, 0); ctx.restore();
+    }
+
+    function renderSpringPlot(t, Fseries, tCursor){
+      tCursor = (tCursor!=null)?tCursor:null;
+      const ctx = springPlotCtx;
+      const W = ctx.canvas.width, H = ctx.canvas.height;
+      ctx.clearRect(0,0,W,H);
+
+      ctx.fillStyle = 'rgba(255,255,255,0.95)';
+      ctx.fillRect(0,0,W,H);
+      ctx.strokeStyle = '#bbb'; ctx.strokeRect(0,0,W,H);
+
+      const unit = (unitMode==='US'?'lb':'N');
+      ctx.fillStyle='#111'; ctx.font='12px system-ui';
+      ctx.fillText('Corner spring reactions ('+unit+') vs time (s)', 10, 16);
+
+      const padL=70, padR=12, padT=24, padB=28;
+      const gx=padL, gy=padT, gw=W-padL-padR, gh=H-padT-padB;
+
+      const tmin=t[0], tmax=t[t.length-1];
+      let yMin=0, yMax=0;
+      for(let s=0;s<4;s++){ const arr=Fseries[s]; yMin=Math.min(yMin, Math.min.apply(null,arr)); yMax=Math.max(yMax, Math.max.apply(null,arr)); }
+      const yPad=(yMax-yMin)*0.1 + 1e-9;
+      const ymin=yMin - yPad, ymax=yMax + yPad;
+
+      ctx.strokeStyle='#ddd'; ctx.lineWidth=1; ctx.strokeRect(gx,gy,gw,gh);
+
+      ctx.fillStyle='#444'; ctx.textAlign='center'; ctx.textBaseline='top';
+      for(let i=0;i<=5;i++){
+        const tt = tmin + (i/5)*(tmax - tmin);
+        const px = gx + (tt - tmin)/(tmax - tmin || 1)*gw;
+        ctx.fillText(tt.toPrecision(3), px, gy+gh+6);
+      }
+      ctx.textAlign='right'; ctx.textBaseline='middle';
+      for(let i=0;i<=4;i++){
+        const yy = ymin + (i/4)*(ymax - ymin);
+        const py = gy + gh - (yy - ymin)/(ymax - ymin || 1)*gh;
+        ctx.fillText(yy.toPrecision(4), gx-6, py);
+      }
+
+      const colors=['#1d4ed8','#ef4444','#16a34a','#f59e0b'];
+      for(let s=0;s<4;s++){
         ctx.beginPath();
-        ctx.moveTo(cx - hx, cy - hy);
-        ctx.lineTo(cx + hx, cy + hy);
+        for(let i=0;i<t.length;i++){
+          const px = gx + (t[i]-tmin)/(tmax-tmin || 1)*gw;
+          const py = gy + gh - (Fseries[s][i]-ymin)/(ymax-ymin || 1)*gh;
+          if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+        }
+        ctx.strokeStyle=colors[s];
+        ctx.lineWidth=2;
         ctx.stroke();
       }
-    };
 
-    const bottomIdx = [0,1,2,3];
-    const {zoom: zNow} = projSetup();
-    const restLen = 0.25 * sim.params.Lz;
-    const widthPxBase = Math.max(8, 0.12 * sim.params.Lz * zNow);
+      const labels=['(0,0)','(Lx,0)','(0,Ly)','(Lx,Ly)'];
+      ctx.font='12px system-ui'; ctx.textAlign='left'; ctx.textBaseline='middle';
+      let lx=gx+6, ly=gy+12;
+      const colors2=['#1d4ed8','#ef4444','#16a34a','#f59e0b'];
+      for(let i=0;i<4;i++){
+        ctx.fillStyle=colors2[i];
+        ctx.fillRect(lx, ly-5, 18, 10);
+        ctx.fillStyle='#333';
+        ctx.fillText(labels[i], lx+24, ly);
+        lx += 90;
+      }
 
-    for(let ii=0; ii<bottomIdx.length; ii++){
-      const bi = bottomIdx[ii];
-      const cw = cornersW[bi];
-      const pen = Math.max(0, -cw[2]);
-      const lenWorld = Math.max(restLen*0.15, restLen - pen);
-      const dirW = V.matMul(R, [0,0,lenWorld]);
-      const topW = V.add(cw, dirW);
-      const sb = worldToScreen(cw);
-      const sc = worldToScreen(topW);
+      if (tCursor!=null){
+        const clamped = Math.max(tmin, Math.min(tmax, tCursor));
+        const cx = gx + (clamped - tmin)/(tmax - tmin || 1)*gw;
+        ctx.save();
+        ctx.setLineDash([6,4]);
+        ctx.strokeStyle='#111';
+        ctx.beginPath(); ctx.moveTo(cx, gy); ctx.lineTo(cx, gy+gh); ctx.stroke();
+        ctx.setLineDash([]);
+      }
 
-      ctx.lineWidth = pen>0 ? 2.2 : 1.4;
-      ctx.strokeStyle = springColors[ii];
-      drawSpringBarsAlong(sb, sc, widthPxBase, 6);
+      ctx.fillStyle='#444';
+      ctx.textAlign='left'; ctx.textBaseline='alphabetic';
+      ctx.fillText('t (s)', gx+gw-40, gy+gh+20);
+      ctx.save(); ctx.translate(gx-40, gy+80); ctx.rotate(-Math.PI/2);
+      ctx.fillText('Force ('+unit+')', 0, 0);
+      ctx.restore();
     }
 
-    ctx.lineWidth = 2.5; ctx.strokeStyle = '#000000';
-    for(const [i,j] of edges){
-      ctx.beginPath();
-      ctx.moveTo(pts[i][0], pts[i][1]);
-      ctx.lineTo(pts[j][0], pts[j][1]);
-      ctx.stroke();
+    function plotGeom(ctx, padL, padR, padT, padB){
+      const W=ctx.canvas.width, H=ctx.canvas.height;
+      return { gx:padL, gy:padT, gw:W-padL-padR, gh:H-padT-padB, W:W, H:H };
+    }
+    function tFromX(x, tmin, tmax, geom){
+      const gx=geom.gx, gw=geom.gw;
+      const r = Math.max(0, Math.min(1, (x - gx) / (gw || 1)));
+      return tmin + r * (tmax - tmin);
+    }
+    function interp1(times, arr, t){
+      const n=times.length; if(t<=times[0]) return arr[0]; if(t>=times[n-1]) return arr[n-1];
+      let lo=0,hi=n-1; while(hi-lo>1){ const mid=(lo+hi)>>1; if(times[mid]<=t) lo=mid; else hi=mid; }
+      const a=(t-times[lo])/(times[hi]-times[lo] || 1);
+      return arr[lo] + a*(arr[hi]-arr[lo]);
+    }
+    function updateReadout(tSel){
+      if (!lastTimes) { readoutEl.textContent=''; return; }
+      const aG = interp1(lastTimes, lastAzG, tSel);
+      const F = lastFseries.map(function(series){ return interp1(lastTimes, series, tSel); });
+      const unit = (unitMode==='US'?'lb':'N');
+      readoutEl.textContent = 't = '+tSel.toFixed(4)+' s — accel: '+aG.toFixed(4)+' G, springs: ['+F.map(function(v){return v.toFixed(2);}).join(', ')+'] '+unit;
     }
 
-    ctx.fillStyle = '#0b73c8';
-    for(const p of pts){
-      ctx.beginPath(); ctx.arc(p[0],p[1],3,0,Math.PI*2); ctx.fill();
+    function attachCursor(canvasEl, type){
+      let dragging=false;
+      const onMove = function(e){
+        if(!lastTimes) return;
+        const rect = canvasEl.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const tmin = lastTimes[0], tmax=lastTimes[lastTimes.length-1];
+        const geom = (type==='accel') ? plotGeom(accelPlotCtx,70,12,24,28) : plotGeom(springPlotCtx,70,12,24,28);
+        cursorTime = tFromX(x, tmin, tmax, geom);
+        renderAccelPlot(lastTimes, lastAzG, cursorTime, overlayTH, grmsText);
+        renderSpringPlot(lastTimes, lastFseries, cursorTime);
+        updateReadout(cursorTime);
+      };
+      canvasEl.addEventListener('mousemove',function(e){ if (!lastTimes) return; if (dragging) onMove(e); });
+      canvasEl.addEventListener('mousedown',function(e){ dragging=true; onMove(e); });
+      window.addEventListener('mouseup',function(){ dragging=false; });
+      canvasEl.addEventListener('mouseleave',function(){ if(!dragging){ cursorTime=null; renderAccelPlot(lastTimes||[], lastAzG||[], null, overlayTH, grmsText); renderSpringPlot(lastTimes||[], lastFseries||[[],[],[],[]], null); readoutEl.textContent=''; }});
+      canvasEl.addEventListener('mousemove',function(e){ if(!dragging) onMove(e); });
     }
 
-    const cTop = worldToScreen([r[0], r[1], r[2]]);
-    const cBot = worldToScreen([r[0], r[1], 0]);
-    ctx.lineWidth=1.5; ctx.strokeStyle='rgba(0,0,0,0.45)';
-    ctx.beginPath(); ctx.moveTo(cTop[0],cTop[1]); ctx.lineTo(cBot[0],cBot[1]); ctx.stroke();
-  }
-
-  function updatePlots(){
-    if(!sim.state) return;
-    const {F, cornerF} = contactForces(sim.state, sim.params);
-    const m = Math.max(sim.params.m||0, 1e-12);
-    const aG = Math.hypot(F[0],F[1],F[2])/(m*sim.params.G);
-    plots.accel.push([sim.t, aG]);
-    for(let i=0;i<4;i++){ plots.springs[i].push([sim.t, cornerF?cornerF[i]:0]); }
-    const maxPoints=4000; if(plots.accel.length>maxPoints) plots.accel.shift();
-    for(let i=0;i<4;i++) if(plots.springs[i].length>maxPoints) plots.springs[i].shift();
-  }
-
-  function niceNum(range, round){
-    const expv = Math.floor(Math.log10(range||1));
-    const f = (range||1)/Math.pow(10, expv);
-    let nf;
-    if(round){
-      if(f<1.5) nf=1; else if(f<3) nf=2; else if(f<7) nf=5; else nf=10;
-    } else {
-      if(f<=1) nf=1; else if(f<=2) nf=2; else if(f<=5) nf=5; else nf=10;
-    }
-    return nf*Math.pow(10, expv);
-  }
-  function niceTicks(min, max, maxTicks=6){
-    if(!isFinite(min)||!isFinite(max)){ return {ticks:[0,1], min:0, max:1, step:1}; }
-    if(min===max){ const eps=Math.abs(min)||1; min-=eps*0.5; max+=eps*0.5; }
-    const range = niceNum(max-min, false);
-    const step = niceNum(range/(maxTicks-1), true);
-    const niceMin = Math.floor(min/step)*step;
-    const niceMax = Math.ceil(max/step)*step;
-    const ticks=[]; for(let v=niceMin; v<=niceMax+1e-12; v+=step) ticks.push(v);
-    return {ticks, min:niceMin, max:niceMax, step};
-  }
-
-  function drawPlotLines(canvasId, series, yLabel, colorsOverride){
-    const cvs = ids(canvasId); if(!cvs) return; const g=cvs.getContext('2d');
-    const dpr = window.devicePixelRatio||1; const w=cvs.clientWidth||cvs.parentElement.clientWidth; const h=cvs.clientHeight||cvs.parentElement.clientHeight||200;
-    if(!w||!h) return; cvs.width=Math.round(w*dpr); cvs.height=Math.round(h*dpr); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,w,h);
-    let tmin=Infinity,tmax=-Infinity; series.forEach(s=>{ if(s&&s.length){ tmin=Math.min(tmin,s[0][0]); tmax=Math.max(tmax,s[s.length-1][0]); }});
-    if(!isFinite(tmin)||!isFinite(tmax)||tmin===tmax){ tmin=Math.max(0,sim.t-1); tmax=sim.t; }
-    let ymin=Infinity,ymax=-Infinity; series.forEach(s=>{ if(s) for(const p of s){ ymin=Math.min(ymin,p[1]); ymax=Math.max(ymax,p[1]); }});
-    if(!isFinite(ymin)||!isFinite(ymax)||ymin===ymax){ ymin=0; ymax=1; }
-
-    // y ticks
-    const yTicks = niceTicks(ymin, ymax, 6);
-    ymin = yTicks.min; ymax = yTicks.max;
-
-    const padL=44, padR=16, padT=12, padB=24;
-    const sx=(w-padL-padR)/(tmax-tmin||1);
-    const sy=(h-padT-padB)/(ymax-ymin||1);
-
-    // gridlines
-    g.strokeStyle='#e0e0e0'; g.lineWidth=1;
-    for(const ty of yTicks.ticks){
-      const y = h - padB - (ty - ymin)*sy;
-      g.beginPath(); g.moveTo(padL, y); g.lineTo(w-padR, y); g.stroke();
-    }
-    // axes
-    g.strokeStyle='#bdbdbd'; g.beginPath(); g.moveTo(padL, padT); g.lineTo(padL, h-padB); g.moveTo(padL, h-padB); g.lineTo(w-padR, h-padB); g.stroke();
-
-    // y labels
-    g.fillStyle='#000'; g.font='11px system-ui';
-    yTicks.ticks.forEach(ty=>{ const y=h-padB-(ty-ymin)*sy; g.fillText(ty.toFixed(2), 6, y+4); });
-    // x labels & title
-    g.fillText(`${tmin.toFixed(1)}s`, padL, h-6); g.fillText(`${tmax.toFixed(1)}s`, w-40, h-6); g.fillText(yLabel, padL+4, padT+12);
-
-    const colors = colorsOverride || ['#1f77b4','#ff7f0e','#2ca02c','#d62728','#9467bd'];
-    series.forEach((s,idx)=>{ if(!s||s.length<2) return; g.lineWidth=1.6; g.strokeStyle=colors[idx%colors.length]; g.beginPath(); for(let i=0;i<s.length;i++){ const x=padL+(s[i][0]-tmin)*sx; const y=h-padB-(s[i][1]-ymin)*sy; if(i===0) g.moveTo(x,y); else g.lineTo(x,y);} g.stroke(); });
-
-    // selection marker
-    const sel = cvs._plotSel;
-    if(sel && series[sel.si] && series[sel.si][sel.idx]){
-      const p = series[sel.si][sel.idx];
-      const px = padL + (p[0]-tmin)*sx;
-      const py = h - padB - (p[1]-ymin)*sy;
-      g.strokeStyle='#000'; g.lineWidth=1; g.beginPath(); g.moveTo(px, padT); g.lineTo(px, h-padB); g.stroke();
-      g.fillStyle='#000'; g.beginPath(); g.arc(px,py,3,0,Math.PI*2); g.fill();
-      const tip=`${p[0].toFixed(3)} s, ${p[1].toFixed(3)}`; const tw=g.measureText(tip).width+8; const th=16; const tx=Math.min(w-padR-tw, Math.max(padL, px+6)); const ty=Math.max(padT+th, py-10); g.fillStyle='#fff'; g.strokeStyle='#000'; g.lineWidth=1; g.beginPath(); g.rect(tx,ty-th,tw,th); g.fill(); g.stroke(); g.fillStyle='#000'; g.fillText(tip, tx+4, ty-4);
+    function lowestNaturalPeriod(){
+      const W=parseFloat(weightEl.value)||0; const m = W/g();
+      const K=vals().K; const sumK=K.reduce(function(a,b){return a+(Number.isFinite(b)?b:0);},0);
+      const fz = (sumK>0 && m>0) ? (Math.sqrt(sumK/m)/(2*Math.PI)) : 0.1;
+      return 1/Math.max(1e-6,fz);
     }
 
-    // save mapping for click handling
-    cvs._plot = {tmin,tmax,ymin,ymax,padL,padR,padT,padB,sx,sy,series};
-  }
+    function simulate(){
+      if (playing){ showToast('Simulation already running'); return; }
 
-  function onPlotClick(cvs, e){
-    const plot=cvs._plot; if(!plot) return;
-    const rect=cvs.getBoundingClientRect();
-    const x=e.clientX-rect.left; // CSS px
-    const t=plot.tmin + (x - plot.padL)/(plot.sx||1);
-    let best={si:-1, idx:-1, dt:Infinity};
-    for(let si=0; si<plot.series.length; si++){
-      const s=plot.series[si]; if(!s||!s.length) continue;
-      for(let i=0;i<s.length;i++){ const dt=Math.abs(s[i][0]-t); if(dt<best.dt){ best={si,idx:i,dt}; } }
+      const W = +weightEl.value || 0;
+      const K = vals().K;
+      const sumK = K.reduce(function(a,b){return a+(Number.isFinite(b)?b:0);},0);
+
+      if (!randPSD_lookup){
+        showToast('Click “Generate Time History” first.');
+        psdPanel.scrollIntoView({behavior:'smooth',block:'center'});
+        return;
+      }
+      if (W <= 0){ draw(); showToast('Weight must be > 0.'); return; }
+      if (sumK <= 0){ draw(); showToast('All spring k must sum to > 0.'); return; }
+
+      resetMaxAccelPanel();
+      draw(); showToast('Simulating…');
+
+      try{
+        const f = makeDynamics();
+        const Tperiod = lowestNaturalPeriod();
+        const tEnd = Math.min(10*Math.max(0.05, Tperiod), 20.0);
+        const y0 = new Float64Array(8);
+        simData = rkf45Integrate(f, 0, y0, tEnd, 0.0001, .5e-5, 1e-8);
+
+        if (!simData || !simData.t || simData.t.length < 2 || !Number.isFinite(simData.t[simData.t.length-1])) {
+          showToast('Simulation produced no steps');
+          return;
+        }
+
+        const times = simData.t;
+        const azG = new Array(times.length);
+        const F0 = new Array(times.length), F1 = new Array(times.length),
+              F2 = new Array(times.length), F3 = new Array(times.length);
+
+        for (let i=0;i<times.length;i++){
+          const resp = responseAtSample(simData.y[i]);
+          const az = resp.az, aCorners = resp.aCorners, Fi = resp.Fi;
+          const centerG = az / g();
+          azG[i] = centerG;
+          F0[i] = Fi[0]; F1[i] = Fi[1]; F2[i] = Fi[2]; F3[i] = Fi[3];
+
+          if (Math.abs(centerG) > maxCenterG) maxCenterG = Math.abs(centerG);
+          for (let j=0;j<4;j++){
+            const cornerG = aCorners[j] / g();
+            if (Math.abs(cornerG) > maxCornerG[j]) maxCornerG[j] = Math.abs(cornerG);
+          }
+        }
+
+        lastTimes = times; lastAzG = azG; lastFseries = [F0,F1,F2,F3];
+        cursorTime = null;
+
+        overlayTH = (randPSD_t && randPSD_y) ? { t: Array.from(randPSD_t), y: Array.from(randPSD_y) } : null;
+        const grmsVal = (randPSD_y && randPSD_y.length) ? Math.sqrt(randPSD_y.reduce(function(s,v){return s+v*v;},0)/randPSD_y.length) : null;
+        grmsText = (grmsVal!=null) ? ('Grms ≈ '+grmsVal.toPrecision(3)+' g') : null;
+
+        renderAccelPlot(times, azG, cursorTime, overlayTH, grmsText);
+        renderSpringPlot(times, [F0,F1,F2,F3], cursorTime);
+
+        maxCenterEl.textContent = 'Center: '+maxCenterG.toFixed(3)+' G';
+        maxC00El.textContent    = '(0,0): '+maxCornerG[0].toFixed(3)+' G';
+        maxCLx0El.textContent   = '(Lx,0): '+maxCornerG[1].toFixed(3)+' G';
+        maxC0LyEl.textContent   = '(0,Ly): '+maxCornerG[2].toFixed(3)+' G';
+        maxCLxLyEl.textContent  = '(Lx,Ly): '+maxCornerG[3].toFixed(3)+' G';
+
+        tSimNow = 0; simStartWall = performance.now(); playing = true;
+        requestAnimationFrame(stepAnimation);
+      } catch (err) {
+        console.error(err);
+        showToast('Simulation error — see console');
+      }
     }
-    if(best.si>=0){ cvs._plotSel={si:best.si, idx:best.idx}; }
-    drawPlots();
-  }
 
-  function drawPlots(){
-    drawPlotLines('accelPlot', [plots.accel], 'CG accel (G)');
-    drawPlotLines('springPlot', [plots.springs[0],plots.springs[1],plots.springs[2],plots.springs[3]], 'Corner load', springColors);
-  }
+    let overlayTH=null, grmsText=null;
 
-  function collectExportRows(){
-    const n = Math.min(
-      plots.accel.length,
-      plots.springs[0].length,
-      plots.springs[1].length,
-      plots.springs[2].length,
-      plots.springs[3].length
-    );
-    const rows=[];
-    for(let i=0;i<n;i++){
-      const t = plots.accel[i][0];
-      rows.push([
-        t,
-        plots.accel[i][1],
-        plots.springs[0][i][1],
-        plots.springs[1][i][1],
-        plots.springs[2][i][1],
-        plots.springs[3][i][1]
-      ]);
+    function stepAnimation(now){
+      if(!playing||!simData) return;
+      const speed=parseFloat(simSpeed.value)||0;
+      const tEnd=simData.t[simData.t.length-1];
+      const tSim=((now-simStartWall)/1000)*speed;
+      tSimNow=Math.min(tSim,tEnd);
+      currentY=interpSeries(simData.t, simData.y, tSimNow);
+      drawWithState(currentY);
+
+      if(tSim<tEnd) requestAnimationFrame(stepAnimation);
+      else { playing=false; showToast('Simulation complete'); }
     }
-    return rows;
-  }
-  function safeFilename(name){
-    const ts = new Date().toISOString().replace(/[:.]/g,'-');
-    const base = name.replace(/\.[^.]+$/, '');
-    const ext = name.split('.').pop();
-    return base + '_' + ts + '.' + ext;
-  }
-  function download(blob, filename){
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
-    URL.revokeObjectURL(url);
-  }
 
-function exportData(fmt){
-  const rows = collectExportRows();
-  const cols = ['t','aG','corner0','corner1','corner2','corner3'];
-  const meta = {
-    units: ids('units') ? ids('units').value : 'us',
-    params: {...sim.params},
-    timestamp: new Date().toISOString()
+    function interpSeries(ts,ys,t){
+      const n=ts.length; if(t<=ts[0]) return ys[0]; if(t>=ts[n-1]) return ys[n-1];
+      let lo=0,hi=n-1; while(hi-lo>1){ const mid=(lo+hi)>>1; if(ts[mid]<=t) lo=mid; else hi=mid; }
+      const t0=ts[lo], t1=ts[hi], a=(t-t0)/(t1-t0||1); const y0=ys[lo], y1=ys[hi]; const y=new Array(y0.length);
+      for(let i=0;i<y.length;i++) y[i]= y0[i] + a*(y1[i]-y0[i]);
+      return y;
+    }
+
+    function sampleBaseAtTimes(times){
+      const arr=new Array(times.length);
+      for (let i=0;i<times.length;i++) arr[i]= (typeof randPSD_lookup==='function') ? randPSD_lookup(times[i]) : 0;
+      return arr;
+    }
+    function exportJSON(){
+      if (!lastTimes){ showToast('Run a simulation first'); return; }
+      const baseG = sampleBaseAtTimes(lastTimes);
+      const grms  = (randPSD_y && randPSD_y.length) ? Math.sqrt(randPSD_y.reduce(function(s,v){return s+v*v;},0)/randPSD_y.length) : 0;
+      const data = lastTimes.map(function(tt,i){return {
+        t: tt,
+        accel_G: lastAzG[i],
+        spring_00: lastFseries[0][i],
+        spring_Lx0: lastFseries[1][i],
+        spring_0Ly: lastFseries[2][i],
+        spring_LxLy: lastFseries[3][i],
+        a_base_G: baseG[i],
+        grms_psd: grms,
+        units_force: (unitMode==='US'?'lb':'N')
+      };});
+      const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'base_shake_random_psd.json';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+
+function exportJSON(){
+  if (!lastTimes){ showToast('Run a simulation first'); return; }
+  
+  const now = new Date();
+  const timestamp = now.getFullYear() + 
+    String(now.getMonth()+1).padStart(2,'0') + 
+    String(now.getDate()).padStart(2,'0') + '_' +
+    String(now.getHours()).padStart(2,'0') + 
+    String(now.getMinutes()).padStart(2,'0') + 
+    String(now.getSeconds()).padStart(2,'0');
+  
+  const baseG = sampleBaseAtTimes(lastTimes);
+  const grms  = (randPSD_y && randPSD_y.length) ? Math.sqrt(randPSD_y.reduce(function(s,v){return s+v*v;},0)/randPSD_y.length) : 0;
+  
+  // Configuration data for re-running
+  const config = {
+    weight: weightEl.value,
+    lx: lx.value,
+    ly: ly.value,
+    lz: lz.value,
+    k00: k00.value,
+    kLx0: kLx0.value,
+    k0Ly: k0Ly.value,
+    kLxLy: kLxLy.value,
+    damping: document.getElementById('damping').value,
+    psdSpec: psdSpec.value,
+    psdFs: psdFs.value,
+    psdDur: psdDur.value,
+    psdSeed: psdSeed.value,
+    psdTaper: psdTaper.value,
+    respScale: respScaleEl.value,
+    simSpeed: simSpeed.value
   };
   
-  if(fmt==='csv'){
-    const lines = [cols.join(',')];
-    for(const r of rows){ lines.push(r.map(v=> Number.isFinite(v)? (+v).toFixed(6) : '').join(',')); }
-    const blob = new Blob([lines.join('\n')], {type:'text/csv'});
-    download(blob, safeFilename('drop-shock-data.csv'));
-  } else {
-    const payload = {meta, columns: cols, rows};
-    const blob = new Blob([JSON.stringify(payload)], {type:'application/json'});
-    download(blob, safeFilename('drop-shock-data.json'));
-  }
+  // Results data
+  const results = lastTimes.map(function(tt,i){return {
+    t: tt,
+    accel_G: lastAzG[i],
+    spring_00: lastFseries[0][i],
+    spring_Lx0: lastFseries[1][i],
+    spring_0Ly: lastFseries[2][i],
+    spring_LxLy: lastFseries[3][i],
+    a_base_G: baseG[i],
+    grms_psd: grms,
+    units_force: (unitMode==='US'?'lb':'N')
+  };});
+  
+  const exportData = {
+    timestamp: now.toISOString(),
+    config: config,
+    results: results
+  };
+  
+  const blob = new Blob([JSON.stringify(exportData,null,2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'base_shake_random_psd_' + timestamp + '.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  showToast('Data exported with configuration');
 }
 
-
-
-  // --------------------------- UI wiring ---------------------------
-  const ids = s=>document.getElementById(s);
-  function syncMass(){
-    const W = +ids('W').value; const G = +ids('G').value;
-    const m = (G!==0)? W/G : 0; ids('m').value = m.toFixed(6);
-    sim.params.W = W; sim.params.G = G; sim.params.m = m;
-  }
-
-  ids('units').addEventListener('change', e=>{
-    if(e.target.value==='us'){ ids('G').value = 386.09; }
-    else { ids('G').value = 9.81; }
-    syncMass();
-  });
-  ['W','G'].forEach(id=> ids(id).addEventListener('input', syncMass));
-  const btnSI = document.getElementById('btnSI'); if(btnSI){ btnSI.addEventListener('click', ()=>{ ids('units').value='si'; ids('G').value=9.81; syncMass(); }); }
-
-  function readParams(){
-    const p=sim.params;
-    p.Lx=+ids('Lx').value; p.Ly=+ids('Ly').value; p.Lz=+ids('Lz').value; p.h=+ids('h').value;
-    p.k=+ids('k').value; p.c=+ids('c').value; 
-    p.thx=+ids('thx').value; p.thy=+ids('thy').value;
-    applyTimeStepLimit();
-    if(!sim.running) updateRunLimit();
-  }
-
-  function reset(){
-    readParams(); syncMass();
-    sim.state = initialState();
-    applyTimeStepLimit();
-    updateRunLimit();
-    sim.t = 0; sim.hRK = Math.max(sim.hmin, 1e-4);
-    plots.accel.length = 0; plots.springs.forEach(a=>a.length=0);
-    ids('status').textContent = 'Ready';
-    draw(); updateHUD(); drawPlots();
-  }
-
-  function updateHUD(){
-    const tEl = ids('tOut'); if(tEl) tEl.textContent = sim.t.toFixed(3);
-    if(sim.state){
-      const {zmin} = contactForces(sim.state, sim.params);
-      const zEl = ids('zmin'); if(zEl) zEl.textContent = Number.isFinite(zmin) ? zmin.toFixed(3) : '—';
-    }
-    const m = sim.params.m || 0;
-    const k = sim.params.k || 0;
-    const c = sim.params.c || 0;
-    const ccrit = Math.sqrt(Math.max(0, m * k));
-    const zeta = ccrit ? (c / ccrit) : 0;
-    const lamEl = document.getElementById('zeta'); if(lamEl) lamEl.textContent = ccrit ? zeta.toFixed(2) : '—';
-
-    const rt = refTimes();
-    const fmEl = document.getElementById('fmax'); if(fmEl) fmEl.textContent = rt.nf.fmax ? rt.nf.fmax.toFixed(2) : '—';
-    const tdEl = document.getElementById('tdrop'); if(tdEl) tdEl.textContent = rt.tDrop ? rt.tDrop.toFixed(3) : '—';
-    const teEl = document.getElementById('tend'); if(teEl) teEl.textContent = (typeof sim.tEnd==='number') ? sim.tEnd.toFixed(3) : '—';
-  }
-  ids('btnStart').addEventListener('click', ()=>{ setActive('btnStart'); sim.running=true; lastTime = performance.now(); ids('status').textContent='Running'; });
-  ids('btnPause').addEventListener('click', ()=>{ setActive('btnPause'); sim.running=false; ids('status').textContent='Paused'; });
-  ids('btnReset').addEventListener('click', ()=>{ setActive('btnReset'); sim.running=false; reset(); });
-
-  const reactiveIds=['units','az','el','zoom','speed','Lx','Ly','Lz','h','thx','thy','W','G','k','c'];
-  reactiveIds.forEach(id=> ids(id).addEventListener('input', ()=>{
-    if(id==='az'||id==='el'||id==='zoom'){
-      draw();
-    } else {
-      readParams(); syncMass();
-      if(!sim.running){ sim.state = initialState(); sim.trail.length=0; draw(); updateHUD(); }
-    }
-  }));
-
-  function setActive(id){
-    document.querySelectorAll('.btn').forEach(b=>b.classList.remove('active'));
-    ids(id).classList.add('active');
-  }
-
-  // Keyboard shortcuts: R=reset, Space=play/pause
-  window.addEventListener('keydown', (e)=>{
-    const ae=document.activeElement; const tag=ae && ae.tagName;
-    const typing = tag==='INPUT' || tag==='TEXTAREA' || tag==='SELECT';
-    if(typing) return;
-    if(e.key==='r' || e.key==='R'){ e.preventDefault(); sim.running=false; reset(); }
-    else if(e.code==='Space'){ e.preventDefault(); sim.running=!sim.running; if(sim.running){ setActive('btnStart'); lastTime=performance.now(); ids('status').textContent='Running'; } else { setActive('btnPause'); ids('status').textContent='Paused'; } }
-  });
-
-  // --------------------------- Main loop ---------------------------
-  let lastTime = performance.now();
-  function tick(ts){
-    const dtReal = Math.max(0, (ts - lastTime)/1000);
-    lastTime = ts;
-    if(sim.running && sim.state){
-      const speedEl = ids('speed');
-      const speed = speedEl ? (+speedEl.value||1) : 1;
-      const {Tref} = refTimes();
-      const framesPerRef = 60;
-      const base = (Tref>0) ? Tref/framesPerRef : 1/60;
-      const target = speed * base;
-      advanceRKF(target);
-      updatePlots();
-      if(typeof sim.tEnd==='number' && sim.t >= sim.tEnd){ sim.running=false; ids('status').textContent='Complete'; } else { ids('status').textContent='Running'; }
-    }
-    draw();
-    updateHUD();
-    drawPlots();
-    requestAnimationFrame(tick);
-  }
-
-  function bootstrap(){
-    syncMass();
-    readParams();
-    reset();
-    resize(true);
-    ['accelPlot','springPlot'].forEach(cid=>{ const c=ids(cid); if(c){ c.addEventListener('click', e=> onPlotClick(c,e)); }});
-
-['btnCSV','btnJSON'].forEach(cid=>{ const b=ids(cid); if(b){ b.addEventListener('click', ()=> exportData(cid==='btnCSV'?'csv':'json')); }});
-
-// Import JSON handler
-const btnImport = ids('btnImportJSON');
-const fileInput = ids('fileInput');
-if(btnImport && fileInput){
-  btnImport.addEventListener('click', ()=> fileInput.click());
-  
-  fileInput.addEventListener('change', (e)=>{
+function importJSON(){
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json';
+  input.onchange = function(e){
     const file = e.target.files[0];
     if(!file) return;
     
     const reader = new FileReader();
-    reader.onload = function(event){
-      try {
-        const data = JSON.parse(event.target.result);
+    reader.onload = function(evt){
+      try{
+        const data = JSON.parse(evt.target.result);
         
-        // Check if this is a valid export file
-        if(!data.meta || !data.meta.params){
-          alert('Invalid JSON file format. Please select a valid export file.');
-          return;
-        }
+        // Check if this is the new format with config object
+        const config = data.config || data;
         
-        const params = data.meta.params;
-        const units = data.meta.units || 'us';
+        // Populate all input fields
+        if(config.weight !== undefined) weightEl.value = config.weight;
+        if(config.lx !== undefined) lx.value = config.lx;
+        if(config.ly !== undefined) ly.value = config.ly;
+        if(config.lz !== undefined) lz.value = config.lz;
+        if(config.k00 !== undefined) k00.value = config.k00;
+        if(config.kLx0 !== undefined) kLx0.value = config.kLx0;
+        if(config.k0Ly !== undefined) k0Ly.value = config.k0Ly;
+        if(config.kLxLy !== undefined) kLxLy.value = config.kLxLy;
+        if(config.damping !== undefined) document.getElementById('damping').value = config.damping;
+        if(config.psdSpec !== undefined) psdSpec.value = config.psdSpec;
+        if(config.psdFs !== undefined) psdFs.value = config.psdFs;
+        if(config.psdDur !== undefined) psdDur.value = config.psdDur;
+        if(config.psdSeed !== undefined) psdSeed.value = config.psdSeed;
+        if(config.psdTaper !== undefined) psdTaper.value = config.psdTaper;
+        if(config.respScale !== undefined) respScaleEl.value = config.respScale;
+        if(config.simSpeed !== undefined) simSpeed.value = config.simSpeed;
         
-        // Set units first
-        if(ids('units')){ ids('units').value = units; }
+        // Update computed fields and plots
+        computeMass();
+        renderPSDPlot(parsePSDTextarea());
+        draw();
         
-        // Repopulate all parameters
-        if(ids('G')) ids('G').value = params.G || (units==='si' ? 9.81 : 386.09);
-        if(ids('W')) ids('W').value = params.W || 100;
-        if(ids('Lx')) ids('Lx').value = params.Lx || 48;
-        if(ids('Ly')) ids('Ly').value = params.Ly || 48;
-        if(ids('Lz')) ids('Lz').value = params.Lz || 24;
-        if(ids('h')) ids('h').value = params.h || 6;
-        if(ids('k')) ids('k').value = params.k || 50;
-        if(ids('c')) ids('c').value = params.c || 0.2;
-        if(ids('thx')) ids('thx').value = params.thx || 0;
-        if(ids('thy')) ids('thy').value = params.thy || 0;
-        
-        // Update simulation
-        syncMass();
-        readParams();
-        reset();
-        
-        alert('Configuration loaded successfully!');
-        
+        showToast('Configuration imported successfully');
       } catch(err){
-        alert('Error loading JSON file: ' + err.message);
+        console.error(err);
+        showToast('Error importing JSON: ' + err.message);
       }
-      
-      // Reset file input
-      fileInput.value = '';
     };
-    
     reader.readAsText(file);
-  });
+  };
+  input.click();
 }
 
-    requestAnimationFrame(tick);
-  }
-  bootstrap();
 
-  // --- mini axes and angle readouts ---
-  function updateAngleReadouts(){
-    const azEl = document.getElementById('azOut'); if(azEl){ const az = +ids('az').value||0; azEl.textContent = `${az.toFixed(0)}°`; }
-    const elEl = document.getElementById('elOut'); if(elEl){ const el = +ids('el').value||0; elEl.textContent = `${el.toFixed(0)}°`; }
-  }
-  function drawAxesMini(){
-    const cvs = document.getElementById('axes'); if(!cvs) return;
-    const g = cvs.getContext('2d');
-    const w=cvs.width, h=cvs.height; g.clearRect(0,0,w,h);
-    const {Rv} = projSetup();
-    const pad = 4; const ox = pad, oy = h - pad;
-    const X = V.matMul(Rv, [1,0,0]);
-    const Y = V.matMul(Rv, [0,1,0]);
-    const Z = V.matMul(Rv, [0,0,1]);
-    const L = 0.6 * Math.min(w,h);
-    g.lineWidth = 2; g.strokeStyle = '#000'; g.fillStyle = '#000'; g.font = '8px system-ui';
-    const drawAxis=(v,label)=>{ const x=ox + L*v[0], y=oy - L*v[1]; g.beginPath(); g.moveTo(ox,oy); g.lineTo(x,y); g.stroke(); g.fillText(label, x+2, y+2); };
-    drawAxis(X,'x'); drawAxis(Y,'y'); drawAxis(Z,'z');
-  }
+simulateBtn.addEventListener('click', function(e){ e.preventDefault(); simulate(); });
+exportJSONBtn.addEventListener('click', exportJSON);
+importJSONBtn.addEventListener('click', importJSON);
+exportCSVBtn.addEventListener('click', exportCSV);
+
+
+
+    [lx,ly,lz,k00,kLx0,k0Ly,kLxLy].forEach(function(el){ el.addEventListener('input',draw); });
+    let dragging=false,lastX=0,lastY=0, dragMode='rotate';
+    canvas.addEventListener('contextmenu',function(e){e.preventDefault();});
+    canvas.addEventListener('mousedown',function(e){
+      dragging=true; lastX=e.clientX; lastY=e.clientY; canvas.style.cursor='grabbing';
+      dragMode=((e.button===0 && e.shiftKey) || e.button===2)?'pan':'rotate';
+    });
+    window.addEventListener('mouseup',function(){ dragging=false; canvas.style.cursor='default'; });
+    window.addEventListener('mousemove',function(e){
+      if(!dragging) return; const dx=e.clientX-lastX, dy=e.clientY-lastY; lastX=e.clientX; lastY=e.clientY;
+      if(dragMode==='pan'){ panX+=dx; panY+=dy; }
+      else { yaw+=dx*0.01; pitch+=dy*0.01; pitch=Math.max(-1.2,Math.min(1.2,pitch)); }
+      (playing? drawWithState(currentY||new Array(8).fill(0)): draw());
+    });
+    canvas.addEventListener('wheel',function(e){ e.preventDefault(); const factor=Math.exp(-e.deltaY*0.0015); zoom=Math.min(5,Math.max(0.3,zoom*factor)); (playing? drawWithState(currentY||new Array(8).fill(0)): draw()); }, {passive:false});
+    resetBtn.addEventListener('click',function(){ yaw=0.8; pitch=-1.0; zoom=1.5; panX=-100; panY=125; (playing? drawWithState(currentY||new Array(8).fill(0)): draw()); });
+    respScaleEl.addEventListener('input',function(){ (playing? drawWithState(currentY||new Array(8).fill(0)): draw()); });
+
+    attachCursor(accelPlot, 'accel');
+    attachCursor(springPlot, 'spring');
+
+    function selfTest(){
+      console.assert(typeof rkf45Integrate==='function','rkf45Integrate exists');
+      console.assert(document.getElementById('simulateBtn'), 'simulateBtn present');
+    }
+    computeMass(); renderPSDPlot(parsePSDTextarea()); draw(); selfTest();
+  })();
   </script>
 </body>
 </html>
+
 
 
 
