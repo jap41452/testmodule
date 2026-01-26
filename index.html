@@ -377,22 +377,23 @@ function attachCanvasHandlers(){
     const maxEI = Math.max(...segments.map(seg => seg.E * seg.I)) || 1;
     const maxHeight = 0.05 * canvas.height;
 
-    // Build node positions - must match drawBeam exactly
+    // Build node positions - EXACTLY match drawBeam loop structure
     const nodePositions = [];
     let x = margin;
+    
+    // First node at x = margin
     nodePositions.push({ x: x, idx: 0, node: nodes[0] });
     
+    // Remaining nodes
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i];
       const width = seg.L * scaleX;
-      x += width;
-      if (i + 1 < nodes.length) {
-        nodePositions.push({ x: x, idx: i + 1, node: nodes[i + 1] });
-      }
+      x += width;  // Move x by segment width
+      nodePositions.push({ x: x, idx: i + 1, node: nodes[i + 1] });
     }
 
-    // Check nodes FIRST with increased hit radius
-    const nodeHitR = 40; // Increased from 25 to 40
+    // Check nodes FIRST
+    const nodeHitR = 40;
     for (let k = 0; k < nodePositions.length; k++) {
       const nodePos = nodePositions[k];
       const hasW = (nodePos.node.W && nodePos.node.W > 0);
@@ -415,13 +416,15 @@ function attachCanvasHandlers(){
       const seg = segments[i];
       const width = seg.L * scaleX;
       const height = (seg.E * seg.I / maxEI) * maxHeight;
-      const left = x + nodeHitR + 2;
-      const right = x + width - (nodeHitR + 2);
+      
+      // Segment clickable area (exclude node hit zones)
+      const left = x + 5;  // Small margin from left node
+      const right = x + width - 5;  // Small margin from right node
       
       if (right > left) {
         if (xClick >= left && xClick <= right && 
-            yClick >= (midY - height/2 - 10) && 
-            yClick <= (midY + height/2 + 10)) {
+            yClick >= (midY - height/2 - 15) && 
+            yClick <= (midY + height/2 + 15)) {
           setTimeout(() => editSegment(i), 0);
           return;
         }
@@ -432,6 +435,7 @@ function attachCanvasHandlers(){
   
   canvas.addEventListener("click", canvasClickHandler);
 }
+
 
 function toggleCanvasBusy(on){
   const c = beamCanvasEl || document.getElementById('beamCanvas');
@@ -1078,6 +1082,7 @@ document.addEventListener('DOMContentLoaded', () => {
 </script>
 </body>
 </html>
+
 
 
 
