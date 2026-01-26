@@ -358,19 +358,40 @@ function attachCanvasHandlers(){
   
   canvasClickHandler = function(e){
     const now = performance.now();
-    if (isDrawing || isEditing || now < suppressClicksUntil) return;
+    
+    console.log('=== CLICK DEBUG ===');
+    console.log('isDrawing:', isDrawing);
+    console.log('isEditing:', isEditing);
+    console.log('suppressClicksUntil:', suppressClicksUntil);
+    console.log('now:', now);
+    console.log('segments.length:', segments.length);
+    console.log('nodes.length:', nodes.length);
+    
+    if (isDrawing || isEditing || now < suppressClicksUntil) {
+      console.log('BLOCKED: Exiting early');
+      return;
+    }
+    
     e.preventDefault(); e.stopPropagation();
     
     const rect = canvas.getBoundingClientRect();
     const xClick = e.clientX - rect.left;
     const yClick = e.clientY - rect.top;
+    
+    console.log('Click position:', xClick, yClick);
 
-    if (!segments.length || !nodes.length) return;
+    if (!segments.length || !nodes.length) {
+      console.log('BLOCKED: No segments or nodes');
+      return;
+    }
 
     const margin = MARGIN_X;
     const midY = canvas.height/2;
     const totalLength = segments.reduce((sum, seg) => sum + seg.L, 0);
-    if (totalLength <= 0) return;
+    if (totalLength <= 0) {
+      console.log('BLOCKED: Total length is 0');
+      return;
+    }
     const scaleX = (canvas.width - 2 * margin) / totalLength;
     
     const maxEI = Math.max(...segments.map(seg => seg.E * seg.I)) || 1;
@@ -389,6 +410,8 @@ function attachCanvasHandlers(){
         x += width;
       }
     }
+    
+    console.log('Node positions:', nodePositions.map(np => ({idx: np.idx, x: np.x})));
 
     // Check nodes FIRST
     const nodeHitR = 25;
@@ -400,12 +423,18 @@ function attachCanvasHandlers(){
       
       const dx = xClick - nodePos.x;
       const dy = yClick - yNode;
+      const distance = Math.hypot(dx, dy);
       
-      if (Math.hypot(dx, dy) <= nodeHitR) {
+      console.log(`Node ${nodePos.idx}: pos=(${nodePos.x.toFixed(1)}, ${yNode.toFixed(1)}), distance=${distance.toFixed(1)}, hitR=${nodeHitR}`);
+      
+      if (distance <= nodeHitR) {
+        console.log(`HIT! Opening editor for node ${nodePos.idx}`);
         setTimeout(() => editNode(nodePos.idx), 0);
         return;
       }
     }
+    
+    console.log('No node hit, checking segments...');
 
     // Then check segments
     x = margin;
@@ -420,16 +449,21 @@ function attachCanvasHandlers(){
         if (xClick >= left && xClick <= right && 
             yClick >= (midY - height/2 - 10) && 
             yClick <= (midY + height/2 + 10)) {
+          console.log(`HIT! Opening editor for segment ${i}`);
           setTimeout(() => editSegment(i), 0);
           return;
         }
       }
       x += width;
     }
+    
+    console.log('No hit detected');
   };
   
   canvas.addEventListener("click", canvasClickHandler);
+  console.log('Canvas click handler attached');
 }
+
 
 function toggleCanvasBusy(on){
   const c = beamCanvasEl || document.getElementById('beamCanvas');
@@ -1076,6 +1110,7 @@ document.addEventListener('DOMContentLoaded', () => {
 </script>
 </body>
 </html>
+
 
 
 
