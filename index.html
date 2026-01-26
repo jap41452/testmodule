@@ -352,79 +352,92 @@ function drawNodeFeatures(ctx, x, y, node = { bc: 'free', W:0, Kv:0, Kr:0, H:0 }
 }
 
 // ===== Interaction on canvas =====
-function attachCanvasHandlers(){
+function attachCanvasHandlers() {
   const canvas = beamCanvasEl;
   if (canvasClickHandler) canvas.removeEventListener("click", canvasClickHandler);
-  
-  canvasClickHandler = function(e){
+
+  canvasClickHandler = function(e) {
     const now = performance.now();
     if (isDrawing || isEditing || now < suppressClicksUntil) return;
-    
-    e.preventDefault(); e.stopPropagation();
-    
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    // 1. Calculate the Scaling Factor (CSS size vs Internal Resolution)
     const rect = canvas.getBoundingClientRect();
-    const xClick = e.clientX - rect.left;
-    const yClick = e.clientY - rect.top;
+    const scaleX_Mouse = canvas.width / rect.width; // Fixes the 900 vs 800 mismatch
+    const scaleY_Mouse = canvas.height / rect.height;
+
+    // 2. Adjust click coordinates to match Internal Canvas Resolution
+    const xClick = (e.clientX - rect.left) * scaleX_Mouse;
+    const yClick = (e.clientY - rect.top) * scaleY_Mouse;
 
     if (!segments.length || !nodes.length) return;
 
+    // 3. Setup Geometry Constants (Matching drawBeam)
     const margin = MARGIN_X;
-    const midY = canvas.height/2;
+    const midY = canvas.height / 2;
     const totalLength = segments.reduce((sum, seg) => sum + seg.L, 0);
     if (totalLength <= 0) return;
+
     const scaleX = (canvas.width - 2 * margin) / totalLength;
-    
     const maxEI = Math.max(...segments.map(seg => seg.E * seg.I)) || 1;
     const maxHeight = 0.05 * canvas.height;
 
-    // Build node positions - EXACTLY match drawBeam loop structure
+    // ---------------------------------------------------------
+    // 4. Build Node Positions (Replicates drawBeam Loop Logic)
+    // ---------------------------------------------------------
     const nodePositions = [];
     let x = margin;
-    
-    // First node at x = margin
+
+    // Node 0 (Leftmost)
     nodePositions.push({ x: x, idx: 0, node: nodes[0] });
-    
-    // Remaining nodes
+
+    // Remaining Nodes (Loop through segments, then add Node i+1)
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i];
       const width = seg.L * scaleX;
-      x += width;  // Move x by segment width
+      x += width; // Increment X by segment width
       nodePositions.push({ x: x, idx: i + 1, node: nodes[i + 1] });
     }
 
-    // Check nodes FIRST
-    const nodeHitR = 40;
+    // ---------------------------------------------------------
+    // 5. Hit Testing
+    // ---------------------------------------------------------
+
+    // Check Nodes FIRST (Nodes sit on top of segments)
+    const nodeHitR = 40; 
     for (let k = 0; k < nodePositions.length; k++) {
       const nodePos = nodePositions[k];
       const hasW = (nodePos.node.W && nodePos.node.W > 0);
-      const lift = (hasW && (Number(nodePos.node.H)||0) > 0) ? (3 * maxHeight) : 0;
+      // Lift calculation must match drawBeam's visual lift
+      const lift = (hasW && (Number(nodePos.node.H) || 0) > 0) ? (3 * maxHeight) : 0;
       const yNode = midY - lift;
-      
+
       const dx = xClick - nodePos.x;
       const dy = yClick - yNode;
       const distance = Math.hypot(dx, dy);
-      
+
       if (distance <= nodeHitR) {
         setTimeout(() => editNode(nodePos.idx), 0);
         return;
       }
     }
 
-    // Then check segments
-    x = margin;
+    // Then Check Segments
+    x = margin; // Reset x for segment loop
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i];
       const width = seg.L * scaleX;
       const height = (seg.E * seg.I / maxEI) * maxHeight;
-      
-      // Segment clickable area (exclude node hit zones)
-      const left = x + 5;  // Small margin from left node
-      const right = x + width - 5;  // Small margin from right node
-      
+
+      const left = x + 5;
+      const right = x + width - 5;
+
       if (right > left) {
-        if (xClick >= left && xClick <= right && 
-            yClick >= (midY - height/2 - 15) && 
-            yClick <= (midY + height/2 + 15)) {
+        if (xClick >= left && xClick <= right &&
+            yClick >= (midY - height / 2 - 15) &&
+            yClick <= (midY + height / 2 + 15)) {
           setTimeout(() => editSegment(i), 0);
           return;
         }
@@ -432,10 +445,9 @@ function attachCanvasHandlers(){
       x += width;
     }
   };
-  
+
   canvas.addEventListener("click", canvasClickHandler);
 }
-
 
 function toggleCanvasBusy(on){
   const c = beamCanvasEl || document.getElementById('beamCanvas');
@@ -1082,6 +1094,7 @@ document.addEventListener('DOMContentLoaded', () => {
 </script>
 </body>
 </html>
+
 
 
 
