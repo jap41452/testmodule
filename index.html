@@ -358,63 +358,41 @@ function attachCanvasHandlers(){
   
   canvasClickHandler = function(e){
     const now = performance.now();
-    
-    console.log('=== CLICK DEBUG ===');
-    console.log('isDrawing:', isDrawing);
-    console.log('isEditing:', isEditing);
-    console.log('suppressClicksUntil:', suppressClicksUntil);
-    console.log('now:', now);
-    console.log('segments.length:', segments.length);
-    console.log('nodes.length:', nodes.length);
-    
-    if (isDrawing || isEditing || now < suppressClicksUntil) {
-      console.log('BLOCKED: Exiting early');
-      return;
-    }
+    if (isDrawing || isEditing || now < suppressClicksUntil) return;
     
     e.preventDefault(); e.stopPropagation();
     
     const rect = canvas.getBoundingClientRect();
     const xClick = e.clientX - rect.left;
     const yClick = e.clientY - rect.top;
-    
-    console.log('Click position:', xClick, yClick);
 
-    if (!segments.length || !nodes.length) {
-      console.log('BLOCKED: No segments or nodes');
-      return;
-    }
+    if (!segments.length || !nodes.length) return;
 
     const margin = MARGIN_X;
     const midY = canvas.height/2;
     const totalLength = segments.reduce((sum, seg) => sum + seg.L, 0);
-    if (totalLength <= 0) {
-      console.log('BLOCKED: Total length is 0');
-      return;
-    }
+    if (totalLength <= 0) return;
     const scaleX = (canvas.width - 2 * margin) / totalLength;
     
     const maxEI = Math.max(...segments.map(seg => seg.E * seg.I)) || 1;
     const maxHeight = 0.05 * canvas.height;
 
-    // Build node positions
+    // Build node positions - must match drawBeam exactly
     const nodePositions = [];
     let x = margin;
+    nodePositions.push({ x: x, idx: 0, node: nodes[0] });
     
-    for (let i = 0; i <= segments.length; i++) {
-      if (i < nodes.length) {
-        nodePositions.push({ x: x, idx: i, node: nodes[i] });
-      }
-      if (i < segments.length) {
-        const width = segments[i].L * scaleX;
-        x += width;
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i];
+      const width = seg.L * scaleX;
+      x += width;
+      if (i + 1 < nodes.length) {
+        nodePositions.push({ x: x, idx: i + 1, node: nodes[i + 1] });
       }
     }
-    
-    console.log('Node positions:', nodePositions.map(np => ({idx: np.idx, x: np.x})));
 
-    // Check nodes FIRST
-    const nodeHitR = 25;
+    // Check nodes FIRST with increased hit radius
+    const nodeHitR = 40; // Increased from 25 to 40
     for (let k = 0; k < nodePositions.length; k++) {
       const nodePos = nodePositions[k];
       const hasW = (nodePos.node.W && nodePos.node.W > 0);
@@ -425,16 +403,11 @@ function attachCanvasHandlers(){
       const dy = yClick - yNode;
       const distance = Math.hypot(dx, dy);
       
-      console.log(`Node ${nodePos.idx}: pos=(${nodePos.x.toFixed(1)}, ${yNode.toFixed(1)}), distance=${distance.toFixed(1)}, hitR=${nodeHitR}`);
-      
       if (distance <= nodeHitR) {
-        console.log(`HIT! Opening editor for node ${nodePos.idx}`);
         setTimeout(() => editNode(nodePos.idx), 0);
         return;
       }
     }
-    
-    console.log('No node hit, checking segments...');
 
     // Then check segments
     x = margin;
@@ -449,21 +422,16 @@ function attachCanvasHandlers(){
         if (xClick >= left && xClick <= right && 
             yClick >= (midY - height/2 - 10) && 
             yClick <= (midY + height/2 + 10)) {
-          console.log(`HIT! Opening editor for segment ${i}`);
           setTimeout(() => editSegment(i), 0);
           return;
         }
       }
       x += width;
     }
-    
-    console.log('No hit detected');
   };
   
   canvas.addEventListener("click", canvasClickHandler);
-  console.log('Canvas click handler attached');
 }
-
 
 function toggleCanvasBusy(on){
   const c = beamCanvasEl || document.getElementById('beamCanvas');
