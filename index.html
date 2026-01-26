@@ -392,6 +392,10 @@ function attachCanvasHandlers(){
     const totalLength = segments.reduce((sum, seg) => sum + seg.L, 0);
     if (totalLength <= 0) return;
     const scaleX = (canvas.width - 2 * margin) / totalLength;
+    
+    // Calculate maxEI and maxHeight ONCE for both nodes and segments
+    const maxEI = Math.max(...segments.map(seg => seg.E * seg.I)) || 1;
+    const maxHeight = 0.05 * canvas.height;
 
     // Build node positions more accurately
     let x = margin;
@@ -409,8 +413,6 @@ function attachCanvasHandlers(){
     for (let k = 0; k < nodePositions.length; k++) {
       const nodePos = nodePositions[k];
       const hasW = (nodePos.node.W && nodePos.node.W > 0);
-      const maxHeight = 0.05 * canvas.height;
-      const maxEI = Math.max(...segments.map(seg => seg.E * seg.I)) || 1;
       const lift = (hasW && (Number(nodePos.node.H)||0) > 0) ? (3 * maxHeight) : 0;
       const yNode = midY - lift;
       
@@ -425,9 +427,6 @@ function attachCanvasHandlers(){
 
     // Then check segments
     x = margin;
-    const maxEI = Math.max(...segments.map(seg => seg.E * seg.I)) || 1;
-    const maxHeight = 0.05 * canvas.height;
-    
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i];
       const width = seg.L * scaleX;
@@ -448,7 +447,6 @@ function attachCanvasHandlers(){
   };
   canvas.addEventListener("click", canvasClickHandler);
 }
-
 
 function toggleCanvasBusy(on){
   const c = beamCanvasEl || document.getElementById('beamCanvas');
@@ -1091,6 +1089,7 @@ document.addEventListener('DOMContentLoaded', () => {
 </script>
 </body>
 </html>
+
 
 
 
