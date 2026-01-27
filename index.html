@@ -70,16 +70,15 @@
 <body>
   <h2>Beam Dropped Weight Response </h2>
 
-  <div class="toolbar">
-    <div class="toolbar-row">
-      <label><span>Segments (max 10):</span> <input id="numSegments" type="number" min="1" max="10" value="2"></label>
-      <button id="btnBuild">Build Beam</button>
-      <div style="width: 20px;"></div> <button id="btnFreq">1st Mode Freq</button>
-      <label><span>f₁ (Hz):</span>
-        <input id="freqOutput" type="text" readonly>
-      </label>
-    </div>
+<div class="toolbar">
+  <div class="toolbar-row">
+    <label><span>Segments (max 10):</span> <input id="numSegments" type="number" min="1" max="10" value="2"></label>
+    <button id="btnBuild">Build Beam</button>
+    <button id="btnCalcParams">Calc Soln Parameters</button>
+    <div style="width: 20px;"></div> 
   </div>
+</div>
+
 
   <div class="toolbar">
     <div class="toolbar-row">
@@ -145,6 +144,7 @@ function safeDrawBeam(){ requestAnimationFrame(drawBeam); }
 let lastSim = null; 
 
 // ===== Build / Draw =====
+
 function buildBeam() {
   const segInput = document.getElementById("numSegments");
   const S = Math.max(1, Math.min(10, parseInt(segInput.value) || 2));
@@ -161,9 +161,8 @@ function buildBeam() {
   drawTimeHistory([], []);
   lastSim = null;
   
-  const outEl = document.getElementById('freqOutput');
-  if (outEl) outEl.value = '';
 }
+
 
 async function editSegment(i){
   if (isEditing) return;
@@ -191,9 +190,11 @@ async function editSegment(i){
       const [E,I,L,rho,A] = data.map(v=> (isFinite(v)? v:0));
       segments[i] = { E,I,L,rho,A };
       safeDrawBeam();
+      
     }
   } finally { isEditing = false; markSuppressClicks(); toggleCanvasBusy(false); }
 }
+
 
 function drawBeam() {
   if (isDrawing) return;
@@ -465,16 +466,16 @@ async function editNode(i) {
     const { value: data } = await Swal.fire({
       title: `Node ${i} Properties`,
       html:
-        `<label><span>BC:</span><select id=\"bc\" class=\"swal2-select\" style=\"width:90px\">
-          <option value=\"free\" ${node.bc === 'free' ? 'selected' : ''}>Free</option>
-          <option value=\"pinned\" ${node.bc === 'pinned' ? 'selected' : ''}>Simple support (w=0, θ free)</option>
-          <option value=\"fixed\" ${node.bc === 'fixed' ? 'selected' : ''}>Fixed</option>
+        `<label><span>BC:</span><select id="bc" class="swal2-select" style="width:90px">
+          <option value="free" ${node.bc === 'free' ? 'selected' : ''}>Free</option>
+          <option value="pinned" ${node.bc === 'pinned' ? 'selected' : ''}>Simple support (w=0, θ free)</option>
+          <option value="fixed" ${node.bc === 'fixed' ? 'selected' : ''}>Fixed</option>
         </select></label>
-        <label><span>W:</span><input id=\"W\" class=\"swal2-input\" value=\"${node.W}\"></label>
-        <label><span>Kv:</span><input id=\"Kv\" class=\"swal2-input\" value=\"${node.Kv}\"></label>
-        <label><span>Kr:</span><input id=\"Kr\" class=\"swal2-input\" value=\"${node.Kr}\"></label>
-        <label><span>Drop H:</span><input id=\"H\" class=\"swal2-input\" value=\"${node.H}\"></label>
-        <div class=\"muted\" style=\"max-width:180px;text-align:left;line-height:1.2\">
+        <label><span>W:</span><input id="W" class="swal2-input" value="${node.W}"></label>
+        <label><span>Kv:</span><input id="Kv" class="swal2-input" value="${node.Kv}"></label>
+        <label><span>Kr:</span><input id="Kr" class="swal2-input" value="${node.Kr}"></label>
+        <label><span>Drop H:</span><input id="H" class="swal2-input" value="${node.H}"></label>
+        <div class="muted" style="max-width:180px;text-align:left;line-height:1.2">
           <div>Stick: attach mass W/G.</div>
           <div>Bounce: restitution e.</div>
         </div>`,
@@ -487,14 +488,20 @@ async function editNode(i) {
         parseFloat(document.getElementById("H").value)
       ]
     });
-    if (data) nodes[i] = { ...nodes[i], bc: data[0], W: (isFinite(data[1])? data[1]:0), Kv: (isFinite(data[2])? data[2]:0), Kr: (isFinite(data[3])? data[3]:0), H: (isFinite(data[4])? data[4]:0) };
-    safeDrawBeam();
+    if (data) {
+      nodes[i] = { 
+        ...nodes[i], 
+        bc: data[0], 
+        W: (isFinite(data[1])? data[1]:0), 
+        Kv: (isFinite(data[2])? data[2]:0), 
+        Kr: (isFinite(data[3])? data[3]:0), 
+        H: (isFinite(data[4])? data[4]:0) 
+      };
+      safeDrawBeam();
+      
+    }
   } finally { isEditing = false; markSuppressClicks(); toggleCanvasBusy(false); }
 }
-
-// [Rest of the code continues exactly as before - simulateDrop, computeFirstMode, animation functions, etc.]
-// I'll continue in next message if needed, but the key fix is in attachCanvasHandlers
-
 
 // ===== RK4 Simulation Logic =====
 let anim = {
@@ -845,6 +852,74 @@ function stopAnimation(){
   if (btn) btn.textContent='Play';
 }
 
+function autoUpdateTimeSteps() {
+  if(typeof numeric === 'undefined') return;
+  
+  if (!segments.length) return;
+  
+  const g = parseFloat(document.getElementById("gravityInput").value) || 386;
+  const { M, K, N } = assembleMK(null, g);
+  const mRef = getRefine();
+  const constrained = new Set();
+  
+  for (let p=0; p<nodes.length; p++){
+    const b = nodes[p].bc;
+    const refIdx = p * (mRef + 1);
+    const v = 2*refIdx;
+    const r = 2*refIdx + 1;
+    if (b === 'fixed' || b === 'pinned') constrained.add(v);
+    if (b === 'fixed') constrained.add(r);
+  }
+  
+  const free = []; 
+  for (let i=0; i<N; i++){ 
+    if (!constrained.has(i)) free.push(i); 
+  }
+  
+  if (!free.length) return;
+  
+  const Mred = submat(M, free);
+  const Kred = submat(K, free);
+  
+  let A, eig;
+  try { 
+    const Minv = numeric.inv(Mred); 
+    A = numeric.dot(Minv, Kred); 
+    eig = numeric.eig(A); 
+  } catch (e){ 
+    return; 
+  }
+  
+  const lamR = eig.lambda.x; 
+  const lamI = eig.lambda.y || [];
+  let w1 = null;
+  
+  for (let i=0; i<lamR.length; i++){
+    const re = lamR[i]; 
+    const im = lamI[i] || 0;
+    if (Math.abs(im) > 1e-6) continue;
+    if (re <= 1e-8) continue;
+    const w = Math.sqrt(re);
+    if (!isFinite(w)) continue;
+    if (w1 === null || w < w1) w1 = w;
+  }
+  
+  if (w1 === null) return;
+  
+  const f1 = w1 / (2 * Math.PI);
+  const T1 = 1 / f1;  // Period
+  
+  // Update Δt to (1/freq)/500 = T1/500
+  const newDt = T1 / 500;
+  document.getElementById('dtInput').value = newDt.toFixed(6);
+  
+  // Update T to (1/freq)×4 = T1×4
+  const newDur = T1 * 4;
+  document.getElementById('durInput').value = newDur.toFixed(3);
+}
+
+
+
 function drawAnimFrame(i){
   const canvas = document.getElementById('animCanvas');
   const ctx = canvas.getContext('2d');
@@ -1053,12 +1128,17 @@ document.addEventListener('DOMContentLoaded', () => {
   // Attach Event Listeners
   attachCanvasHandlers();
   
-  const btnBuild = document.getElementById('btnBuild');
-  if(btnBuild) btnBuild.addEventListener('click', buildBeam);
   
-  const btnDrop = document.getElementById('btnDrop');
-  if(btnDrop) btnDrop.addEventListener('click', simulateDrop);
-  
+const btnBuild = document.getElementById('btnBuild');
+if(btnBuild) btnBuild.addEventListener('click', buildBeam);
+
+const btnCalcParams = document.getElementById('btnCalcParams');
+if(btnCalcParams) btnCalcParams.addEventListener('click', autoUpdateTimeSteps);
+
+const btnDrop = document.getElementById('btnDrop');
+if(btnDrop) btnDrop.addEventListener('click', simulateDrop);
+
+
   const btnExport = document.getElementById('btnExport');
   if(btnExport) btnExport.addEventListener('click', exportCSV);
   
@@ -1071,8 +1151,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const fileInput = document.getElementById('fileInput');
   if(fileInput) fileInput.addEventListener('change', handleFileSelect);
 
-  const btnFreq = document.getElementById('btnFreq');
-  if(btnFreq) btnFreq.addEventListener('click', computeFirstMode);
 
   const btnAnim = document.getElementById('btnAnimToggle');
   const rng = document.getElementById('animSpeed');
@@ -1094,6 +1172,7 @@ document.addEventListener('DOMContentLoaded', () => {
 </script>
 </body>
 </html>
+
 
 
 
