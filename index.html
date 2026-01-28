@@ -1164,9 +1164,16 @@ async function runDiscreteOptimization(cfg){
 
   let iter = 0;
   for (; iter < cfg.maxIters; iter++){
-    try { solveBeam(); } catch(_) {}
-    if (!elementForces) { Swal.fire('Error','Solve failed during optimization.','error'); return; }
-
+elementForces = null; // Force fresh calculation
+try { solveBeam(); } catch(e) { 
+  console.error('Solve failed:', e);
+  Swal.fire('Error','Solve failed during optimization: ' + e.message,'error'); 
+  return; 
+}
+if (!elementForces) { 
+  Swal.fire('Error','Element forces not computed','error'); 
+  return; 
+}
     const sigs = measureSegmentStressExtrema();
     let anyChange = false;
 
@@ -1329,6 +1336,7 @@ async function runDiscreteOptimization(cfg){
   </script>
 </body>
 </html>
+
 
 
 
