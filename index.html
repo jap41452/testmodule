@@ -1192,18 +1192,17 @@ async function runDiscreteOptimization(cfg){
     }
     console.log(`Global required S = ${globalReqS.toFixed(2)}, σ_allow = ${cfg.sigAllow}`);
     
-let k0 = sectionsCatalog.findIndex(s => (s.St >= globalReqS && s.Sb >= globalReqS));
-console.log(`Initial section index: ${k0}`);
-if (k0 < 0) k0 = sectionsCatalog.length - 1;
+    let k0 = sectionsCatalog.findIndex(s => (s.St >= globalReqS && s.Sb >= globalReqS));
+    console.log(`Initial section index: ${k0}`);
+    if (k0 < 0) k0 = sectionsCatalog.length - 1;
 
-// SAFETY: Skip section [0] if it appears too small (prevents oscillation)
-if (k0 === 0 && sectionsCatalog.length > 1) {
-  console.log('⚠️ WARNING: Section [0] may be too small, starting at [1]');
-  k0 = 1;
-}
+    // SAFETY: Skip section [0] if it appears too small (prevents oscillation)
+    if (k0 === 0 && sectionsCatalog.length > 1) {
+      console.log('⚠️ WARNING: Section [0] may be too small, starting at [1]');
+      k0 = 1;
+    }
 
-console.log(`Starting with section [${k0}]: ${sectionsCatalog[k0].name}`);
-
+    console.log(`Starting with section [${k0}]: ${sectionsCatalog[k0].name}`);
     
     for (let i=0;i<segments.length;i++) applySectionToSegment(segments[i], k0);
   } else {
@@ -1225,6 +1224,36 @@ console.log(`Starting with section [${k0}]: ${sectionsCatalog[k0].name}`);
     drawBeam();
     await delay(400);
   }
+
+  // ========================================
+  // OSCILLATION DETECTION
+  // ========================================
+  const stateHistory = []; // Store last few states to detect oscillation
+  
+  function getStateSignature() {
+    // Create a unique string representing current section assignments
+    return segments.map(s => s.secIndex ?? -1).join(',');
+  }
+  
+  function detectOscillation() {
+    const currentState = getStateSignature();
+    
+    // Check if current state appeared in last 3 iterations
+    const recentHistory = stateHistory.slice(-3);
+    if (recentHistory.includes(currentState)) {
+      console.log('🔄 OSCILLATION DETECTED - same state appeared recently');
+      console.log(`Current: ${currentState}`);
+      console.log(`History: ${stateHistory.slice(-5).join(' → ')}`);
+      return true;
+    }
+    
+    // Add current state to history
+    stateHistory.push(currentState);
+    return false;
+  }
+  // ========================================
+  // END OSCILLATION DETECTION
+  // ========================================
 
   let iter = 0;
   for (; iter < cfg.maxIters; iter++){
@@ -1254,8 +1283,8 @@ console.log(`Starting with section [${k0}]: ${sectionsCatalog[k0].name}`);
       const sInfo = sigs[i];
       const k = (typeof seg.secIndex === 'number') ? seg.secIndex : 0;
       
-const over  = sInfo.sigMaxAbs > cfg.sigAllow * (1 + cfg.tolOver);
-const under = sInfo.sigMaxAbs < cfg.sigAllow * (1 - cfg.tolUnder);
+      const over  = sInfo.sigMaxAbs > cfg.sigAllow * (1 + cfg.tolOver);
+      const under = sInfo.sigMaxAbs < cfg.sigAllow * (1 - cfg.tolUnder);
       
       console.log(`Seg[${i}]: secIdx=${k}, σ_max=${sInfo.sigMaxAbs.toFixed(0)}, σ_allow=${cfg.sigAllow.toFixed(0)}, ratio=${(sInfo.sigMaxAbs/cfg.sigAllow).toFixed(3)}, over=${over}, under=${under}`);
 
@@ -1278,7 +1307,17 @@ const under = sInfo.sigMaxAbs < cfg.sigAllow * (1 - cfg.tolUnder);
       await delay(300);
     }
 
-    if (!anyChange) break;
+    // Check for convergence
+    if (!anyChange) {
+      console.log('✅ CONVERGED - No changes needed');
+      break;
+    }
+    
+    // Check for oscillation AFTER changes were made
+    if (detectOscillation()) {
+      console.log('🛑 STOPPING - Oscillation detected, keeping current state');
+      break;
+    }
   }
 
   try { solveBeam(); } catch(_) {}
@@ -1295,8 +1334,13 @@ const under = sInfo.sigMaxAbs < cfg.sigAllow * (1 - cfg.tolUnder);
     timer: 2000,
     showConfirmButton: false
   });
-}    
-    // ------------------ EXPORT / IMPORT ------------------
+}
+
+
+
+
+
+ // ------------------ EXPORT / IMPORT ------------------
 
     function exportCSV() {
       if(!elementForces || !segments.length) {
@@ -1412,6 +1456,7 @@ const under = sInfo.sigMaxAbs < cfg.sigAllow * (1 - cfg.tolUnder);
   </script>
 </body>
 </html>
+
 
 
 
