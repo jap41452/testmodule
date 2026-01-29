@@ -1151,13 +1151,12 @@ async function runDiscreteOptimization(cfg){
   // CRITICAL: Force catalog sort
   sectionsCatalog.sort((a,b)=> Math.min(a.St,a.Sb) - Math.min(b.St,b.Sb));
   
+  console.log('=== CATALOG ===');
+  sectionsCatalog.forEach((s,i)=> console.log(`[${i}] ${s.name}: St=${s.St}, Sb=${s.Sb}`));
+  
   const showIterations = document.getElementById('showIterations').checked;
   const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-  // ========================================
-  // RESET BLOCK - Clear previous optimization state
-  // ========================================
-  
   // Clear all previous section assignments to force fresh optimization
   for (let i=0; i<segments.length; i++){
     delete segments[i].secIndex;
@@ -1176,20 +1175,26 @@ async function runDiscreteOptimization(cfg){
     Swal.fire('Error','Solve the beam first','error'); 
     return; 
   }
-  
-  // ========================================
-  // END RESET BLOCK
-  // ========================================
 
   // Initial assignment
   if (cfg.singleStart){
     const ext = measureSegmentMomentExtrema();
+    console.log('=== MOMENT EXTREMA ===', ext);
+    
     let globalReqS = 0;
     for (const e of ext){
-      globalReqS = Math.max(globalReqS, Math.abs(e.MposMax)/cfg.sigAllow, Math.abs(e.MnegMin)/cfg.sigAllow);
+      const reqSt = Math.abs(e.MposMax)/cfg.sigAllow;
+      const reqSb = Math.abs(e.MnegMin)/cfg.sigAllow;
+      console.log(`Req St=${reqSt.toFixed(2)}, Req Sb=${reqSb.toFixed(2)}`);
+      globalReqS = Math.max(globalReqS, reqSt, reqSb);
     }
+    console.log(`Global required S = ${globalReqS.toFixed(2)}, σ_allow = ${cfg.sigAllow}`);
+    
     let k0 = sectionsCatalog.findIndex(s => (s.St >= globalReqS && s.Sb >= globalReqS));
+    console.log(`Initial section index: ${k0}`);
     if (k0 < 0) k0 = sectionsCatalog.length - 1;
+    console.log(`Starting with section [${k0}]: ${sectionsCatalog[k0].name}`);
+    
     for (let i=0;i<segments.length;i++) applySectionToSegment(segments[i], k0);
   } else {
     for (let i=0;i<segments.length;i++){
@@ -1230,30 +1235,37 @@ async function runDiscreteOptimization(cfg){
     }
 
     const sigs = measureSegmentStressExtrema();
+    
+    console.log(`\n=== ITERATION ${iter} ===`);
     let anyChange = false;
 
     for (let i=0;i<segments.length;i++){
-      const seg = segments[i], sInfo = sigs[i];
+      const seg = segments[i];
+      const sInfo = sigs[i];
+      const k = (typeof seg.secIndex === 'number') ? seg.secIndex : 0;
+      
       const over  = sInfo.sigMaxAbs > cfg.sigAllow * (1 + cfg.tolOver);
       const under = sInfo.sigMaxAbs < cfg.sigAllow * (1 - cfg.tolUnder);
-
-      let k = (typeof seg.secIndex === 'number') ? seg.secIndex : 0;
+      
+      console.log(`Seg[${i}]: secIdx=${k}, σ_max=${sInfo.sigMaxAbs.toFixed(0)}, σ_allow=${cfg.sigAllow.toFixed(0)}, ratio=${(sInfo.sigMaxAbs/cfg.sigAllow).toFixed(3)}, over=${over}, under=${under}`);
 
       if (over && k < sectionsCatalog.length - 1){
-        k++;
-        applySectionToSegment(seg, k);
+        console.log(`  → Upgrading from [${k}] to [${k+1}]`);
+        applySectionToSegment(seg, k+1);
         anyChange = true;
       } else if (under && k > 0){
-        k--;
-        applySectionToSegment(seg, k);
+        console.log(`  → Downgrading from [${k}] to [${k-1}]`);
+        applySectionToSegment(seg, k-1);
         anyChange = true;
       }
     }
 
+    console.log(`anyChange = ${anyChange}`);
+
     // Show iteration progress if visualization enabled
     if (showIterations && anyChange) {
       drawBeam();
-      await delay(300); // Pause between iterations
+      await delay(300);
     }
 
     if (!anyChange) break;
@@ -1263,6 +1275,8 @@ async function runDiscreteOptimization(cfg){
   drawBeam();
   plotBendingStress();
   
+  console.log(`\n=== OPTIMIZATION COMPLETE: ${iter} iterations ===`);
+  
   // Show completion message
   Swal.fire({
     icon: 'success',
@@ -1271,8 +1285,7 @@ async function runDiscreteOptimization(cfg){
     timer: 2000,
     showConfirmButton: false
   });
-}
-    
+}    
     // ------------------ EXPORT / IMPORT ------------------
 
     function exportCSV() {
@@ -1389,6 +1402,7 @@ async function runDiscreteOptimization(cfg){
   </script>
 </body>
 </html>
+
 
 
 
