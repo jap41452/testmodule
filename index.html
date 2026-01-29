@@ -1190,10 +1190,18 @@ async function runDiscreteOptimization(cfg){
     }
     console.log(`Global required S = ${globalReqS.toFixed(2)}, σ_allow = ${cfg.sigAllow}`);
     
-    let k0 = sectionsCatalog.findIndex(s => (s.St >= globalReqS && s.Sb >= globalReqS));
-    console.log(`Initial section index: ${k0}`);
-    if (k0 < 0) k0 = sectionsCatalog.length - 1;
-    console.log(`Starting with section [${k0}]: ${sectionsCatalog[k0].name}`);
+let k0 = sectionsCatalog.findIndex(s => (s.St >= globalReqS && s.Sb >= globalReqS));
+console.log(`Initial section index: ${k0}`);
+if (k0 < 0) k0 = sectionsCatalog.length - 1;
+
+// SAFETY: Skip section [0] if it appears too small (prevents oscillation)
+if (k0 === 0 && sectionsCatalog.length > 1) {
+  console.log('⚠️ WARNING: Section [0] may be too small, starting at [1]');
+  k0 = 1;
+}
+
+console.log(`Starting with section [${k0}]: ${sectionsCatalog[k0].name}`);
+
     
     for (let i=0;i<segments.length;i++) applySectionToSegment(segments[i], k0);
   } else {
@@ -1244,8 +1252,9 @@ async function runDiscreteOptimization(cfg){
       const sInfo = sigs[i];
       const k = (typeof seg.secIndex === 'number') ? seg.secIndex : 0;
       
-      const over  = sInfo.sigMaxAbs > cfg.sigAllow * (1 + cfg.tolOver);
-      const under = sInfo.sigMaxAbs < cfg.sigAllow * (1 - cfg.tolUnder);
+const over  = sInfo.sigMaxAbs > cfg.sigAllow * (1 + cfg.tolOver);
+const under = (cfg.tolUnder > 0) && (sInfo.sigMaxAbs < cfg.sigAllow * (1 - cfg.tolUnder));
+
       
       console.log(`Seg[${i}]: secIdx=${k}, σ_max=${sInfo.sigMaxAbs.toFixed(0)}, σ_allow=${cfg.sigAllow.toFixed(0)}, ratio=${(sInfo.sigMaxAbs/cfg.sigAllow).toFixed(3)}, over=${over}, under=${under}`);
 
@@ -1402,6 +1411,7 @@ async function runDiscreteOptimization(cfg){
   </script>
 </body>
 </html>
+
 
 
 
