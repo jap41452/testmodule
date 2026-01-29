@@ -1155,7 +1155,7 @@ async function runDiscreteOptimization(cfg){
   const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
   // ========================================
-  // ADD THIS RESET BLOCK HERE:
+  // RESET BLOCK - Clear previous optimization state
   // ========================================
   
   // Clear all previous section assignments to force fresh optimization
@@ -1180,11 +1180,6 @@ async function runDiscreteOptimization(cfg){
   // ========================================
   // END RESET BLOCK
   // ========================================
-
-
-
-const showIterations = document.getElementById('showIterations').checked;
-  const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
   // Initial assignment
   if (cfg.singleStart){
@@ -1218,18 +1213,183 @@ const showIterations = document.getElementById('showIterations').checked;
 
   let iter = 0;
   for (; iter < cfg.maxIters; iter++){
-elementForces = null; // Force fresh calculation
-try { solveBeam(); } catch(e) { 
-  console.error('Solve failed:', e);
-  Swal.fire('Error','Solve failed during optimization: ' + e.message,'error'); 
-  return; 
-}
-if (!elementForces) { 
-  Swal.fire('Error','Element forces not computed','error'); 
-  return; 
-}
+    // Force fresh calculation each iteration
+    elementForces = null;
+    
+    try { 
+      solveBeam(); 
+    } catch(e) { 
+      console.error('Solve failed:', e);
+      Swal.fire('Error','Solve failed during optimization: ' + e.message,'error'); 
+      return; 
+    }
+    
+    if (!elementForces) { 
+      Swal.fire('Error','Element forces not computed','error'); 
+      return; 
+    }
+
     const sigs = measureSegmentStressExtrema();
     let anyChange = false;
+
+    for (let i=0;i<segments.length;i++){
+      const seg = segments[i], sInfo = sigs[i];
+      const over  = sInfo.sigMaxAbs > cfg.sigAllow * (1 + cfg.tolOver);
+      const under = sInfo.sigMaxAbs < cfg.sigAllow * (1 - cfg.tolUnder);
+
+      let k = (typeof seg.secIndex === 'number') ? seg.secIndex : 0;
+
+      if (over && k < sectionsCatalog.length - 1){
+        k++;
+        applySectionToSegment(seg, k);
+        anyChange = true;
+      } else if (under && k > 0){
+        k--;
+        applySectionToSegment(seg, k);
+        anyChange = true;
+      }
+    }
+
+    // Show iteration progress if visualization enabled
+    if (showIterations && anyChange) {
+      drawBeam();
+      await delay(300); // Pause between iterations
+    }
+
+    if (!anyChange) break;
+  }
+
+  try { solveBeam(); } catch(_) {}
+  drawBeam();
+  plotBendingStress();
+  
+  // Show completion message
+  Swal.fire({
+    icon: 'success',
+    title: 'Optimization Complete',
+    text: `Converged in ${iter} iterations`,
+    timer: 2000,
+    showConfirmButton: false
+  });
+}
+    
+    // ------------------ EXPORT / IMPORT ------------------
+
+    function exportCSV() {
+      if(!elementForces || !segments.length) {
+         Swal.fire('No data', 'Please solve the beam first.', 'info');
+         return;
+      }
+      
+      const now = new Date();
+      let csvContent = "data:text/csv;charset=utf-8,";
+      csvContent += `Date: ${now.toLocaleDateString()},Timestamp: ${now.toLocaleTimeString()}\n\n`;
+      csvContent += "Segment,L,E,I,St,Sb,qL,qR,wd,V_start,M_start,V_end,M_end\n";
+      
+      segments.forEach(function(seg, i) {
+          const ef = elementForces[i];
+          const row = [
+              i+1,
+              seg.L, seg.E, seg.I, seg.St, seg.Sb, seg.qL, seg.qR, seg.wd,
+              ef.V1, ef.M1, -ef.V2, -ef.M2
+          ].join(",");
+          csvContent += row + "\r\n";
+      });
+
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", `beam_analysis_${now.getTime()}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
+    function exportJSON() {
+      const now = new Date();
+      const data = {
+        timestamp: now.getTime(),
+        date: now.toLocaleString(),
+        inputs: {
+          numSegments: document.getElementById('numSegments').value,
+          totalLength: document.getElementById('totalLength').value,
+          eiScale: document.getElementById('eiScale').value
+        },
+        segments: segments,
+        nodes: nodes
+      };
+      
+      const jsonStr = JSON.stringify(data, null, 2);
+      const blob = new Blob([jsonStr], {type: "application/json"});
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `beam_state_${now.getTime()}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }
+
+    function triggerImportJSON() {
+      document.getElementById('jsonFileInput').click();
+    }
+
+    function loadJSONFile(input) {
+      if (!input.files || !input.files[0]) return;
+      const file = input.files[0];
+      const reader = new FileReader();
+      
+      reader.onload = function(e) {
+        try {
+          const data = JSON.parse(e.target.result);
+          
+          // Restore Inputs
+          if(data.inputs) {
+            if(data.inputs.numSegments) document.getElementById('numSegments').value = data.inputs.numSegments;
+            if(data.inputs.totalLength) document.getElementById('totalLength').value = data.inputs.totalLength;
+            if(data.inputs.eiScale) document.getElementById('eiScale').value = data.inputs.eiScale;
+          }
+          
+          // Restore Data
+          if (Array.isArray(data.segments)) segments = data.segments;
+          if (Array.isArray(data.nodes)) nodes = data.nodes;
+          
+          // Reset State
+          elementForces = null;
+          K_global = null;
+          lastU = null;
+          clearAllPlots();
+          
+          // Redraw
+          drawBeam();
+          
+          Swal.fire({
+            icon: 'success',
+            title: 'Import Successful',
+            text: `Loaded data from ${data.date || 'file'}`,
+            timer: 1500,
+            showConfirmButton: false
+          });
+          
+        } catch(err) {
+          Swal.fire('Import Failed', 'Invalid JSON file.', 'error');
+          console.error(err);
+        }
+        // Reset file input so user can reload same file if needed
+        input.value = '';
+      };
+      
+      reader.readAsText(file);
+    }
+    
+    // Initialize on load
+    window.addEventListener('load', buildBeam);
+    
+  </script>
+</body>
+</html>
+
 
 
 
