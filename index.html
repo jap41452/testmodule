@@ -1120,9 +1120,11 @@ function clearSectionAssignments() {
             <label><span>Under-limit margin</span><input id="tolUnder" class="swal2-input" value="0.00"></label>
           </div>
           <hr style="margin:6px 0;">
-          <label style="gap:8px;"><span>Start with single catalog section for all segments</span>
-            <input id="singleStartD" type="checkbox" checked>
-          </label>
+
+<label style="gap:8px;"><span>Start with single catalog section for all segments</span>
+  <input id="singleStartD" type="checkbox">
+</label>
+
           <div class="hint" style="margin-top:6px;">Heuristic: bump up if |σ| > σ_allow·(1+tolOver); try bumping down if |σ| < σ_allow·(1−tolUnder). Re-solves each step.</div>
         `,
         preConfirm: ()=>{
@@ -1253,8 +1255,7 @@ console.log(`Starting with section [${k0}]: ${sectionsCatalog[k0].name}`);
       const k = (typeof seg.secIndex === 'number') ? seg.secIndex : 0;
       
 const over  = sInfo.sigMaxAbs > cfg.sigAllow * (1 + cfg.tolOver);
-const under = (cfg.tolUnder > 0) && (sInfo.sigMaxAbs < cfg.sigAllow * (1 - cfg.tolUnder));
-
+const under = sInfo.sigMaxAbs < cfg.sigAllow * (1 - cfg.tolUnder);
       
       console.log(`Seg[${i}]: secIdx=${k}, σ_max=${sInfo.sigMaxAbs.toFixed(0)}, σ_allow=${cfg.sigAllow.toFixed(0)}, ratio=${(sInfo.sigMaxAbs/cfg.sigAllow).toFixed(3)}, over=${over}, under=${under}`);
 
@@ -1411,6 +1412,7 @@ const under = (cfg.tolUnder > 0) && (sInfo.sigMaxAbs < cfg.sigAllow * (1 - cfg.t
   </script>
 </body>
 </html>
+
 
 
 
