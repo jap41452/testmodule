@@ -1689,7 +1689,6 @@ function computeT3Stresses(x, y, w, thetaX, thetaY, E, nu, t){
   };
 }
 
-
 function solveLinearSystemCG(A, b, n, maxIter=5000, tol=1e-6){
   const x = new Array(n).fill(0);
   const r = b.map((bi, i) => bi - dotRow(A[i], x));
@@ -2247,6 +2246,7 @@ animate();
 </script>
 </body>
 </html>
+
 
 
 
