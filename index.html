@@ -125,32 +125,32 @@ input[type="range"]{width:100%;height:6px;border-radius:3px;background:#d7dde6;o
         <div class="hud-block">
             <div class="k">Legend</div>
             <div class="legend">
-                <div class="leg"><span class="dot free"></span>Free</div>
-                <div class="leg"><span class="dot ss"></span>Support</div>
-                <div class="leg"><span class="dot fixed"></span>Fixed</div>
-            </div>
-        </div>
+               <div class="leg"><span class="dot free"></span>Free</div>
+               <div class="leg"><span class="dot ss"></span>Support</div>
+               <div class="leg"><span class="dot fixed"></span>Fixed</div>
+           </div>
+       </div>
 
-        <div class="hud-block">
-            <div class="k">Selection</div>
-            <div class="v" id="pickedLabel">(none)</div>
-        </div>
+       <div class="hud-block">
+           <div class="k">Selection</div>
+           <div class="v" id="pickedLabel">(none)</div>
+       </div>
 
-        <div class="hud-block">
-            <div class="k">Mesh</div>
-            <div class="v" id="meshStats">—</div>
-        </div>
+       <div class="hud-block">
+           <div class="k">Mesh</div>
+           <div class="v" id="meshStats">—</div>
+       </div>
 
-        <div class="hud-block">
-            <div class="k">Status</div>
-            <div class="v" id="solveStatusText">Not solved</div>
-        </div>
+       <div class="hud-block">
+           <div class="k">Status</div>
+           <div class="v" id="solveStatusText">Not solved</div>
+       </div>
 
-        <div class="hud-block" id="contourInfo" style="display:none">
-            <div class="k">Contour</div>
-            <div class="colorbar"></div>
-            <div style="display:flex;justify-content:space-between;font-size:10px;margin-top:-2px"><span id="contourMin">L</span><span id="contourMax">H</span></div>
-        </div>
+       <div class="hud-block" id="contourInfo" style="display:none">
+           <div class="k">Contour</div>
+           <div class="colorbar"></div>
+           <div style="display:flex;justify-content:space-between;font-size:10px;margin-top:-2px"><span id="contourMin">L</span><span id="contourMax">H</span></div>
+       </div>
     </div>
     
     <canvas id="gl"></canvas>
@@ -184,8 +184,6 @@ scene.background=new THREE.Color(0xffffff);
 // near=1.0, far=1000 gives MUCH higher precision for your model size
 const camera = new THREE.PerspectiveCamera(45, 1, 1.0, 1000);
 camera.position.set(40,35,55);
-
-
 const controls=new OrbitControls(camera,renderer.domElement);
 controls.enableDamping=true;
 controls.dampingFactor=0.08;
@@ -596,84 +594,6 @@ function renderMesh3D(meshObj, sol) {
     controls.update();
 }
 
-
-    function matFor(regionId) {
-        if (mats.has(regionId)) return mats.get(regionId);
-        const isBase = regionId === "base";
-        const m = new THREE.MeshStandardMaterial({
-            color: isBase ? 0xdbe6ff : 0x22c55e,
-            transparent: true,
-            opacity: 0.92,
-            roughness: 0.9,
-            metalness: 0.05
-        });
-        mats.set(regionId, m);
-        return m
-    }
-    T6.forEach(elem => {
-        const regionId = elem.region,
-            tElem = regions[regionId].t,
-            nodes = elem.nodes;
-        const subTris = [
-            [0, 3, 5],
-            [3, 1, 4],
-            [5, 4, 2],
-            [3, 4, 5]
-        ];
-        subTris.forEach(tri => {
-            const corners = tri.map(i => nodes[i]),
-                pos = [];
-            corners.forEach(idx => {
-                const v = V[idx];
-                pos.push(v.x, 0, v.y);
-                pos.push(v.x, tElem, v.y)
-            });
-            const geom = new THREE.BufferGeometry();
-            geom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3));
-            const indices = [3, 4, 5, 2, 1, 0, 0, 1, 4, 0, 4, 3, 1, 2, 5, 1, 5, 4, 2, 0, 3, 2, 3, 5];
-            geom.setIndex(indices);
-            geom.computeVertexNormals();
-            const mat = matFor(regionId);
-            const mesh = new THREE.Mesh(geom, mat);
-            grpSolid.add(mesh)
-        })
-    });
-    const wirePos = [],
-        lift = 0.002 * Math.max(1, tBase);
-    T6.forEach(elem => {
-        const regionId = elem.region,
-            y = regions[regionId].t + lift,
-            nodes = elem.nodes;
-        const a = V[nodes[0]],
-            b = V[nodes[1]],
-            c = V[nodes[2]];
-        wirePos.push(a.x, y, a.y, b.x, y, b.y);
-        wirePos.push(b.x, y, b.y, c.x, y, c.y);
-        wirePos.push(c.x, y, c.y, a.x, y, a.y)
-    });
-    const wireGeo = new THREE.BufferGeometry();
-    wireGeo.setAttribute("position", new THREE.Float32BufferAttribute(wirePos, 3));
-    
-    // --- UPDATED MATERIAL HERE ---
-    // Changed to pure black (0x000000) and removed transparency for high contrast
-    const wireMat = new THREE.LineBasicMaterial({
-        color: 0x000000, 
-        opacity: 1.0 
-    });
-    // -----------------------------
-    
-    const wire = new THREE.LineSegments(wireGeo, wireMat);
-    grpWire.add(wire);
-    addBCTubes(meshObj);
-    addPressureArrows(meshObj);
-    const span = spanVal();
-    controls.target.set(0, 0, 0);
-    camera.position.set(span * 1.2, span * 0.9, span * 1.5);
-    controls.update()
-}
-
-
-
 function addBCTubes(meshObj){const tMax=Math.max(...Object.values(meshObj.regions).map(r=>r.t)),y=tMax+0.01,span=spanVal(),r=Math.max(0.003*span,0.04*model.shape.h);if(model.shape.type==="rect"){const W=model.shape.W,L=model.shape.L;const edges=[{id:"outer:edge:0",label:"Outer edge +X",a:[W/2,y,-L/2],b:[W/2,y,L/2]},{id:"outer:edge:1",label:"Outer edge -X",a:[-W/2,y,-L/2],b:[-W/2,y,L/2]},{id:"outer:edge:2",label:"Outer edge +Z",a:[-W/2,y,L/2],b:[W/2,y,L/2]},{id:"outer:edge:3",label:"Outer edge -Z",a:[-W/2,y,-L/2],b:[W/2,y,-L/2]}];edges.forEach(e=>addTubeForSegment(e.id,e.label,e.a,e.b,r,bcColor(model.bcs[e.id]||"free")))}else{const id="outer:perimeter";addTubeForPolyline(id,"Outer perimeter",meshObj.loops.outer,y,r,bcColor(model.bcs[id]||"free"))}meshObj.loops.cutouts.forEach(c=>addTubeForPolyline(c.id,`Cutout ${c.id.replace("cutout:","")} perimeter`,c.loop,y,r,bcColor(model.bcs[c.id]||"free")))}
 
 function addTubeForSegment(boundaryId,boundaryLabel,a,b,radius,color){ensureDefaultBC(boundaryId);const p0=new THREE.Vector3(a[0],a[1],a[2]),p1=new THREE.Vector3(b[0],b[1],b[2]),curve=new THREE.LineCurve3(p0,p1),geo=new THREE.TubeGeometry(curve,8,radius,10,false),mat=new THREE.MeshStandardMaterial({color,roughness:0.85,metalness:0.0}),tube=new THREE.Mesh(geo,mat);tube.userData={pickType:"boundary",boundaryId,boundaryLabel};grpBC.add(tube)}
@@ -695,6 +615,7 @@ animate();
 </script>
 </body>
 </html>
+
 
 
 
