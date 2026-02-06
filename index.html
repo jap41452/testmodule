@@ -32,9 +32,27 @@ input:focus,select:focus{border-color:#9db7ff;box-shadow:0 0 0 3px rgba(37,99,23
 .muted{color:var(--muted);font-size:12px}
 .canvasWrap{background:#fff;border-radius:12px;border:1px solid var(--border);overflow:hidden;position:relative;min-height:560px}
 #gl{width:100%;height:560px;display:block}
-.hud{position:absolute;left:10px;top:10px;background:rgba(248,250,252,0.95);border:1px solid rgba(215,221,230,0.95);border-radius:12px;padding:10px;width:300px;max-height:calc(100% - 20px);overflow-y:auto}
-.hud .k{font-size:12px;color:var(--muted);margin-bottom:4px}
-.hud .v{font-size:12px;font-weight:800}
+
+
+.hud {
+    position: relative; /* Sit naturally in the flow */
+    width: 100%;        /* Span full width */
+    box-sizing: border-box; /* Ensure padding doesn't break width */
+    background: #f8fafc;
+    border-bottom: 1px solid var(--border); /* Separator line */
+    padding: 10px 14px;
+    
+    /* Reset the old floating styles */
+    top: auto; 
+    left: auto;
+    border-radius: 0;
+    border: none;
+    border-bottom: 1px solid var(--border);
+    max-height: none;
+}
+
+
+
 .legend{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px}
 .leg{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);font-weight:700}
 .dot{width:10px;height:10px;border-radius:50%;display:inline-block}
@@ -95,10 +113,24 @@ input[type="range"]{width:100%;height:6px;border-radius:3px;background:#d7dde6;o
 <div style="margin-top:10px"><label><input type="checkbox" id="animateCheck" style="width:auto;margin-right:6px"/>Animate deflection</label></div>
 <div class="slider-container" id="animControls" style="display:none"><label>Animation amplitude</label><input type="range" id="animAmp" min="0" max="2" step="0.1" value="1"/><div class="muted">Current: <span id="animAmpVal">1.0</span></div><label style="margin-top:8px">Animation frequency</label><input type="range" id="animFreq" min="0.1" max="5" step="0.1" value="1"/><div class="muted">Current: <span id="animFreqVal">1.0</span> Hz</div></div>
 </div>
+
+
+
+
+
+
+
+
 <div class="canvasWrap">
-<canvas id="gl"></canvas>
-<div class="hud">
-<div class="k">Mouse</div><div class="v">Left-drag rotate • Wheel zoom • Right-drag pan</div>
+    <div class="hud">
+        <div class="k">Mouse</div>
+        <div class="v">Left-drag rotate • Wheel zoom • Right-drag pan</div>
+        </div>
+
+    <canvas id="gl"></canvas>
+</div>
+
+
 <div class="legend"><div class="leg"><span class="dot free"></span> Free</div><div class="leg"><span class="dot ss"></span> Simply supported</div><div class="leg"><span class="dot fixed"></span> Fixed</div></div>
 <div style="margin-top:10px"><div class="k">Picked object</div><div class="v" id="pickedLabel">(none)</div></div>
 <div style="margin-top:10px"><div class="k">Mesh</div><div class="v" id="meshStats">—</div></div>
@@ -462,6 +494,7 @@ animate();
 </script>
 </body>
 </html>
+
 
 
 
