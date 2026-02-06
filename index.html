@@ -1631,7 +1631,7 @@ function computeT3PlateLoad(x, y, p){
   
   const Fe = new Array(9).fill(0);
   
-  const loadPerNode = p * A / 3;
+  const loadPerNode = -p * A / 3;
   Fe[0] = loadPerNode;
   Fe[3] = loadPerNode;
   Fe[6] = loadPerNode;
@@ -2219,6 +2219,7 @@ animate();
 </script>
 </body>
 </html>
+
 
 
 
