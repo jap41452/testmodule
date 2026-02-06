@@ -1640,9 +1640,36 @@ function computeT3PlateLoad(x, y, p){
 }
 
 function computeT3Stresses(x, y, w, thetaX, thetaY, E, nu, t){
-  const kx = (thetaY[1] - thetaY[0]) / (x[1] - x[0] + 1e-12);
-  const ky = (thetaX[2] - thetaX[0]) / (y[2] - y[0] + 1e-12);
-  const kxy = 0;
+  // Compute area and shape function derivatives
+  const A = 0.5 * Math.abs((x[1]-x[0])*(y[2]-y[0]) - (x[2]-x[0])*(y[1]-y[0]));
+  
+  if (A < 1e-12) {
+    return {
+      top: {sigmaX: 0, sigmaY: 0, tauXY: 0},
+      bot: {sigmaX: 0, sigmaY: 0, tauXY: 0}
+    };
+  }
+  
+  // Shape function derivatives (constant over element)
+  const b = [y[1]-y[2], y[2]-y[0], y[0]-y[1]];
+  const c = [x[2]-x[1], x[0]-x[2], x[1]-x[0]];
+  
+  // Compute curvatures from deflection w
+  // kx = -d²w/dx²,  ky = -d²w/dy²,  kxy = -2*d²w/dxdy
+  // For linear elements, use rotations to approximate curvatures
+  
+  // Average curvatures from the rotation gradients
+  let kx = 0, ky = 0, kxy = 0;
+  
+  for (let i = 0; i < 3; i++) {
+    kx += b[i] * thetaY[i] / (2 * A);   // dθy/dx
+    ky -= c[i] * thetaX[i] / (2 * A);   // -dθx/dy
+  }
+  
+  // For twist curvature, use average of cross-derivatives
+  for (let i = 0; i < 3; i++) {
+    kxy += (c[i] * thetaY[i] - b[i] * thetaX[i]) / (4 * A);
+  }
   
   const z_top = t / 2;
   const z_bot = -t / 2;
@@ -1652,7 +1679,7 @@ function computeT3Stresses(x, y, w, thetaX, thetaY, E, nu, t){
   const computeAtZ = (z) => {
     const sigmaX = -factor * z * (kx + nu * ky);
     const sigmaY = -factor * z * (ky + nu * kx);
-    const tauXY = -factor * z * (1 - nu) / 2 * kxy;
+    const tauXY = -factor * z * (1 - nu) * kxy;
     return {sigmaX, sigmaY, tauXY};
   };
   
@@ -1661,6 +1688,7 @@ function computeT3Stresses(x, y, w, thetaX, thetaY, E, nu, t){
     bot: computeAtZ(z_bot)
   };
 }
+
 
 function solveLinearSystemCG(A, b, n, maxIter=5000, tol=1e-6){
   const x = new Array(n).fill(0);
@@ -2219,6 +2247,7 @@ animate();
 </script>
 </body>
 </html>
+
 
 
 
