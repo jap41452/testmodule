@@ -30,36 +30,37 @@ input:focus,select:focus{border-color:#9db7ff;box-shadow:0 0 0 3px rgba(37,99,23
 .item-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
 .pill{font-size:11px;font-weight:800;border-radius:999px;padding:4px 8px;border:1px solid var(--border);color:var(--muted);background:#f8fafc}
 .muted{color:var(--muted);font-size:12px}
-.canvasWrap{background:#fff;border-radius:12px;border:1px solid var(--border);overflow:hidden;position:relative;min-height:560px}
-#gl{width:100%;height:560px;display:block}
+.canvasWrap{background:#fff;border-radius:12px;border:1px solid var(--border);overflow:hidden;position:relative;min-height:560px;display:flex;flex-direction:column;}
+#gl{width:100%;height:560px;display:block;flex:1;}
 
-
+/* HUD UPDATED STYLES */
 .hud {
-    position: relative; /* Sit naturally in the flow */
-    width: 100%;        /* Span full width */
-    box-sizing: border-box; /* Ensure padding doesn't break width */
+    position: relative;
+    width: 100%;
+    box-sizing: border-box;
     background: #f8fafc;
-    border-bottom: 1px solid var(--border); /* Separator line */
-    padding: 10px 14px;
-    
-    /* Reset the old floating styles */
-    top: auto; 
-    left: auto;
-    border-radius: 0;
-    border: none;
     border-bottom: 1px solid var(--border);
-    max-height: none;
+    padding: 10px 14px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    align-items: center;
 }
 
+.hud .k{font-size:11px;color:var(--muted);margin-bottom:2px;text-transform:uppercase;letter-spacing:0.02em;font-weight:700}
+.hud .v{font-size:12px;font-weight:800}
 
+/* Reorganized HUD items into blocks for horizontal layout */
+.hud-block { display:flex; flex-direction:column; }
 
-.legend{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px}
+.legend{display:flex;gap:10px;flex-wrap:wrap;}
 .leg{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);font-weight:700}
 .dot{width:10px;height:10px;border-radius:50%;display:inline-block}
 .dot.free{background:var(--free)}
 .dot.ss{background:var(--ss)}
 .dot.fixed{background:var(--fixed)}
-.colorbar{width:100%;height:20px;border-radius:6px;margin:8px 0;background:linear-gradient(to right,rgb(0,0,255),rgb(0,128,255),rgb(0,255,255),rgb(0,255,0),rgb(255,255,0),rgb(255,128,0),rgb(255,0,0))}
+.colorbar{width:120px;height:12px;border-radius:4px;margin-top:4px;background:linear-gradient(to right,rgb(0,0,255),rgb(0,128,255),rgb(0,255,255),rgb(0,255,0),rgb(255,255,0),rgb(255,128,0),rgb(255,0,0))}
+
 .modalBackdrop{position:fixed;inset:0;background:rgba(11,18,32,0.55);display:none;align-items:center;justify-content:center;z-index:50;padding:20px}
 .modal{width:min(560px,100%);background:#fff;border-radius:14px;border:1px solid var(--border);box-shadow:0 22px 60px rgba(0,0,0,0.25);overflow:hidden}
 .modalHead{padding:12px 14px;background:#f8fafc;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px}
@@ -114,32 +115,49 @@ input[type="range"]{width:100%;height:6px;border-radius:3px;background:#d7dde6;o
 <div class="slider-container" id="animControls" style="display:none"><label>Animation amplitude</label><input type="range" id="animAmp" min="0" max="2" step="0.1" value="1"/><div class="muted">Current: <span id="animAmpVal">1.0</span></div><label style="margin-top:8px">Animation frequency</label><input type="range" id="animFreq" min="0.1" max="5" step="0.1" value="1"/><div class="muted">Current: <span id="animFreqVal">1.0</span> Hz</div></div>
 </div>
 
-
-
-
-
-
-
-
 <div class="canvasWrap">
     <div class="hud">
-        <div class="k">Mouse</div>
-        <div class="v">Left-drag rotate • Wheel zoom • Right-drag pan</div>
+        <div class="hud-block">
+            <div class="k">Mouse</div>
+            <div class="v" style="font-weight:400;font-size:11px;">Rotate/Zoom/Pan</div>
+        </div>
+        
+        <div class="hud-block">
+            <div class="k">Legend</div>
+            <div class="legend">
+                <div class="leg"><span class="dot free"></span>Free</div>
+                <div class="leg"><span class="dot ss"></span>Support</div>
+                <div class="leg"><span class="dot fixed"></span>Fixed</div>
+            </div>
         </div>
 
+        <div class="hud-block">
+            <div class="k">Selection</div>
+            <div class="v" id="pickedLabel">(none)</div>
+        </div>
+
+        <div class="hud-block">
+            <div class="k">Mesh</div>
+            <div class="v" id="meshStats">—</div>
+        </div>
+
+        <div class="hud-block">
+            <div class="k">Status</div>
+            <div class="v" id="solveStatusText">Not solved</div>
+        </div>
+
+        <div class="hud-block" id="contourInfo" style="display:none">
+            <div class="k">Contour</div>
+            <div class="colorbar"></div>
+            <div style="display:flex;justify-content:space-between;font-size:10px;margin-top:-2px"><span id="contourMin">L</span><span id="contourMax">H</span></div>
+        </div>
+    </div>
+    
     <canvas id="gl"></canvas>
 </div>
+</div>
+</div>
 
-
-<div class="legend"><div class="leg"><span class="dot free"></span> Free</div><div class="leg"><span class="dot ss"></span> Simply supported</div><div class="leg"><span class="dot fixed"></span> Fixed</div></div>
-<div style="margin-top:10px"><div class="k">Picked object</div><div class="v" id="pickedLabel">(none)</div></div>
-<div style="margin-top:10px"><div class="k">Mesh</div><div class="v" id="meshStats">—</div></div>
-<div style="margin-top:10px" id="solveStatus"><div class="k">Solution status</div><div class="v" id="solveStatusText">Not solved</div></div>
-<div style="margin-top:10px;display:none" id="contourInfo"><div class="k">Contour range</div><div class="colorbar"></div><div style="display:flex;justify-content:space-between;font-size:11px;margin-top:4px"><span id="contourMin">—</span><span id="contourMax">—</span></div></div>
-</div>
-</div>
-</div>
-</div>
 <div class="modalBackdrop" id="modalBackdrop">
 <div class="modal">
 <div class="modalHead"><div class="modalTitle" id="modalTitle">Add feature</div><button class="btn small" id="btnModalClose">Close</button></div>
@@ -147,6 +165,7 @@ input[type="range"]{width:100%;height:6px;border-radius:3px;background:#d7dde6;o
 <div class="modalFoot"><button class="btn" id="btnModalCancel">Cancel</button><button class="btn primary" id="btnModalSave">Save</button></div>
 </div>
 </div>
+
 <script type="module">
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
@@ -244,7 +263,6 @@ function T6Jacobian(x,y,dN_dxi,dN_deta){let dx_dxi=0,dx_deta=0,dy_dxi=0,dy_deta=
 
 function T6ShapeDerivatives(x,y,xi,eta){const{N,dN_dxi,dN_deta}=T6ShapeFunctions(xi,eta);const{detJ,invJ}=T6Jacobian(x,y,dN_dxi,dN_deta);const dN_dx=[],dN_dy=[];for(let i=0;i<6;i++){dN_dx[i]=invJ[0][0]*dN_dxi[i]+invJ[0][1]*dN_deta[i];dN_dy[i]=invJ[1][0]*dN_dxi[i]+invJ[1][1]*dN_deta[i]}return{N,dN_dx,dN_dy,detJ}}
 
-// REPLACE your existing solvePlateBending function with this one
 function solvePlateBending(){
     if(!mesh) throw new Error("No mesh available. Build mesh first.");
     solveStatusText.textContent = "Solving...";
@@ -304,7 +322,6 @@ function solvePlateBending(){
             pTotal += model.shape.rho * t;
         }
 
-        // --- CHANGE HERE: Passing t and E to the stiffness function ---
         const Ke = computeT6PlateStiffness(x, y, D, nu, t, E, gaussPts);
         const Fe = computeT6PlateLoad(x, y, pTotal, gaussPts);
         
@@ -359,7 +376,6 @@ function solvePlateBending(){
     };
 }
 
-// REPLACE your existing computeT6PlateStiffness function with this one
 function computeT6PlateStiffness(x, y, D, nu, t, E, gaussPts){
     const Ke = new Array(18).fill(0).map(() => new Array(18).fill(0));
     
@@ -395,13 +411,6 @@ function computeT6PlateStiffness(x, y, D, nu, t, E, gaussPts){
         ];
 
         // --- 2. Shear Stiffness (Ks) ---
-        // Links Shear Strain to w and Rotations
-        // Gamma_xz = dw/dx + ty (assuming ty is rotation of normal in x-z)
-        // Gamma_yz = dw/dy - tx (check sign convention, usually -tx for y-z)
-        // Note on Signs: If ThetaX is rotation vector along X axis, positive w slope in Y 
-        // induces negative ThetaX. So Gamma_yz = dw/dy + ThetaX is common if ThetaX is -dw/dy.
-        // Let's assume standard Mindlin: [Gamma_xz, Gamma_yz]T
-        
         const Bs = new Array(2).fill(0).map(() => new Array(18).fill(0));
         
         for(let i=0; i<6; i++){
@@ -412,7 +421,7 @@ function computeT6PlateStiffness(x, y, D, nu, t, E, gaussPts){
             
             // Gamma_yz
             Bs[1][col+0] = dN_dy[i]; // dw/dy
-            Bs[1][col+1] = -N[i];    // - tx (Standard convention: tx rotates y->z, opposite to slope)
+            Bs[1][col+1] = -N[i];    // - tx
         }
 
         const Ds = [
@@ -451,7 +460,7 @@ function computeT6PlateLoad(x,y,p,gaussPts){const Fe=new Array(18).fill(0);let t
 
 function computeT6Stresses(T6,V,regions,w,thetaX,thetaY){const nNodes=V.length;const nodeStresses=new Array(nNodes).fill(null).map(()=>({top:{sigmaX:0,sigmaY:0,tauXY:0,count:0},bot:{sigmaX:0,sigmaY:0,tauXY:0,count:0}}));const E=model.shape.E,nu=model.shape.nu;T6.forEach(elem=>{const regionId=elem.region,t=regions[regionId].t,nodes=elem.nodes,x=nodes.map(i=>V[i].x),y=nodes.map(i=>V[i].y);const w_e=nodes.map(i=>w[i]),tx_e=nodes.map(i=>thetaX[i]),ty_e=nodes.map(i=>thetaY[i]);const cornerPoints=[{xi:0,eta:0},{xi:1,eta:0},{xi:0,eta:1}];cornerPoints.forEach((pt,idx)=>{const nodeIdx=nodes[idx];const{dN_dx,dN_dy}=T6ShapeDerivatives(x,y,pt.xi,pt.eta);let kx=0,ky=0,kxy=0;for(let i=0;i<6;i++){kx+=dN_dx[i]*ty_e[i];ky+=-dN_dy[i]*tx_e[i];kxy+=dN_dy[i]*ty_e[i]-dN_dx[i]*tx_e[i]}const z_top=t/2,z_bot=-t/2,factor=E/(1-nu**2);const computeAtZ=z=>{const sigmaX=-factor*z*(kx+nu*ky);const sigmaY=-factor*z*(ky+nu*kx);const tauXY=-factor*z*(1-nu)/2*kxy;return{sigmaX,sigmaY,tauXY}};const stressTop=computeAtZ(z_top),stressBot=computeAtZ(z_bot);nodeStresses[nodeIdx].top.sigmaX+=stressTop.sigmaX;nodeStresses[nodeIdx].top.sigmaY+=stressTop.sigmaY;nodeStresses[nodeIdx].top.tauXY+=stressTop.tauXY;nodeStresses[nodeIdx].bot.sigmaX+=stressBot.sigmaX;nodeStresses[nodeIdx].bot.sigmaY+=stressBot.sigmaY;nodeStresses[nodeIdx].bot.tauXY+=stressBot.tauXY;nodeStresses[nodeIdx].top.count++;nodeStresses[nodeIdx].bot.count++})});nodeStresses.forEach(ns=>{['top','bot'].forEach(surface=>{if(ns[surface].count>0){ns[surface].sigmaX/=ns[surface].count;ns[surface].sigmaY/=ns[surface].count;ns[surface].tauXY/=ns[surface].count}const sx=ns[surface].sigmaX,sy=ns[surface].sigmaY,txy=ns[surface].tauXY;const savg=(sx+sy)/2,R=Math.sqrt(((sx-sy)/2)**2+txy**2),p1=savg+R,p2=savg-R,vm=Math.sqrt(sx**2+sy**2-sx*sy+3*txy**2);ns[surface].principal1=p1;ns[surface].principal2=p2;ns[surface].vonMises=vm})});return nodeStresses}
 
-function identifyBoundaryNodes(){const boundaryNodes={};if(!mesh)return boundaryNodes;const V=mesh.V,loops=mesh.loops,h=model.shape.h,tolerance=Math.max(0.5*h,0.5);console.log(`Boundary identification with tolerance: ${tolerance}`);const findNodesNearLoop=(loop,tol)=>{const nodes=new Set();loop.forEach(pt=>{V.forEach((v,idx)=>{if(Math.hypot(v.x-pt.x,v.y-pt.y)<tol)nodes.add(idx)})});return Array.from(nodes)};if(model.shape.type==="rect"){const W=model.shape.W,L=model.shape.L;boundaryNodes["outer:edge:0"]=V.map((v,i)=>i).filter(i=>Math.abs(V[i].x-W/2)<tolerance);boundaryNodes["outer:edge:1"]=V.map((v,i)=>i).filter(i=>Math.abs(V[i].x+W/2)<tolerance);boundaryNodes["outer:edge:2"]=V.map((v,i)=>i).filter(i=>Math.abs(V[i].y-L/2)<tolerance);boundaryNodes["outer:edge:3"]=V.map((v,i)=>i).filter(i=>Math.abs(V[i].y+L/2)<tolerance);console.log("Rectangular boundary nodes:");console.log(`  Edge 0: ${boundaryNodes["outer:edge:0"].length} nodes`);console.log(`  Edge 1: ${boundaryNodes["outer:edge:1"].length} nodes`);console.log(`  Edge 2: ${boundaryNodes["outer:edge:2"].length} nodes`);console.log(`  Edge 3: ${boundaryNodes["outer:edge:3"].length} nodes`)}else{boundaryNodes["outer:perimeter"]=findNodesNearLoop(loops.outer,tolerance);console.log(`Circular boundary: ${boundaryNodes["outer:perimeter"].length} nodes`)}loops.cutouts.forEach(c=>{boundaryNodes[c.id]=findNodesNearLoop(c.loop,tolerance);console.log(`  ${c.id}: ${boundaryNodes[c.id].length} nodes`)});return boundaryNodes}
+function identifyBoundaryNodes(){const boundaryNodes={};if(!mesh)return boundaryNodes;const V=mesh.V,loops=mesh.loops,h=model.shape.h,tolerance=Math.max(0.5*h,0.5);console.log(`Boundary identification with tolerance: ${tolerance}`);const findNodesNearLoop=(loop,tol)=>{const nodes=new Set();loop.forEach(pt=>{V.forEach((v,idx)=>{if(Math.hypot(v.x-pt.x,v.y-pt.y)<tol)nodes.add(idx)})});return Array.from(nodes)};if(model.shape.type==="rect"){const W=model.shape.W,L=model.shape.L;boundaryNodes["outer:edge:0"]=V.map((v,i)=>i).filter(i=>Math.abs(V[i].x-W/2)<tolerance);boundaryNodes["outer:edge:1"]=V.map((v,i)=>i).filter(i=>Math.abs(V[i].x+W/2)<tolerance);boundaryNodes["outer:edge:2"]=V.map((v,i)=>i).filter(i=>Math.abs(V[i].y-L/2)<tolerance);boundaryNodes["outer:edge:3"]=V.map((v,i)=>i).filter(i=>Math.abs(V[i].y+L/2)<tolerance);console.log("Rectangular boundary nodes:");console.log(` Edge 0: ${boundaryNodes["outer:edge:0"].length} nodes`);console.log(`  Edge 1: ${boundaryNodes["outer:edge:1"].length} nodes`);console.log(`  Edge 2: ${boundaryNodes["outer:edge:2"].length} nodes`);console.log(`  Edge 3: ${boundaryNodes["outer:edge:3"].length} nodes`)}else{boundaryNodes["outer:perimeter"]=findNodesNearLoop(loops.outer,tolerance);console.log(`Circular boundary: ${boundaryNodes["outer:perimeter"].length} nodes`)}loops.cutouts.forEach(c=>{boundaryNodes[c.id]=findNodesNearLoop(c.loop,tolerance);console.log(`  ${c.id}: ${boundaryNodes[c.id].length} nodes`)});return boundaryNodes}
 
 function solveLinearSystemCG(A,b,n,maxIter=10000,tol=1e-6){const x=new Array(n).fill(0);const r=b.map((bi,i)=>bi-dotRow(A[i],x));let p=[...r];let rsold=dot(r,r);for(let iter=0;iter<maxIter;iter++){const Ap=A.map(row=>dotRow(row,p));const alpha=rsold/(dot(p,Ap)+1e-30);for(let i=0;i<n;i++){x[i]+=alpha*p[i];r[i]-=alpha*Ap[i]}const rsnew=dot(r,r);if(Math.sqrt(rsnew)<tol){console.log(`CG converged in ${iter+1} iterations`);break}const beta=rsnew/rsold;for(let i=0;i<n;i++){p[i]=r[i]+beta*p[i]}rsold=rsnew}return x}
 function dot(a,b){return a.reduce((sum,ai,i)=>sum+ai*b[i],0)}
@@ -465,7 +474,7 @@ animateCheck.onchange=()=>{animationEnabled=animateCheck.checked;animControls.st
 animAmp.oninput=()=>{animAmpVal.textContent=animAmp.value};
 animFreq.oninput=()=>{animFreqVal.textContent=animFreq.value};
 
-function updateVisualization(){if(!mesh)return;const mode=vizMode.value;if(mode==="mesh"){renderMesh3D(mesh,null);contourInfo.style.display="none"}else{if(!solution){showErr("No solution available. Run FE analysis first.");return}const scale=Number(defScale.value)||1;if(mode==="deflection"){renderDeflection(solution.deflection,scale);contourInfo.style.display="block";const vals=solution.deflection;contourMin.textContent=fmt(Math.min(...vals));contourMax.textContent=fmt(Math.max(...vals))}else if(mode.startsWith("stress_")){renderStress(mode,solution.stresses,scale);contourInfo.style.display="block"}}}
+function updateVisualization(){if(!mesh)return;const mode=vizMode.value;if(mode==="mesh"){renderMesh3D(mesh,null);contourInfo.style.display="none"}else{if(!solution){showErr("No solution available. Run FE analysis first.");return}const scale=Number(defScale.value)||1;if(mode==="deflection"){renderDeflection(solution.deflection,scale);contourInfo.style.display="flex";const vals=solution.deflection;contourMin.textContent=fmt(Math.min(...vals));contourMax.textContent=fmt(Math.max(...vals))}else if(mode.startsWith("stress_")){renderStress(mode,solution.stresses,scale);contourInfo.style.display="flex"}}}
 
 function renderDeflection(w,scale){clearGroup(grpSolid);clearGroup(grpWire);const V=mesh.V,T6=mesh.T6,regions=mesh.regions;let animFactor=1.0;if(animationEnabled){const amp=Number(animAmp.value),freq=Number(animFreq.value);animFactor=amp*Math.sin(2*Math.PI*freq*animationTime)}const minW=Math.min(...w),maxW=Math.max(...w),range=maxW-minW||1;const getColor=val=>{const t=(val-minW)/range;if(t<0.25){const s=t/0.25;return new THREE.Color(0,s,1)}else if(t<0.5){const s=(t-0.25)/0.25;return new THREE.Color(0,1,1-s)}else if(t<0.75){const s=(t-0.5)/0.25;return new THREE.Color(s,1,0)}else{const s=(t-0.75)/0.25;return new THREE.Color(1,1-s,0)}};T6.forEach(elem=>{const regionId=elem.region,tElem=regions[regionId].t,nodes=elem.nodes;const subTris=[[0,3,5],[3,1,4],[5,4,2],[3,4,5]];subTris.forEach(tri=>{const pos=[],colors=[];tri.forEach(localIdx=>{const nodeIdx=nodes[localIdx],v=V[nodeIdx],deflection=w[nodeIdx]*scale*animFactor;pos.push(v.x,deflection,v.y);pos.push(v.x,deflection+tElem,v.y);const col=getColor(w[nodeIdx]);colors.push(col.r,col.g,col.b);colors.push(col.r,col.g,col.b)});const geom=new THREE.BufferGeometry();geom.setAttribute('position',new THREE.BufferAttribute(new Float32Array(pos),3));geom.setAttribute('color',new THREE.BufferAttribute(new Float32Array(colors),3));const indices=[3,4,5,2,1,0,0,1,4,0,4,3,1,2,5,1,5,4,2,0,3,2,3,5];geom.setIndex(indices);geom.computeVertexNormals();const mat=new THREE.MeshStandardMaterial({vertexColors:true,side:THREE.DoubleSide});const mesh=new THREE.Mesh(geom,mat);grpSolid.add(mesh)})})}
 
