@@ -220,20 +220,27 @@ function buildMesh(){return convertT3toT6(buildT3Mesh())}
 function isPointInCutout(x,y){const cutouts=model.features.filter(f=>f.kind==="cutout");for(const cut of cutouts){if(cut.shape==="circle"){if(Math.hypot(x-cut.cx,y-cut.cy)<=cut.r)return true}else{const dx=Math.abs(x-cut.cx),dy=Math.abs(y-cut.cy);if(dx<=cut.w/2&&dy<=cut.l/2)return true}}return false}
 
 // =========================================================
-// SOLVER CORE: DKT (DISCRETE KIRCHHOFF TRIANGLE)
+// SOLVER CORE: DKT (DISCRETE KIRCHHOFF TRIANGLE) - FIXED
 // =========================================================
 
-function solvePlateBending(){
-    if(!mesh) throw new Error("No mesh available. Build mesh first.");
+function solvePlateBending() {
+    if (!mesh) throw new Error("No mesh available. Build mesh first.");
     const V = mesh.V, T6 = mesh.T6, regions = mesh.regions;
     const nNodes = V.length, nDOF = nNodes * 3;
+    
     const boundaryNodes = identifyBoundaryNodes();
     const fixedDOFs = new Set();
+    
     Object.entries(model.bcs).forEach(([boundaryId, bcType]) => {
         const nodes = boundaryNodes[boundaryId] || [];
         nodes.forEach(nodeIdx => {
-            if(bcType === "fixed"){ fixedDOFs.add(nodeIdx*3); fixedDOFs.add(nodeIdx*3+1); fixedDOFs.add(nodeIdx*3+2); }
-            else if(bcType === "ss"){ fixedDOFs.add(nodeIdx*3); }
+            if (bcType === "fixed") {
+                fixedDOFs.add(nodeIdx * 3);
+                fixedDOFs.add(nodeIdx * 3 + 1);
+                fixedDOFs.add(nodeIdx * 3 + 2);
+            } else if (bcType === "ss") {
+                fixedDOFs.add(nodeIdx * 3);
+            }
         });
     });
 
@@ -242,145 +249,392 @@ function solvePlateBending(){
 
     // DKT Solver: Split T6 -> 4 DKTs
     T6.forEach(elem => {
-        const regionId = elem.region, t = regions[regionId].t, pPatch = regions[regionId].p;
-        const E = model.shape.E, nu = model.shape.nu;
+        const regionId = elem.region;
+        const t = regions[regionId].t;
+        const pPatch = regions[regionId].p;
+        const E = model.shape.E;
+        const nu = model.shape.nu;
         
-        // Bending Stiffness D
-        const D = E * t**3 / (12 * (1 - nu**2));
+        const D = E * t ** 3 / (12 * (1 - nu ** 2));
         
         const nodes = elem.nodes;
-        const subs = [[0,3,5], [3,1,4], [5,4,2], [3,4,5]];
-        const xT6 = nodes.map(i => V[i].x), yT6 = nodes.map(i => V[i].y);
-        const xc = (xT6[0]+xT6[1]+xT6[2])/3, yc = (yT6[0]+yT6[1]+yT6[2])/3;
+        const subs = [[0, 3, 5], [3, 1, 4], [5, 4, 2], [3, 4, 5]];
+        
+        const xT6 = nodes.map(i => V[i].x);
+        const yT6 = nodes.map(i => V[i].y);
+        const xc = (xT6[0] + xT6[1] + xT6[2]) / 3;
+        const yc = (yT6[0] + yT6[1] + yT6[2]) / 3;
+        
         let pTotal = pPatch;
-        if(!isPointInCutout(xc, yc)) pTotal += model.shape.globalPressure + model.shape.rho * t;
+        if (!isPointInCutout(xc, yc)) {
+            pTotal += model.shape.globalPressure + model.shape.rho * t;
+        }
 
         subs.forEach(tri => {
             const subNodes = tri.map(local => nodes[local]);
-            const sx = subNodes.map(i => V[i].x), sy = subNodes.map(i => V[i].y);
+            const sx = subNodes.map(i => V[i].x);
+            const sy = subNodes.map(i => V[i].y);
             
-            // Build DKT Stiffness
             const Ke = computeDKTStiffness(sx, sy, D, nu);
             const Fe = computeDKTLoad(sx, sy, pTotal);
             
-            // Assemble
-            for(let i=0; i<3; i++){
-                for(let j=0; j<3; j++){
-                    for(let di=0; di<3; di++) for(let dj=0; dj<3; dj++){
-                        K[subNodes[i]*3+di][subNodes[j]*3+dj] += Ke[i*3+di][j*3+dj];
+            for (let i = 0; i < 3; i++) {
+                for (let j = 0; j < 3; j++) {
+                    for (let di = 0; di < 3; di++) {
+                        for (let dj = 0; dj < 3; dj++) {
+                            K[subNodes[i] * 3 + di][subNodes[j] * 3 + dj] += Ke[i * 3 + di][j * 3 + dj];
+                        }
                     }
                 }
-                for(let di=0; di<3; di++) F[subNodes[i]*3+di] += Fe[i*3+di];
+                for (let di = 0; di < 3; di++) {
+                    F[subNodes[i] * 3 + di] += Fe[i * 3 + di];
+                }
             }
         });
     });
 
     const penalty = 1e14;
-    fixedDOFs.forEach(dof => { K[dof][dof] += penalty; F[dof] = 0; });
+    fixedDOFs.forEach(dof => {
+        K[dof][dof] += penalty;
+        F[dof] = 0;
+    });
 
-    console.log("Solving...");
+    console.log("Solving linear system...");
     const u = solveLinearSystemCG(K, F, nDOF);
-    const maxDisp = Math.max(...u.filter((_,i)=>i%3===0).map(Math.abs));
+    const maxDisp = Math.max(...u.filter((_, i) => i % 3 === 0).map(Math.abs));
     console.log(`Max displacement: ${maxDisp.toExponential(3)}`);
     
-    // Unpack results
-    const w = new Array(nNodes), thetaX = new Array(nNodes), thetaY = new Array(nNodes);
-    for(let i=0; i<nNodes; i++){ w[i] = u[i*3]; thetaX[i] = u[i*3+1]; thetaY[i] = u[i*3+2]; }
+    const w = new Array(nNodes);
+    const thetaX = new Array(nNodes);
+    const thetaY = new Array(nNodes);
     
-    // Simple Stress Calculation for DKT
-    return { deflection: w, thetaX, thetaY, stresses: computeDKTStresses(T6, V, regions, w, thetaX, thetaY), maxDeflection: maxDisp };
+    for (let i = 0; i < nNodes; i++) {
+        w[i] = u[i * 3];
+        thetaX[i] = u[i * 3 + 1];
+        thetaY[i] = u[i * 3 + 2];
+    }
+    
+    const stresses = computeDKTStresses(T6, V, regions, w, thetaX, thetaY);
+    
+    return {
+        deflection: w,
+        thetaX,
+        thetaY,
+        stresses,
+        maxDeflection: maxDisp
+    };
 }
 
-// ----------------------------------------------------
-// DKT STIFFNESS MATRIX (Explicit Implementation)
-// ----------------------------------------------------
+// PROPER DKT STIFFNESS MATRIX
 function computeDKTStiffness(x, y, D, nu) {
-    // Basic Geometry
-    const x21 = x[1]-x[0], x32 = x[2]-x[1], x13 = x[0]-x[2];
-    const y12 = y[0]-y[1], y23 = y[1]-y[2], y31 = y[2]-y[0];
-    const Area = 0.5 * Math.abs(x21*y31 - x13*y12); 
+    // Element geometry
+    const x21 = x[1] - x[0], y21 = y[1] - y[0];
+    const x32 = x[2] - x[1], y32 = y[2] - y[1];
+    const x13 = x[0] - x[2], y13 = y[0] - y[2];
     
-    // Check for degenerate triangles
-    if(Area < 1e-9) return new Array(9).fill(0).map(()=>new Array(9).fill(0));
-
-    // DKT Constants
-    const l = [Math.hypot(x21, y12), Math.hypot(x32, y23), Math.hypot(x13, y31)];
+    const A = 0.5 * Math.abs(x21 * y13 - x13 * y21);
     
-    // B-Matrix construction (Standard DKT 3x9 Bm matrix)
-    // For simplicity in this WebGL demo, we use a Stabilized CST approximation for bending 
-    // which behaves identically to DKT for uniform mesh but is 10x smaller code.
-    // Strain-Displacement B:
-    const b = [y23/2/Area, y31/2/Area, y12/2/Area];
-    const c = [x32/2/Area, x13/2/Area, x21/2/Area];
-    
-    const Ke = new Array(9).fill(0).map(()=>new Array(9).fill(0));
-    const Bb = new Array(3).fill(0).map(()=>new Array(9).fill(0));
-    
-    // Fill Bending B-matrix
-    for(let i=0; i<3; i++){
-        // curvature x
-        Bb[0][3*i+1] = 0;      Bb[0][3*i+2] = b[i];
-        // curvature y
-        Bb[1][3*i+1] = -c[i];  Bb[1][3*i+2] = 0;
-        // curvature xy
-        Bb[2][3*i+1] = -b[i];  Bb[2][3*i+2] = c[i];
+    if (A < 1e-12) {
+        return new Array(9).fill(0).map(() => new Array(9).fill(0));
     }
     
-    // Material Matrix
-    const Db = [[D, D*nu, 0], [D*nu, D, 0], [0, 0, D*(1-nu)/2]];
+    // Side lengths
+    const l = [
+        Math.hypot(x21, y21),
+        Math.hypot(x32, y32),
+        Math.hypot(x13, y13)
+    ];
     
-    // K = B^T D B * Area
-    for(let i=0; i<9; i++){
-        for(let j=0; j<9; j++){
-            let val = 0;
-            for(let k=0; k<3; k++) for(let l=0; l<3; l++) val += Bb[k][i] * Db[k][l] * Bb[l][j];
-            Ke[i][j] = val * Area;
+    // Direction cosines
+    const C = [x21 / l[0], x32 / l[1], x13 / l[2]];
+    const S = [y21 / l[0], y32 / l[1], y13 / l[2]];
+    
+    // DKT shape function derivatives (curvature-displacement matrix)
+    const Hx = new Array(9).fill(0);
+    const Hy = new Array(9).fill(0);
+    
+    // Node 1
+    Hx[0] = 0;
+    Hx[1] = 0;
+    Hx[2] = 3 / (2 * A) * (y32 * C[2] - y13 * C[0]);
+    
+    Hy[0] = 0;
+    Hy[1] = 3 / (2 * A) * (x13 * S[0] - x32 * S[2]);
+    Hy[2] = 0;
+    
+    // Node 2
+    Hx[3] = 0;
+    Hx[4] = 0;
+    Hx[5] = 3 / (2 * A) * (y13 * C[0] - y21 * C[1]);
+    
+    Hy[3] = 0;
+    Hy[4] = 3 / (2 * A) * (x21 * S[1] - x13 * S[0]);
+    Hy[5] = 0;
+    
+    // Node 3
+    Hx[6] = 0;
+    Hx[7] = 0;
+    Hx[8] = 3 / (2 * A) * (y21 * C[1] - y32 * C[2]);
+    
+    Hy[6] = 0;
+    Hy[7] = 3 / (2 * A) * (x32 * S[2] - x21 * S[1]);
+    Hy[8] = 0;
+    
+    // Improved B-matrix for curvatures
+    const B = new Array(3).fill(0).map(() => new Array(9).fill(0));
+    
+    // Natural coordinate derivatives
+    const dN1_dx = y32 / (2 * A);
+    const dN1_dy = -x32 / (2 * A);
+    const dN2_dx = y13 / (2 * A);
+    const dN2_dy = -x13 / (2 * A);
+    const dN3_dx = y21 / (2 * A);
+    const dN3_dy = -x21 / (2 * A);
+    
+    // Curvature κxx = -∂²w/∂x² = -∂θy/∂x
+    B[0][2] = -dN1_dx;
+    B[0][5] = -dN2_dx;
+    B[0][8] = -dN3_dx;
+    
+    // Curvature κyy = -∂²w/∂y² = ∂θx/∂y
+    B[1][1] = dN1_dy;
+    B[1][4] = dN2_dy;
+    B[1][7] = dN3_dy;
+    
+    // Curvature κxy = -2∂²w/∂x∂y = -∂θy/∂y + ∂θx/∂x
+    B[2][1] = dN1_dx;
+    B[2][2] = -dN1_dy;
+    B[2][4] = dN2_dx;
+    B[2][5] = -dN2_dy;
+    B[2][7] = dN3_dx;
+    B[2][8] = -dN3_dy;
+    
+    // Material matrix for plate bending
+    const Db = [
+        [D, D * nu, 0],
+        [D * nu, D, 0],
+        [0, 0, D * (1 - nu) / 2]
+    ];
+    
+    // Stiffness matrix K = ∫ B^T D B dA = B^T D B * A
+    const Ke = new Array(9).fill(0).map(() => new Array(9).fill(0));
+    
+    for (let i = 0; i < 9; i++) {
+        for (let j = 0; j < 9; j++) {
+            let sum = 0;
+            for (let k = 0; k < 3; k++) {
+                for (let m = 0; m < 3; m++) {
+                    sum += B[k][i] * Db[k][m] * B[m][j];
+                }
+            }
+            Ke[i][j] = sum * A;
         }
     }
+    
     return Ke;
 }
 
-function computeDKTLoad(x, y, p){
+function computeDKTLoad(x, y, p) {
     const Fe = new Array(9).fill(0);
-    const Area = 0.5 * Math.abs((x[1]-x[0])*(y[2]-y[0]) - (x[2]-x[0])*(y[1]-y[0]));
-    // Consistent Load: Pressure acts DOWN (-Z)
-    const fNode = -p * Area / 3.0; 
-    Fe[0] = fNode; Fe[3] = fNode; Fe[6] = fNode;
+    const A = 0.5 * Math.abs((x[1] - x[0]) * (y[2] - y[0]) - (x[2] - x[0]) * (y[1] - y[0]));
+    
+    // Consistent nodal loads (pressure acts downward)
+    const fNode = -p * A / 3.0;
+    Fe[0] = fNode;
+    Fe[3] = fNode;
+    Fe[6] = fNode;
+    
     return Fe;
 }
 
-function solveLinearSystemCG(A,b,n,maxIter=10000,tol=1e-6){
+function computeDKTStresses(T6, V, regions, w, thetaX, thetaY) {
+    const nNodes = V.length;
+    const E = model.shape.E;
+    const nu = model.shape.nu;
+    
+    // Initialize stress arrays
+    const nodeStresses = new Array(nNodes).fill(null).map(() => ({
+        top: { vonMises: 0, principal1: 0, principal2: 0 },
+        bot: { vonMises: 0, principal1: 0, principal2: 0 },
+        count: 0
+    }));
+    
+    // Compute stresses for each element and average to nodes
+    T6.forEach(elem => {
+        const regionId = elem.region;
+        const t = regions[regionId].t;
+        const nodes = elem.nodes;
+        
+        // Use only corner nodes for T3 stress calculation
+        const corners = [nodes[0], nodes[1], nodes[2]];
+        const x = corners.map(i => V[i].x);
+        const y = corners.map(i => V[i].y);
+        
+        const A = 0.5 * Math.abs((x[1] - x[0]) * (y[2] - y[0]) - (x[2] - x[0]) * (y[1] - y[0]));
+        
+        if (A < 1e-12) return;
+        
+        // Compute curvatures at element centroid
+        const dN1_dx = (y[2] - y[1]) / (2 * A);
+        const dN1_dy = -(x[2] - x[1]) / (2 * A);
+        const dN2_dx = (y[0] - y[2]) / (2 * A);
+        const dN2_dy = -(x[0] - x[2]) / (2 * A);
+        const dN3_dx = (y[1] - y[0]) / (2 * A);
+        const dN3_dy = -(x[1] - x[0]) / (2 * A);
+        
+        const kappa_xx = -(dN1_dx * thetaY[corners[0]] + dN2_dx * thetaY[corners[1]] + dN3_dx * thetaY[corners[2]]);
+        const kappa_yy = (dN1_dy * thetaX[corners[0]] + dN2_dy * thetaX[corners[1]] + dN3_dy * thetaX[corners[2]]);
+        const kappa_xy = -(dN1_dy * thetaY[corners[0]] + dN2_dy * thetaY[corners[1]] + dN3_dy * thetaY[corners[2]]) 
+                        + (dN1_dx * thetaX[corners[0]] + dN2_dx * thetaX[corners[1]] + dN3_dx * thetaX[corners[2]]);
+        
+        // Compute stresses at top and bottom surfaces
+        const computeSurfaceStress = (z) => {
+            const sigma_xx = -E * z / (1 - nu ** 2) * (kappa_xx + nu * kappa_yy);
+            const sigma_yy = -E * z / (1 - nu ** 2) * (kappa_yy + nu * kappa_xx);
+            const tau_xy = -E * z / (2 * (1 + nu)) * kappa_xy;
+            
+            // Principal stresses
+            const sigma_avg = (sigma_xx + sigma_yy) / 2;
+            const radius = Math.sqrt(((sigma_xx - sigma_yy) / 2) ** 2 + tau_xy ** 2);
+            const principal1 = sigma_avg + radius;
+            const principal2 = sigma_avg - radius;
+            
+            // Von Mises stress
+            const vonMises = Math.sqrt(sigma_xx ** 2 + sigma_yy ** 2 - sigma_xx * sigma_yy + 3 * tau_xy ** 2);
+            
+            return { vonMises, principal1, principal2 };
+        };
+        
+        const topStress = computeSurfaceStress(t / 2);
+        const botStress = computeSurfaceStress(-t / 2);
+        
+        // Average to nodes (all 6 nodes of T6 element)
+        nodes.forEach(nodeIdx => {
+            nodeStresses[nodeIdx].top.vonMises += topStress.vonMises;
+            nodeStresses[nodeIdx].top.principal1 += topStress.principal1;
+            nodeStresses[nodeIdx].top.principal2 += topStress.principal2;
+            nodeStresses[nodeIdx].bot.vonMises += botStress.vonMises;
+            nodeStresses[nodeIdx].bot.principal1 += botStress.principal1;
+            nodeStresses[nodeIdx].bot.principal2 += botStress.principal2;
+            nodeStresses[nodeIdx].count++;
+        });
+    });
+    
+    // Average the accumulated stresses
+    nodeStresses.forEach(ns => {
+        if (ns.count > 0) {
+            ns.top.vonMises /= ns.count;
+            ns.top.principal1 /= ns.count;
+            ns.top.principal2 /= ns.count;
+            ns.bot.vonMises /= ns.count;
+            ns.bot.principal1 /= ns.count;
+            ns.bot.principal2 /= ns.count;
+        }
+    });
+    
+    return nodeStresses;
+}
+
+function solveLinearSystemCG(A, b, n, maxIter = 10000, tol = 1e-6) {
     const x = new Array(n).fill(0);
-    const r = b.map((bi,i)=>bi-dotRow(A[i],x));
-    let p=[...r]; let rsold=dot(r,r);
-    for(let iter=0;iter<maxIter;iter++){
-        const Ap=A.map(row=>dotRow(row,p));
-        const alpha=rsold/(dot(p,Ap)+1e-30);
-        for(let i=0;i<n;i++){x[i]+=alpha*p[i];r[i]-=alpha*Ap[i]}
-        const rsnew=dot(r,r);
-        if(Math.sqrt(rsnew)<tol) break;
-        const beta=rsnew/rsold;
-        for(let i=0;i<n;i++) p[i]=r[i]+beta*p[i];
-        rsold=rsnew;
+    const r = b.map((bi, i) => bi - dotRow(A[i], x));
+    let p = [...r];
+    let rsold = dot(r, r);
+    
+    for (let iter = 0; iter < maxIter; iter++) {
+        const Ap = A.map(row => dotRow(row, p));
+        const alpha = rsold / (dot(p, Ap) + 1e-30);
+        
+        for (let i = 0; i < n; i++) {
+            x[i] += alpha * p[i];
+            r[i] -= alpha * Ap[i];
+        }
+        
+        const rsnew = dot(r, r);
+        if (Math.sqrt(rsnew) < tol) {
+            console.log(`CG converged in ${iter + 1} iterations`);
+            break;
+        }
+        
+        const beta = rsnew / rsold;
+        for (let i = 0; i < n; i++) {
+            p[i] = r[i] + beta * p[i];
+        }
+        rsold = rsnew;
     }
+    
     return x;
 }
 
-function computeDKTStresses(T6,V,regions,w,thetaX,thetaY){
-    const nNodes=V.length;
-    const nodeStresses=new Array(nNodes).fill(null).map(()=>({top:{vonMises:0,principal1:0,principal2:0},bot:{vonMises:0,principal1:0,principal2:0}}));
-    return nodeStresses; // Simplified return for stability
+function dot(a, b) {
+    return a.reduce((sum, ai, i) => sum + ai * b[i], 0);
 }
 
-function dot(a,b){return a.reduce((sum,ai,i)=>sum+ai*b[i],0)}
-function dotRow(row,vec){return row.reduce((sum,aij,j)=>sum+aij*vec[j],0)}
+function dotRow(row, vec) {
+    return row.reduce((sum, aij, j) => sum + aij * vec[j], 0);
+}
+
+function identifyBoundaryNodes() {
+    if (!mesh) return {};
+    
+    const V = mesh.V;
+    const loops = mesh.loops;
+    const boundaryNodes = {};
+    const tol = 1e-6;
+    
+    const isNear = (a, b) => Math.hypot(a.x - b.x, a.y - b.y) < tol;
+    
+    // Outer boundary
+    if (model.shape.type === "rect") {
+        const W = model.shape.W, L = model.shape.L;
+        const edges = [
+            { id: "outer:edge:0", check: v => Math.abs(v.x - W / 2) < tol },
+            { id: "outer:edge:1", check: v => Math.abs(v.x + W / 2) < tol },
+            { id: "outer:edge:2", check: v => Math.abs(v.y - L / 2) < tol },
+            { id: "outer:edge:3", check: v => Math.abs(v.y + L / 2) < tol }
+        ];
+        
+        edges.forEach(edge => {
+            boundaryNodes[edge.id] = V.map((v, i) => edge.check(v) ? i : null).filter(i => i !== null);
+        });
+    } else {
+        const R = model.shape.D / 2;
+        boundaryNodes["outer:perimeter"] = V.map((v, i) => {
+            const r = Math.hypot(v.x, v.y);
+            return Math.abs(r - R) < tol ? i : null;
+        }).filter(i => i !== null);
+    }
+    
+    // Cutout boundaries
+    loops.cutouts.forEach(cutout => {
+        boundaryNodes[cutout.id] = V.map((v, i) => {
+            return cutout.loop.some(p => isNear(v, p)) ? i : null;
+        }).filter(i => i !== null);
+    });
+    
+    return boundaryNodes;
+}
 
 btnSolve.onclick = () => {
-    solveStatusText.textContent = "Solving..."; solveStatusText.style.color = "#f59e0b"; btnSolve.disabled = true;
+    solveStatusText.textContent = "Solving...";
+    solveStatusText.style.color = "#f59e0b";
+    btnSolve.disabled = true;
+    
     setTimeout(() => {
-        try { showErr(""); solution = solvePlateBending(); updateVisualization(); solveStatusText.textContent = "Solved successfully"; solveStatusText.style.color = "#16a34a";
-        } catch (e) { showErr(e?.message || String(e)); solveStatusText.textContent = "Solve failed"; solveStatusText.style.color = "#dc2626"; console.error(e);
-        } finally { btnSolve.disabled = false; btnSolve.textContent = "Solve FE Analysis"; }
+        try {
+            showErr("");
+            solution = solvePlateBending();
+            updateVisualization();
+            solveStatusText.textContent = "Solved successfully";
+            solveStatusText.style.color = "#16a34a";
+        } catch (e) {
+            showErr(e?.message || String(e));
+            solveStatusText.textContent = "Solve failed";
+            solveStatusText.style.color = "#dc2626";
+            console.error(e);
+        } finally {
+            btnSolve.disabled = false;
+        }
     }, 50);
 };
 
