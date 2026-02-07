@@ -385,77 +385,98 @@ function solvePlateBending(){
 }
 
 function computeT6PlateStiffness(x, y, D, nu, t, E, gaussPts){
+    // Initialize 18x18 stiffness matrix
     const Ke = new Array(18).fill(0).map(() => new Array(18).fill(0));
     
-    // Shear Modulus and Correction Factor
+    // Material Properties
     const G = E / (2 * (1 + nu));
-    const kappa = 5/6; // Standard shear correction for Rect/Tri sections
+    const kappa = 5/6; 
     const shearStiffness = kappa * t * G;
 
-    gaussPts.forEach(gp => {
-        const {N, dN_dx, dN_dy, detJ} = T6ShapeDerivatives(x, y, gp.xi, gp.eta);
+    // --- INTEGRATION RULES ---
+    
+    // 1. Bending Rule: 3-Point (Hammer) 
+    // Weights are 1/6 so they sum to 0.5 (Area of reference triangle)
+    const gaussPtsBend = [
+       {xi: 1/6, eta: 1/6, w: 1/6},
+       {xi: 2/3, eta: 1/6, w: 1/6},
+       {xi: 1/6, eta: 2/3, w: 1/6}
+    ];
+
+    // 2. Shear Rule: 1-Point (Reduced Integration)
+    // Centroid location, Weight 0.5
+    // This prevents "Shear Locking" in thin plates
+    const gaussPtsShear = [
+       {xi: 1/3, eta: 1/3, w: 1/2}
+    ];
+
+    const Db = [
+        [D, D*nu, 0],
+        [D*nu, D, 0],
+        [0, 0, D*(1-nu)/2]
+    ];
+
+    const Ds = [
+        [shearStiffness, 0],
+        [0, shearStiffness]
+    ];
+
+    // --- LOOP 1: BENDING STIFFNESS (3 Points) ---
+    gaussPtsBend.forEach(gp => {
+        const {dN_dx, dN_dy, detJ} = T6ShapeDerivatives(x, y, gp.xi, gp.eta);
         const weight = gp.w * detJ;
 
-        // --- 1. Bending Stiffness (Kb) ---
-        // Links Curvature to Rotation DOFs
+        // B-matrix for bending (Curvature -> DOFs)
         const Bb = new Array(3).fill(0).map(() => new Array(18).fill(0));
-        
         for(let i=0; i<6; i++){
             const col = i*3; 
-            // DOF 0=w, 1=tx, 2=ty
-            // Kappa_x = d(ty)/dx
-            Bb[0][col+2] = dN_dx[i]; 
-            // Kappa_y = -d(tx)/dy
-            Bb[1][col+1] = -dN_dy[i];
-            // Kappa_xy = d(ty)/dy - d(tx)/dx
-            Bb[2][col+1] = -dN_dx[i];
-            Bb[2][col+2] = dN_dy[i];
+            Bb[0][col+2] = dN_dx[i];       // d(ty)/dx
+            Bb[1][col+1] = -dN_dy[i];      // -d(tx)/dy
+            Bb[2][col+1] = -dN_dx[i];      // -d(tx)/dx
+            Bb[2][col+2] = dN_dy[i];       // d(ty)/dy
         }
 
-        const Db = [
-            [D, D*nu, 0],
-            [D*nu, D, 0],
-            [0, 0, D*(1-nu)/2]
-        ];
-
-        // --- 2. Shear Stiffness (Ks) ---
-        const Bs = new Array(2).fill(0).map(() => new Array(18).fill(0));
-        
-        for(let i=0; i<6; i++){
-            const col = i*3;
-            // Gamma_xz
-            Bs[0][col+0] = dN_dx[i]; // dw/dx
-            Bs[0][col+2] = N[i];     // + ty
-            
-            // Gamma_yz
-            Bs[1][col+0] = dN_dy[i]; // dw/dy
-            Bs[1][col+1] = -N[i];    // - tx
-        }
-
-        const Ds = [
-            [shearStiffness, 0],
-            [0, shearStiffness]
-        ];
-
-        // --- Accumulate Stiffness ---
+        // Accumulate B^T * D * B
         for(let i=0; i<18; i++){
             for(let j=0; j<18; j++){
                 let val = 0;
-                
-                // Bending contribution: Bb^T * Db * Bb
                 for(let k=0; k<3; k++){
                     for(let l=0; l<3; l++){
                         val += Bb[k][i] * Db[k][l] * Bb[l][j];
                     }
                 }
-                
-                // Shear contribution: Bs^T * Ds * Bs
+                Ke[i][j] += val * weight;
+            }
+        }
+    });
+
+    // --- LOOP 2: SHEAR STIFFNESS (1 Point) ---
+    gaussPtsShear.forEach(gp => {
+        const {N, dN_dx, dN_dy, detJ} = T6ShapeDerivatives(x, y, gp.xi, gp.eta);
+        const weight = gp.w * detJ;
+
+        // B-matrix for shear (Shear Strain -> DOFs)
+        const Bs = new Array(2).fill(0).map(() => new Array(18).fill(0));
+        for(let i=0; i<6; i++){
+            const col = i*3;
+            // Gamma_xz = dw/dx + ty
+            Bs[0][col+0] = dN_dx[i]; 
+            Bs[0][col+2] = N[i];     
+            
+            // Gamma_yz = dw/dy - tx
+            Bs[1][col+0] = dN_dy[i]; 
+            Bs[1][col+1] = -N[i];    
+        }
+
+        // Accumulate B^T * D * B
+        for(let i=0; i<18; i++){
+            for(let j=0; j<18; j++){
+                let val = 0;
                 for(let k=0; k<2; k++){
                     for(let l=0; l<2; l++){
                         val += Bs[k][i] * Ds[k][l] * Bs[l][j];
                     }
                 }
-                
                 Ke[i][j] += val * weight;
             }
         }
@@ -464,7 +485,28 @@ function computeT6PlateStiffness(x, y, D, nu, t, E, gaussPts){
     return Ke;
 }
 
-function computeT6PlateLoad(x,y,p,gaussPts){const Fe=new Array(18).fill(0);let totalLoad=0;gaussPts.forEach(gp=>{const{N,dN_dx,dN_dy,detJ}=T6ShapeDerivatives(x,y,gp.xi,gp.eta);const weight=gp.w*detJ;for(let i=0;i<6;i++){const load=-p*N[i]*weight;Fe[i*3+0]+=load;totalLoad+=Math.abs(load)}});return Fe}
+function computeT6PlateLoad(x,y,p,gaussPts){
+    const Fe = new Array(18).fill(0);
+    // Use the same 3-point rule as bending (Correct weights sum to 0.5)
+    const gaussPtsLoad = [
+       {xi: 1/6, eta: 1/6, w: 1/6},
+       {xi: 2/3, eta: 1/6, w: 1/6},
+       {xi: 1/6, eta: 2/3, w: 1/6}
+    ];
+    
+    gaussPtsLoad.forEach(gp => {
+        const {N, detJ} = T6ShapeDerivatives(x,y,gp.xi,gp.eta);
+        const weight = gp.w * detJ;
+        for(let i=0; i<6; i++){
+            // Pressure p is per unit area. 
+            // Load = Integral(p * N_i dA)
+            Fe[i*3+0] += -p * N[i] * weight;
+        }
+    });
+    return Fe;
+}
+
+
 
 function computeT6Stresses(T6,V,regions,w,thetaX,thetaY){const nNodes=V.length;const nodeStresses=new Array(nNodes).fill(null).map(()=>({top:{sigmaX:0,sigmaY:0,tauXY:0,count:0},bot:{sigmaX:0,sigmaY:0,tauXY:0,count:0}}));const E=model.shape.E,nu=model.shape.nu;T6.forEach(elem=>{const regionId=elem.region,t=regions[regionId].t,nodes=elem.nodes,x=nodes.map(i=>V[i].x),y=nodes.map(i=>V[i].y);const w_e=nodes.map(i=>w[i]),tx_e=nodes.map(i=>thetaX[i]),ty_e=nodes.map(i=>thetaY[i]);const cornerPoints=[{xi:0,eta:0},{xi:1,eta:0},{xi:0,eta:1}];cornerPoints.forEach((pt,idx)=>{const nodeIdx=nodes[idx];const{dN_dx,dN_dy}=T6ShapeDerivatives(x,y,pt.xi,pt.eta);let kx=0,ky=0,kxy=0;for(let i=0;i<6;i++){kx+=dN_dx[i]*ty_e[i];ky+=-dN_dy[i]*tx_e[i];kxy+=dN_dy[i]*ty_e[i]-dN_dx[i]*tx_e[i]}const z_top=t/2,z_bot=-t/2,factor=E/(1-nu**2);const computeAtZ=z=>{const sigmaX=-factor*z*(kx+nu*ky);const sigmaY=-factor*z*(ky+nu*kx);const tauXY=-factor*z*(1-nu)/2*kxy;return{sigmaX,sigmaY,tauXY}};const stressTop=computeAtZ(z_top),stressBot=computeAtZ(z_bot);nodeStresses[nodeIdx].top.sigmaX+=stressTop.sigmaX;nodeStresses[nodeIdx].top.sigmaY+=stressTop.sigmaY;nodeStresses[nodeIdx].top.tauXY+=stressTop.tauXY;nodeStresses[nodeIdx].bot.sigmaX+=stressBot.sigmaX;nodeStresses[nodeIdx].bot.sigmaY+=stressBot.sigmaY;nodeStresses[nodeIdx].bot.tauXY+=stressBot.tauXY;nodeStresses[nodeIdx].top.count++;nodeStresses[nodeIdx].bot.count++})});nodeStresses.forEach(ns=>{['top','bot'].forEach(surface=>{if(ns[surface].count>0){ns[surface].sigmaX/=ns[surface].count;ns[surface].sigmaY/=ns[surface].count;ns[surface].tauXY/=ns[surface].count}const sx=ns[surface].sigmaX,sy=ns[surface].sigmaY,txy=ns[surface].tauXY;const savg=(sx+sy)/2,R=Math.sqrt(((sx-sy)/2)**2+txy**2),p1=savg+R,p2=savg-R,vm=Math.sqrt(sx**2+sy**2-sx*sy+3*txy**2);ns[surface].principal1=p1;ns[surface].principal2=p2;ns[surface].vonMises=vm})});return nodeStresses}
 
@@ -871,6 +913,7 @@ animate();
 </script>
 </body>
 </html>
+
 
 
 
