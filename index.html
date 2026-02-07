@@ -4,6 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Plate Module — T6 FE Solver</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
 :root{--W:900px;--panel-bg:#f5f7fb;--card:#fff;--ink:#0b1220;--muted:#5b6678;--border:#d7dde6;--blue:#2563eb;--green:#16a34a;--amber:#f59e0b;--red:#dc2626;--free:#6b7280;--ss:#2563eb;--fixed:#dc2626}
 body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:var(--ink);background:#fff}
@@ -49,8 +50,6 @@ input:focus,select:focus{border-color:#9db7ff;box-shadow:0 0 0 3px rgba(37,99,23
 
 .hud .k{font-size:11px;color:var(--muted);margin-bottom:2px;text-transform:uppercase;letter-spacing:0.02em;font-weight:700}
 .hud .v{font-size:12px;font-weight:800}
-
-/* Reorganized HUD items into blocks for horizontal layout */
 .hud-block { display:flex; flex-direction:column; }
 
 .legend{display:flex;gap:10px;flex-wrap:wrap;}
@@ -80,7 +79,12 @@ input[type="range"]{width:100%;height:6px;border-radius:3px;background:#d7dde6;o
 <div class="xl4-wrap">
 <div class="xl4-head">
 <div><div class="xl4-title">Plate Module — T6 FE Solver</div><div class="xl4-sub">6-node quadratic triangular plate bending elements</div></div>
-<div class="row"><button class="btn small" id="btnExport">Export JSON</button><button class="btn small danger" id="btnReset">Reset</button></div>
+<div class="row">
+    <input type="file" id="fileImport" accept=".json" style="display:none" />
+    <button class="btn small" id="btnImport">Import JSON</button>
+    <button class="btn small" id="btnExport">Export ZIP</button>
+    <button class="btn small danger" id="btnReset">Reset</button>
+</div>
 </div>
 <div class="xl4-body">
 <div class="card">
@@ -177,11 +181,15 @@ let mesh=null,solution=null;
 const $=id=>document.getElementById(id);
 const shapeType=$("shapeType"),units=$("units"),rectDims=$("rectDims"),circDims=$("circDims"),featureList=$("featureList"),featureEmpty=$("featureEmpty"),errBox=$("errBox"),selBoundary=$("selBoundary"),bcType=$("bcType"),btnApplyBC=$("btnApplyBC"),pickedLabel=$("pickedLabel"),meshStats=$("meshStats"),nu=$("nu"),globalPressure=$("globalPressure"),btnSolve=$("btnSolve"),vizMode=$("vizMode"),defScale=$("defScale"),animateCheck=$("animateCheck"),animControls=$("animControls"),animAmp=$("animAmp"),animFreq=$("animFreq"),animAmpVal=$("animAmpVal"),animFreqVal=$("animFreqVal"),solveStatusText=$("solveStatusText"),contourInfo=$("contourInfo"),contourMin=$("contourMin"),contourMax=$("contourMax");
 
-const canvas=$("gl"),renderer=new THREE.WebGLRenderer({canvas,antialias:true});
+// Import/Export Elements
+const btnImport = $("btnImport");
+const fileImport = $("fileImport");
+const btnExport = $("btnExport");
+
+const canvas=$("gl"),renderer=new THREE.WebGLRenderer({canvas,antialias:true, preserveDrawingBuffer: true}); // preserveDrawingBuffer needed for screenshots
 renderer.setPixelRatio(Math.min(devicePixelRatio,2));
 const scene=new THREE.Scene();
 scene.background=new THREE.Color(0xffffff);
-// Updated Camera: near=1.0, far=1000 for better depth precision
 const camera = new THREE.PerspectiveCamera(45, 1, 1.0, 1000);
 camera.position.set(40,35,55);
 
@@ -482,14 +490,12 @@ function renderDeflection(w,scale){clearGroup(grpSolid);clearGroup(grpWire);cons
 
 function renderStress(mode,stresses,defScale){clearGroup(grpSolid);clearGroup(grpWire);const V=mesh.V,T6=mesh.T6,regions=mesh.regions,w=solution.deflection;const parts=mode.split('_'),surface=parts[1],stressType=parts[2];const vals=stresses.map(ns=>{const s=ns[surface];if(stressType==='vm')return s.vonMises;if(stressType==='p1')return s.principal1;if(stressType==='p2')return s.principal2;return 0});const minS=Math.min(...vals),maxS=Math.max(...vals),range=maxS-minS||1;contourMin.textContent=fmt(minS);contourMax.textContent=fmt(maxS);let animFactor=1.0;if(animationEnabled){const amp=Number(animAmp.value),freq=Number(animFreq.value);animFactor=amp*Math.sin(2*Math.PI*freq*animationTime)}const getColor=val=>{const t=Math.max(0,Math.min(1,(val-minS)/range));if(t<0.25){const s=t/0.25;return new THREE.Color(0,s,1)}else if(t<0.5){const s=(t-0.25)/0.25;return new THREE.Color(0,1,1-s)}else if(t<0.75){const s=(t-0.5)/0.25;return new THREE.Color(s,1,0)}else{const s=(t-0.75)/0.25;return new THREE.Color(1,1-s,0)}};T6.forEach(elem=>{const regionId=elem.region,tElem=regions[regionId].t,nodes=elem.nodes;const subTris=[[0,3,5],[3,1,4],[5,4,2],[3,4,5]];subTris.forEach(tri=>{const pos=[],colors=[];tri.forEach(localIdx=>{const nodeIdx=nodes[localIdx],v=V[nodeIdx],deflection=w[nodeIdx]*defScale*animFactor,yVal=surface==='top'?deflection+tElem:deflection;pos.push(v.x,yVal,v.y);const col=getColor(vals[nodeIdx]);colors.push(col.r,col.g,col.b)});const geom=new THREE.BufferGeometry();geom.setAttribute('position',new THREE.BufferAttribute(new Float32Array(pos),3));geom.setAttribute('color',new THREE.BufferAttribute(new Float32Array(colors),3));geom.setIndex([0,1,2]);geom.computeVertexNormals();const mat=new THREE.MeshStandardMaterial({vertexColors:true,side:THREE.DoubleSide});const mesh=new THREE.Mesh(geom,mat);grpSolid.add(mesh)})})}
 
-// --- THE FIXED RENDER FUNCTION WITH Z-FIGHTING FIXES ---
-
 function renderMesh3D(meshObj, sol) {
     clearGroup(grpSolid);
     clearGroup(grpWire);
     clearGroup(grpBC);
     clearGroup(grpLoads);
-
+    
     if (!meshObj) {
         meshStats.textContent = "—";
         return;
@@ -499,7 +505,7 @@ function renderMesh3D(meshObj, sol) {
         T6 = meshObj.T6,
         regions = meshObj.regions,
         tBase = regions.base.t;
-
+        
     meshStats.textContent = `${V.length} nodes • ${T6.length} T6 elems`;
     const mats = new Map();
 
@@ -512,9 +518,8 @@ function renderMesh3D(meshObj, sol) {
             opacity: 0.9,
             roughness: 0.8,
             metalness: 0.1,
-            // Push the solid mesh "back" slightly so lines can sit on top
             polygonOffset: true,
-            polygonOffsetFactor: 1,
+            polygonOffsetFactor: 1, 
             polygonOffsetUnits: 1
         });
         mats.set(regionId, m);
@@ -528,7 +533,7 @@ function renderMesh3D(meshObj, sol) {
             nodes = elem.nodes;
         // Subdivide T6 into 4 T3s for rendering
         const subTris = [[0, 3, 5], [3, 1, 4], [5, 4, 2], [3, 4, 5]];
-
+        
         subTris.forEach(tri => {
             const corners = tri.map(i => nodes[i]),
                 pos = [];
@@ -542,7 +547,7 @@ function renderMesh3D(meshObj, sol) {
             const indices = [3, 4, 5, 2, 1, 0, 0, 1, 4, 0, 4, 3, 1, 2, 5, 1, 5, 4, 2, 0, 3, 2, 3, 5];
             geom.setIndex(indices);
             geom.computeVertexNormals();
-
+            
             const mat = matFor(regionId);
             const mesh = new THREE.Mesh(geom, mat);
             grpSolid.add(mesh);
@@ -551,10 +556,10 @@ function renderMesh3D(meshObj, sol) {
 
     // --- Render Wireframe ---
     const wirePos = [];
-
-    // AGGRESSIVE LIFT: Raised to 0.12 to force separation from the grey surface
-    const lift = 0.12;
-
+    
+    // INCREASED LIFT: 0.12 units
+    const lift = 0.12; 
+    
     T6.forEach(elem => {
         const regionId = elem.region,
             y = regions[regionId].t + lift,
@@ -562,7 +567,7 @@ function renderMesh3D(meshObj, sol) {
         const a = V[nodes[0]],
             b = V[nodes[1]],
             c = V[nodes[2]];
-
+            
         wirePos.push(a.x, y, a.y, b.x, y, b.y);
         wirePos.push(b.x, y, b.y, c.x, y, c.y);
         wirePos.push(c.x, y, c.y, a.x, y, a.y);
@@ -571,7 +576,7 @@ function renderMesh3D(meshObj, sol) {
     const wireGeo = new THREE.BufferGeometry();
     wireGeo.setAttribute("position", new THREE.Float32BufferAttribute(wirePos, 3));
 
-    // CLEANER MATERIAL: Pure black, no transparency, relying on physical lift
+    // High contrast black lines, no alpha
     const wireMat = new THREE.LineBasicMaterial({
         color: 0x000000,
         opacity: 1.0,
@@ -585,17 +590,40 @@ function renderMesh3D(meshObj, sol) {
     addBCTubes(meshObj);
     addPressureArrows(meshObj);
 
-    // Initial Camera Reset
     const span = spanVal();
     controls.target.set(0, 0, 0);
-    // Only reset camera position if it is still at the default
-    if (camera.position.x === 40 && camera.position.y === 35) {
-        camera.position.set(span * 1.2, span * 0.9, span * 1.5);
+    if(camera.position.x === 40 && camera.position.y === 35) {
+         camera.position.set(span * 1.2, span * 0.9, span * 1.5);
     }
     controls.update();
 }
 
-function addBCTubes(meshObj){const tMax=Math.max(...Object.values(meshObj.regions).map(r=>r.t)),y=tMax+0.01,span=spanVal(),r=Math.max(0.003*span,0.04*model.shape.h);if(model.shape.type==="rect"){const W=model.shape.W,L=model.shape.L;const edges=[{id:"outer:edge:0",label:"Outer edge +X",a:[W/2,y,-L/2],b:[W/2,y,L/2]},{id:"outer:edge:1",label:"Outer edge -X",a:[-W/2,y,-L/2],b:[-W/2,y,L/2]},{id:"outer:edge:2",label:"Outer edge +Z",a:[-W/2,y,L/2],b:[W/2,y,L/2]},{id:"outer:edge:3",label:"Outer edge -Z",a:[-W/2,y,-L/2],b:[W/2,y,-L/2]}];edges.forEach(e=>addTubeForSegment(e.id,e.label,e.a,e.b,r,bcColor(model.bcs[e.id]||"free")))}else{const id="outer:perimeter";addTubeForPolyline(id,"Outer perimeter",meshObj.loops.outer,y,r,bcColor(model.bcs[id]||"free"))}meshObj.loops.cutouts.forEach(c=>addTubeForPolyline(c.id,`Cutout ${c.id.replace("cutout:","")} perimeter`,c.loop,y,r,bcColor(model.bcs[c.id]||"free")))}
+// ----------------------------------------------------
+// UPDATED BOUNDARY TUBES: 3x THICKER
+// ----------------------------------------------------
+function addBCTubes(meshObj){
+    // Calculate radius: Old logic was max(0.003*span, 0.04*h)
+    // New logic: 3x thicker -> max(0.009*span, 0.12*h)
+    const span = spanVal();
+    const r = Math.max(0.009 * span, 0.12 * model.shape.h);
+    const tMax = Math.max(...Object.values(meshObj.regions).map(r => r.t));
+    const y = tMax + 0.01;
+
+    if(model.shape.type==="rect"){
+        const W=model.shape.W,L=model.shape.L;
+        const edges=[
+            {id:"outer:edge:0",label:"Outer edge +X",a:[W/2,y,-L/2],b:[W/2,y,L/2]},
+            {id:"outer:edge:1",label:"Outer edge -X",a:[-W/2,y,-L/2],b:[-W/2,y,L/2]},
+            {id:"outer:edge:2",label:"Outer edge +Z",a:[-W/2,y,L/2],b:[W/2,y,L/2]},
+            {id:"outer:edge:3",label:"Outer edge -Z",a:[-W/2,y,-L/2],b:[W/2,y,-L/2]}
+        ];
+        edges.forEach(e=>addTubeForSegment(e.id,e.label,e.a,e.b,r,bcColor(model.bcs[e.id]||"free")))
+    } else {
+        const id="outer:perimeter";
+        addTubeForPolyline(id,"Outer perimeter",meshObj.loops.outer,y,r,bcColor(model.bcs[id]||"free"))
+    }
+    meshObj.loops.cutouts.forEach(c=>addTubeForPolyline(c.id,`Cutout ${c.id.replace("cutout:","")} perimeter`,c.loop,y,r,bcColor(model.bcs[c.id]||"free")))
+}
 
 function addTubeForSegment(boundaryId,boundaryLabel,a,b,radius,color){ensureDefaultBC(boundaryId);const p0=new THREE.Vector3(a[0],a[1],a[2]),p1=new THREE.Vector3(b[0],b[1],b[2]),curve=new THREE.LineCurve3(p0,p1),geo=new THREE.TubeGeometry(curve,8,radius,10,false),mat=new THREE.MeshStandardMaterial({color,roughness:0.85,metalness:0.0}),tube=new THREE.Mesh(geo,mat);tube.userData={pickType:"boundary",boundaryId,boundaryLabel};grpBC.add(tube)}
 
@@ -605,7 +633,107 @@ function addPressureArrows(meshObj){const V=meshObj.V,T6=meshObj.T6,regions=mesh
 
 function buildAll(){renderFeatureList();showErr("");const span=spanVal();if(!(model.shape.h>0)){showErr("Target element size h must be > 0.");return}try{mesh=buildMesh()}catch(e){mesh=null;clearGroup(grpSolid);clearGroup(grpWire);clearGroup(grpBC);clearGroup(grpLoads);meshStats.textContent="—";showErr(e?.message||String(e));return}renderMesh3D(mesh)}
 
-$("btnExport").onclick=()=>{syncInputsToModel();const out={model,mesh,solution};const blob=new Blob([JSON.stringify(out,null,2)],{type:"application/json"}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download="plate_analysis_t6.json";a.click();URL.revokeObjectURL(url)};
+// ----------------------------------------------------
+// IMPORT LOGIC
+// ----------------------------------------------------
+btnImport.onclick = () => fileImport.click();
+fileImport.onchange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        try {
+            const data = JSON.parse(e.target.result);
+            // Restore Model Data
+            if(data.model) Object.assign(model, data.model);
+            
+            // Sync UI
+            $("units").value = model.units;
+            $("shapeType").value = model.shape.type;
+            $("W").value = model.shape.W;
+            $("L").value = model.shape.L;
+            $("D").value = model.shape.D;
+            $("t").value = model.shape.t;
+            $("E").value = model.shape.E;
+            $("nu").value = model.shape.nu;
+            $("rho").value = model.shape.rho;
+            $("globalPressure").value = model.shape.globalPressure;
+            $("h").value = model.shape.h;
+            
+            // Clean slate
+            solution = null;
+            solveStatusText.textContent = "Not solved";
+            contourInfo.style.display = "none";
+            shapeType.onchange(); // toggle correct inputs
+            renderFeatureList();
+            buildAll();
+            
+        } catch (err) {
+            alert("Error parsing JSON: " + err.message);
+        }
+    };
+    reader.readAsText(file);
+    fileImport.value = "";
+};
+
+// ----------------------------------------------------
+// EXPORT LOGIC (ZIP + IMAGES)
+// ----------------------------------------------------
+btnExport.onclick = async () => {
+    syncInputsToModel();
+    const zip = new JSZip();
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    
+    // 1. Add Data JSON
+    const jsonContent = JSON.stringify({
+        metadata: { 
+            date: new Date().toISOString(),
+            version: "1.0",
+            notes: "Import this file back into the tool to restore state."
+        },
+        model: model
+    }, null, 2);
+    zip.file(`plate_data_${timestamp}.json`, jsonContent);
+    
+    // 2. Generate Screenshots if solution exists
+    if (solution) {
+        const currentMode = vizMode.value;
+        const imgFolder = zip.folder("results_images");
+        
+        // List of all modes to capture
+        const modes = [
+            "deflection", 
+            "stress_top_vm", "stress_top_p1", "stress_top_p2",
+            "stress_bot_vm", "stress_bot_p1", "stress_bot_p2"
+        ];
+        
+        // Loop through modes, render, and capture
+        for (const mode of modes) {
+            vizMode.value = mode;
+            updateVisualization();
+            renderer.render(scene, camera);
+            
+            const dataUrl = canvas.toDataURL("image/png");
+            const base64Data = dataUrl.replace(/^data:image\/png;base64,/, "");
+            imgFolder.file(`${mode}.png`, base64Data, {base64: true});
+        }
+        
+        // Restore view
+        vizMode.value = currentMode;
+        updateVisualization();
+        renderer.render(scene, camera);
+    }
+    
+    // 3. Download Zip
+    const content = await zip.generateAsync({type:"blob"});
+    const url = URL.createObjectURL(content);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `plate_analysis_${timestamp}.zip`;
+    a.click();
+    URL.revokeObjectURL(url);
+};
+
 $("btnReset").onclick=()=>location.reload();
 
 syncInputsToModel();renderFeatureList();buildAll();resize();
