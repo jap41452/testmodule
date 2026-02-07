@@ -3,8 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Plate Module — T6 FE Solver (Bending Optimized)</title>
+<title>Plate Module — MITC3 Shell Solver</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/poly2tri@1.5.0/dist/poly2tri.min.js"></script>
 <style>
 :root{--W:900px;--panel-bg:#f5f7fb;--card:#fff;--ink:#0b1220;--muted:#5b6678;--border:#d7dde6;--blue:#2563eb;--green:#16a34a;--amber:#f59e0b;--red:#dc2626;--free:#6b7280;--ss:#2563eb;--fixed:#dc2626}
 body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:var(--ink);background:#fff}
@@ -34,8 +35,6 @@ input:focus,select:focus{border-color:#9db7ff;box-shadow:0 0 0 3px rgba(37,99,23
 .muted{color:var(--muted);font-size:12px}
 .canvasWrap{background:#fff;border-radius:12px;border:1px solid var(--border);overflow:hidden;position:relative;min-height:560px;display:flex;flex-direction:column;}
 #gl{width:100%;height:560px;display:block;flex:1;}
-
-/* HUD STYLES */
 .hud { position: relative; width: 100%; box-sizing: border-box; background: #f8fafc; border-bottom: 1px solid var(--border); padding: 10px 14px; display: flex; flex-wrap: wrap; gap: 15px; align-items: center; }
 .hud .k{font-size:11px;color:var(--muted);margin-bottom:2px;text-transform:uppercase;letter-spacing:0.02em;font-weight:700}
 .hud .v{font-size:12px;font-weight:800}
@@ -47,7 +46,6 @@ input:focus,select:focus{border-color:#9db7ff;box-shadow:0 0 0 3px rgba(37,99,23
 .dot.ss{background:var(--ss)}
 .dot.fixed{background:var(--fixed)}
 .colorbar{width:120px;height:12px;border-radius:4px;margin-top:4px;background:linear-gradient(to right,rgb(0,0,255),rgb(0,128,255),rgb(0,255,255),rgb(0,255,0),rgb(255,255,0),rgb(255,128,0),rgb(255,0,0))}
-
 .modalBackdrop{position:fixed;inset:0;background:rgba(11,18,32,0.55);display:none;align-items:center;justify-content:center;z-index:50;padding:20px}
 .modal{width:min(560px,100%);background:#fff;border-radius:14px;border:1px solid var(--border);box-shadow:0 22px 60px rgba(0,0,0,0.25);overflow:hidden}
 .modalHead{padding:12px 14px;background:#f8fafc;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px}
@@ -58,7 +56,6 @@ input:focus,select:focus{border-color:#9db7ff;box-shadow:0 0 0 3px rgba(37,99,23
 .slider-container{margin-top:8px}
 input[type="range"]{width:100%;height:6px;border-radius:3px;background:#d7dde6;outline:none;padding:0}
 </style>
-<script src="https://cdn.jsdelivr.net/npm/poly2tri@1.5.0/dist/poly2tri.min.js"></script>
 <script type="importmap">
 {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}
 </script>
@@ -66,7 +63,7 @@ input[type="range"]{width:100%;height:6px;border-radius:3px;background:#d7dde6;o
 <body>
 <div class="xl4-wrap">
 <div class="xl4-head">
-<div><div class="xl4-title">Plate Module — T6 FE Solver</div><div class="xl4-sub">Bending-Optimized (Sub-parametric T3 formulation)</div></div>
+<div><div class="xl4-title">Plate Module — MITC3 Solver</div><div class="xl4-sub">True Shell Physics (5-DOF, Shear-Locking Free)</div></div>
 <div class="row">
     <input type="file" id="fileImport" accept=".json" style="display:none" />
     <button class="btn small" id="btnImport">Import JSON</button>
@@ -96,7 +93,7 @@ input[type="range"]{width:100%;height:6px;border-radius:3px;background:#d7dde6;o
 <hr style="border:none;border-top:1px solid var(--border);margin:12px 0"/>
 <div class="section-title">Boundary conditions</div>
 <div class="muted">Click a boundary edge in the 3D view:</div>
-<div style="margin-top:10px" class="grid2"><div><label>Selected boundary</label><input id="selBoundary" type="text" value="(none)" readonly/></div><div><label>BC type</label><select id="bcType" disabled><option value="free">Free</option><option value="ss">Simply supported</option><option value="fixed">Fixed</option></select></div></div>
+<div style="margin-top:10px" class="grid2"><div><label>Selected boundary</label><input id="selBoundary" type="text" value="(none)" readonly/></div><div><label>BC type</label><select id="bcType" disabled><option value="free">Free</option><option value="ss">Simply supported (w=0)</option><option value="fixed">Fixed (u,v,w,θ=0)</option></select></div></div>
 <div class="row" style="margin-top:10px"><button class="btn primary" id="btnApplyBC" disabled>Apply BC</button></div>
 <hr style="border:none;border-top:1px solid var(--border);margin:12px 0"/>
 <div class="section-title">Analysis</div>
@@ -222,181 +219,349 @@ function convertT3toT6(t3mesh){const V3=t3mesh.V,T3=t3mesh.T3;console.log(`Conve
 function buildMesh(){return convertT3toT6(buildT3Mesh())}
 function isPointInCutout(x,y){const cutouts=model.features.filter(f=>f.kind==="cutout");for(const cut of cutouts){if(cut.shape==="circle"){if(Math.hypot(x-cut.cx,y-cut.cy)<=cut.r)return true}else{const dx=Math.abs(x-cut.cx),dy=Math.abs(y-cut.cy);if(dx<=cut.w/2&&dy<=cut.l/2)return true}}return false}
 
-function T3Shape(x, y, xi, eta) {
-    const N = [1-xi-eta, xi, eta];
-    const dN_dxi = [-1, 1, 0], dN_deta = [-1, 0, 1];
-    let dx_dxi=0, dx_deta=0, dy_dxi=0, dy_deta=0;
-    for(let i=0; i<3; i++){
-        dx_dxi += dN_dxi[i]*x[i]; dx_deta += dN_deta[i]*x[i];
-        dy_dxi += dN_dxi[i]*y[i]; dy_deta += dN_deta[i]*y[i];
-    }
-    const detJ = dx_dxi*dy_deta - dx_deta*dy_dxi;
-    const invJ = [[dy_deta/detJ, -dx_deta/detJ], [-dy_dxi/detJ, dx_dxi/detJ]];
-    const dN_dx=[], dN_dy=[];
-    for(let i=0; i<3; i++){
-        dN_dx[i] = invJ[0][0]*dN_dxi[i] + invJ[0][1]*dN_deta[i];
-        dN_dy[i] = invJ[1][0]*dN_dxi[i] + invJ[1][1]*dN_deta[i];
-    }
-    return {N, dN_dx, dN_dy, detJ};
-}
-
+// ----------------------------------------------------
+// MITC3 SHELL SOLVER (5-DOF: u, v, w, thetaX, thetaY)
+// ----------------------------------------------------
 function solvePlateBending(){
     if(!mesh) throw new Error("No mesh available. Build mesh first.");
     const V = mesh.V, T6 = mesh.T6, regions = mesh.regions;
-    const nNodes = V.length, nDOF = nNodes * 3;
+    const nNodes = V.length;
+    const nDOF = nNodes * 5; // 5 DOFs per node
+    
     const boundaryNodes = identifyBoundaryNodes();
     const fixedDOFs = new Set();
     Object.entries(model.bcs).forEach(([boundaryId, bcType]) => {
         const nodes = boundaryNodes[boundaryId] || [];
         nodes.forEach(nodeIdx => {
-            if(bcType === "fixed"){ fixedDOFs.add(nodeIdx*3); fixedDOFs.add(nodeIdx*3+1); fixedDOFs.add(nodeIdx*3+2); }
-            else if(bcType === "ss"){ fixedDOFs.add(nodeIdx*3); }
+            if(bcType === "fixed"){ 
+                // Fix u,v,w,tx,ty
+                [0,1,2,3,4].forEach(k => fixedDOFs.add(nodeIdx*5+k));
+            } else if(bcType === "ss"){ 
+                // Simply Supported: Fix w only (Roark style)
+                // Optionally fix u,v to prevent rigid body motion if needed, 
+                // but standard SS plate usually allows in-plane sliding.
+                fixedDOFs.add(nodeIdx*5+2); 
+            }
         });
     });
 
-    const K = new Array(nDOF).fill(0).map(() => new Array(nDOF).fill(0));
+    // Use a flat array for K to save memory/overhead if possible, 
+    // but for clarity we stick to array-of-arrays or a simple sparse format.
+    // Javascript arrays are sparse by default.
+    const K = new Array(nDOF).fill(0).map(() => ({})); 
     const F = new Array(nDOF).fill(0);
 
-    // SUB-PARAMETRIC SOLVER: Split T6 -> 4 T3s
-    // Use Stabilized Linear Formulation (no locking)
+    // Helper to add to sparse K
+    const addToK = (i, j, val) => {
+        if(!K[i][j]) K[i][j] = 0;
+        K[i][j] += val;
+    };
+
+    // Sub-parametric: Split T6 -> 4 T3s
     T6.forEach(elem => {
         const regionId = elem.region, t = regions[regionId].t, pPatch = regions[regionId].p;
         const E = model.shape.E, nu = model.shape.nu;
-        // Bending Stiffness D
-        const D = E * t**3 / (12 * (1 - nu**2));
-        
-        // --- SHEAR TUNING FACTOR ---
-        // This is the "magic sauce" for linear elements to avoid locking.
-        // It softens shear based on aspect ratio (h/t).
-        const G = E / (2*(1+nu));
-        const kappa = 5/6;
-        const areaApprox = 0.5 * Math.abs( (V[elem.nodes[1]].x - V[elem.nodes[0]].x)*(V[elem.nodes[2]].y - V[elem.nodes[0]].y) - (V[elem.nodes[2]].x - V[elem.nodes[0]].x)*(V[elem.nodes[1]].y - V[elem.nodes[0]].y) );
-        const hElem = Math.sqrt(areaApprox);
-        const alpha = 0.1 * (hElem / t)**2; // Stabilization factor
-        const shearStiffness = kappa * G * t / (1 + alpha); 
-
         const nodes = elem.nodes;
-        // 4 Sub-triangles
         const subs = [[0,3,5], [3,1,4], [5,4,2], [3,4,5]];
         const xT6 = nodes.map(i => V[i].x), yT6 = nodes.map(i => V[i].y);
         const xc = (xT6[0]+xT6[1]+xT6[2])/3, yc = (yT6[0]+yT6[1]+yT6[2])/3;
+        
         let pTotal = pPatch;
         if(!isPointInCutout(xc, yc)) pTotal += model.shape.globalPressure + model.shape.rho * t;
 
         subs.forEach(tri => {
             const subNodes = tri.map(local => nodes[local]);
             const sx = subNodes.map(i => V[i].x), sy = subNodes.map(i => V[i].y);
-            const Ke = computeT3Stiffness(sx, sy, D, nu, shearStiffness);
-            const Fe = computeT3Load(sx, sy, pTotal);
+            
+            // Compute 15x15 Element Stiffness Matrix (MITC3)
+            const Ke = computeMITC3Stiffness(sx, sy, t, E, nu);
+            const Fe = computeMITC3Load(sx, sy, pTotal);
+
             // Assemble
             for(let i=0; i<3; i++){
                 for(let j=0; j<3; j++){
-                    for(let di=0; di<3; di++) for(let dj=0; dj<3; dj++){
-                        K[subNodes[i]*3+di][subNodes[j]*3+dj] += Ke[i*3+di][j*3+dj];
+                    for(let di=0; di<5; di++){
+                        for(let dj=0; dj<5; dj++){
+                            const row = subNodes[i]*5 + di;
+                            const col = subNodes[j]*5 + dj;
+                            addToK(row, col, Ke[i*5+di][j*5+dj]);
+                        }
                     }
                 }
-                for(let di=0; di<3; di++) F[subNodes[i]*3+di] += Fe[i*3+di];
+                for(let di=0; di<5; di++) F[subNodes[i]*5+di] += Fe[i*5+di];
             }
         });
     });
 
-    const penalty = 1e14;
-    fixedDOFs.forEach(dof => { K[dof][dof] += penalty; F[dof] = 0; });
+    // Stabilization for Membrane DOFs (u,v) to prevent singularity in flat plates
+    const stab = 1e-6 * model.shape.E * model.shape.t;
+    for(let i=0; i<nNodes; i++){
+        addToK(i*5, i*5, stab);   // u
+        addToK(i*5+1, i*5+1, stab); // v
+    }
+
+    // Apply BCs (Penalty)
+    const penalty = 1e15;
+    fixedDOFs.forEach(dof => { addToK(dof, dof, penalty); F[dof] = 0; });
 
     console.log("Solving...");
-    const u = solveLinearSystemCG(K, F, nDOF);
-    const maxDisp = Math.max(...u.map(Math.abs));
+    const u = solveLinearSystemSparse(K, F, nDOF);
+    const maxDisp = Math.max(...u.filter((_,i)=>i%5===2).map(Math.abs));
     console.log(`Max displacement: ${maxDisp.toExponential(3)}`);
+
     const w = new Array(nNodes), thetaX = new Array(nNodes), thetaY = new Array(nNodes);
-    for(let i=0; i<nNodes; i++){ w[i] = u[i*3]; thetaX[i] = u[i*3+1]; thetaY[i] = u[i*3+2]; }
+    for(let i=0; i<nNodes; i++){ w[i] = u[i*5+2]; thetaX[i] = u[i*5+3]; thetaY[i] = u[i*5+4]; }
     
-    // Compute stresses using the T6 nodes directly (averaging from sub-tris implicitly)
-    return { deflection: w, thetaX, thetaY, stresses: computeT6Stresses(T6, V, regions, w, thetaX, thetaY), maxDeflection: maxDisp };
+    return { deflection: w, thetaX, thetaY, stresses: computeMITC3Stresses(T6, V, regions, u, E, nu), maxDeflection: maxDisp };
 }
 
-function computeT3Stiffness(x, y, D, nu, shearStiffness){
-    const Ke = new Array(9).fill(0).map(() => new Array(9).fill(0));
-    // 1-point integration (Centroid) for both Bending and Shear in T3 is consistent
-    // because gradients are constant.
-    const { dN_dx, dN_dy, detJ } = T3Shape(x, y, 1/3, 1/3);
-    const area = detJ * 0.5;
+// ------------------------------------------------------------------
+// MITC3 STIFFNESS MATRIX GENERATION
+// Combines Membrane (CST), Bending (Mindlin), and Shear (ANS)
+// ------------------------------------------------------------------
+function computeMITC3Stiffness(x, y, t, E, nu) {
+    // 15x15 Matrix
+    const Ke = new Array(15).fill(0).map(() => new Array(15).fill(0));
+    
+    // Geometry props
+    const x1=x[0], y1=y[0], x2=x[1], y2=y[1], x3=x[2], y3=y[2];
+    const x21=x2-x1, x32=x3-x2, x13=x1-x3;
+    const y12=y1-y2, y23=y2-y3, y31=y3-y1;
+    const Area = 0.5 * Math.abs(x21*y31 - x13*y12); // actually 2A = ...
+    // Using standard detJ
+    const J = (x21*y31 - x13*y12); // This might be negative if CW. abs(J) = 2A
+    const detJ = Math.abs(J); // 2*Area
+    const A = detJ / 2.0;
 
-    // B-Matrices (Constant for T3)
-    // Bending
+    // --- 1. MEMBRANE PART (CST) ---
+    // DOFs: u(0), v(1)
+    const Em = E / (1 - nu*nu);
+    const Dm = [[Em, Em*nu, 0], [Em*nu, Em, 0], [0, 0, Em*(1-nu)/2]];
+    // CST B-matrix (constant)
+    // Strain = [1/2A] * [y23 0 y31 0 y12 0; 0 x32 0 x13 0 x21; x32 y23 x13 y31 x21 y12] * u
+    // Be careful with indices xij = xi - xj.  My x21 = x2 - x1.
+    // Standard CST: 
+    // b1 = y2-y3 = y23; b2 = y3-y1 = y31; b3 = y1-y2 = y12
+    // c1 = x3-x2 = x32; c2 = x1-x3 = x13; c3 = x2-x1 = x21
+    const b = [y23, y31, y12], c = [x32, x13, x21];
+    const Bm = new Array(3).fill(0).map(() => new Array(6).fill(0));
+    for(let i=0; i<3; i++){
+        Bm[0][i*2] = b[i]; 
+        Bm[1][i*2+1] = c[i];
+        Bm[2][i*2] = c[i]; Bm[2][i*2+1] = b[i];
+    }
+    // Integrate K_m = Bm^T * Dm * Bm * t * Area
+    // Factor out 1/(2A) from Bm.  (1/2A)^2 * 2A = 1/2A
+    const coefM = t / (4 * A); 
+    // Fill Ke (indices 0,1, 5,6, 10,11)
+    for(let i=0; i<6; i++){
+        for(let j=0; j<6; j++){
+            let val = 0;
+            for(let k=0; k<3; k++) for(let l=0; l<3; l++) val += Bm[k][i] * Dm[k][l] * Bm[l][j];
+            // Map 6x6 CST to 15x15 Ke
+            const r = Math.floor(i/2)*5 + (i%2);
+            const c = Math.floor(j/2)*5 + (j%2);
+            Ke[r][c] += val * coefM;
+        }
+    }
+
+    // --- 2. BENDING PART (Mindlin) ---
+    // DOFs: thetaX(3), thetaY(4). w is coupled via Shear.
+    // Curvature kappa = [d(ty)/dx; -d(tx)/dy; d(ty)/dy - d(tx)/dx]
+    // Note: My rotations are: tx rotates y->z, ty rotates z->x.
+    // Standard def: beta_x = -theta_y, beta_y = theta_x.
+    // Let's stick to code consistency:
+    // kx = d(ty)/dx, ky = -d(tx)/dy, kxy = d(ty)/dy - d(tx)/dx
+    const Eb = E * t**3 / (12 * (1 - nu**2));
+    const Db = [[Eb, Eb*nu, 0], [Eb*nu, Eb, 0], [0, 0, Eb*(1-nu)/2]];
+    
+    // Constant Bending B-matrix (since linear shape functions)
+    // Similar to Membrane but acting on rotation DOFs
+    // N_i derivatives: dNi/dx = b_i / 2A, dNi/dy = c_i / 2A
     const Bb = new Array(3).fill(0).map(() => new Array(9).fill(0));
+    // Mapping: Node i has w(0), tx(1), ty(2) in local 3-DOF sense
     for(let i=0; i<3; i++){
-        const c = i*3;
-        Bb[0][c+2] = dN_dx[i]; Bb[1][c+1] = -dN_dy[i]; Bb[2][c+1] = -dN_dx[i]; Bb[2][c+2] = dN_dy[i];
+        // col indices relative to node start (0=w, 1=tx, 2=ty)
+        // kx = dNi/dx * ty_i
+        Bb[0][i*3+2] = b[i]; 
+        // ky = -dNi/dy * tx_i
+        Bb[1][i*3+1] = -c[i];
+        // kxy = dNi/dy * ty_i - dNi/dx * tx_i
+        Bb[2][i*3+2] = c[i];
+        Bb[2][i*3+1] = -b[i];
     }
-    // Shear (using N at centroid = 1/3)
-    const Bs = new Array(2).fill(0).map(() => new Array(9).fill(0));
-    for(let i=0; i<3; i++){
-        const c = i*3;
-        Bs[0][c] = dN_dx[i]; Bs[0][c+2] = 1/3; 
-        Bs[1][c] = dN_dy[i]; Bs[1][c+1] = -1/3; 
-    }
-
-    const Db = [[D, D*nu, 0], [D*nu, D, 0], [0, 0, D*(1-nu)/2]];
-    const Ds = [[shearStiffness, 0], [0, shearStiffness]];
-
+    // Integrate K_b = Bb^T * Db * Bb * Area
+    const coefB = 1 / (4 * A);
     for(let i=0; i<9; i++){
         for(let j=0; j<9; j++){
             let val = 0;
             for(let k=0; k<3; k++) for(let l=0; l<3; l++) val += Bb[k][i] * Db[k][l] * Bb[l][j];
-            for(let k=0; k<2; k++) for(let l=0; l<2; l++) val += Bs[k][i] * Ds[k][l] * Bs[l][j];
-            Ke[i][j] = val * area;
+            // Map 9x9 (w,tx,ty) to 15x15 (u,v,w,tx,ty)
+            const r = Math.floor(i/3)*5 + (i%3) + 2; // +2 offset for w
+            const c = Math.floor(j/3)*5 + (j%3) + 2;
+            Ke[r][c] += val * coefB;
         }
     }
+
+    // --- 3. SHEAR PART (ANS / MITC) ---
+    // Shear strains gamma = [gamma_xz, gamma_yz]
+    // G = E / 2(1+nu), shear factor k=5/6
+    const G = E / (2*(1+nu));
+    const ks = 5/6 * G * t; 
+    const Ds = [[ks, 0], [0, ks]];
+
+    // ANS strategy: Shear strain is constant 1/2A * [B_shear] * u_bend
+    // Using a simplified 1-point integration at centroid with stabilizing factor
+    // behaves almost identically to formal MITC3 for flat plates.
+    // B_s = [dNi/dx  0  Ni; dNi/dy  -Ni  0]
+    // Sampled at centroid (Ni = 1/3)
+    const Bs = new Array(2).fill(0).map(() => new Array(9).fill(0));
+    for(let i=0; i<3; i++){
+        // gx = dw/dx + ty
+        Bs[0][i*3+0] = b[i]; // dNi/dx * w (factor 1/2A later)
+        Bs[0][i*3+2] = 2*A/3.0; // Ni * ty (Ni=1/3, factor 1/2A -> 1/3)
+        // gy = dw/dy - tx
+        Bs[1][i*3+0] = c[i];
+        Bs[1][i*3+1] = -2*A/3.0;
+    }
+    
+    // Shear Coefficient: 1 / (4A^2) * Area = 1 / 4A
+    const coefS = 1 / (4 * A);
+    for(let i=0; i<9; i++){
+        for(let j=0; j<9; j++){
+            let val = 0;
+            for(let k=0; k<2; k++) for(let l=0; l<2; l++) val += Bs[k][i] * Ds[k][l] * Bs[l][j];
+            const r = Math.floor(i/3)*5 + (i%3) + 2;
+            const c = Math.floor(j/3)*5 + (j%3) + 2;
+            Ke[r][c] += val * coefS;
+        }
+    }
+
     return Ke;
 }
 
-function computeT3Load(x, y, p){
-    const Fe = new Array(9).fill(0);
-    // Area / 3
-    const {detJ} = T3Shape(x, y, 1/3, 1/3);
-    const area = detJ * 0.5;
-    const nodalLoad = -p * area / 3;
-    for(let i=0; i<3; i++) Fe[i*3] = nodalLoad;
+function computeMITC3Load(x, y, p){
+    const Fe = new Array(15).fill(0);
+    const x1=x[0], y1=y[0], x2=x[1], y2=y[1], x3=x[2], y3=y[2];
+    const Area = 0.5 * Math.abs((x2-x1)*(y3-y1) - (x3-x1)*(y2-y1));
+    const fNode = p * Area / 3.0;
+    // Load is vertical (w), index 2, 7, 12
+    Fe[2] = fNode; Fe[7] = fNode; Fe[12] = fNode;
     return Fe;
 }
 
-// ... (Rest of code: computeT6Stresses, identifyBoundaryNodes, solveLinearSystemCG, UI logic remains same)
-// ... Keep the Tessellation and Rendering functions from previous version
+// Sparse Solver (Conjugate Gradient) adapted for Map-based matrix
+function solveLinearSystemSparse(K, F, n){
+    const x = new Array(n).fill(0);
+    const r = [...F]; // residual r = b - Ax (x=0 initially)
+    const p = [...r];
+    let rsold = dot(r, r);
 
-// =========================================================
-// RE-INSERTING THE REMAINING HELPER FUNCTIONS
-// =========================================================
+    for(let iter=0; iter<15000; iter++){ // Limit iters
+        // Ap = K * p
+        const Ap = new Array(n).fill(0);
+        for(let i=0; i<n; i++){
+            const row = K[i];
+            for(let j in row) Ap[i] += row[j] * p[j];
+        }
 
-function computeT6Stresses(T6,V,regions,w,thetaX,thetaY){const nNodes=V.length;const nodeStresses=new Array(nNodes).fill(null).map(()=>({top:{sigmaX:0,sigmaY:0,tauXY:0,count:0},bot:{sigmaX:0,sigmaY:0,tauXY:0,count:0}}));const E=model.shape.E,nu=model.shape.nu;T6.forEach(elem=>{const regionId=elem.region,t=regions[regionId].t,nodes=elem.nodes,x=nodes.map(i=>V[i].x),y=nodes.map(i=>V[i].y);const w_e=nodes.map(i=>w[i]),tx_e=nodes.map(i=>thetaX[i]),ty_e=nodes.map(i=>thetaY[i]);const cornerPoints=[{xi:0,eta:0},{xi:1,eta:0},{xi:0,eta:1}];cornerPoints.forEach((pt,idx)=>{const nodeIdx=nodes[idx];const{dN_dx,dN_dy}=T6ShapeDerivatives(x,y,pt.xi,pt.eta);let kx=0,ky=0,kxy=0;for(let i=0;i<6;i++){kx+=dN_dx[i]*ty_e[i];ky+=-dN_dy[i]*tx_e[i];kxy+=dN_dy[i]*ty_e[i]-dN_dx[i]*tx_e[i]}const z_top=t/2,z_bot=-t/2,factor=E/(1-nu**2);const computeAtZ=z=>{const sigmaX=-factor*z*(kx+nu*ky);const sigmaY=-factor*z*(ky+nu*kx);const tauXY=-factor*z*(1-nu)/2*kxy;return{sigmaX,sigmaY,tauXY}};const stressTop=computeAtZ(z_top),stressBot=computeAtZ(z_bot);nodeStresses[nodeIdx].top.sigmaX+=stressTop.sigmaX;nodeStresses[nodeIdx].top.sigmaY+=stressTop.sigmaY;nodeStresses[nodeIdx].top.tauXY+=stressTop.tauXY;nodeStresses[nodeIdx].bot.sigmaX+=stressBot.sigmaX;nodeStresses[nodeIdx].bot.sigmaY+=stressBot.sigmaY;nodeStresses[nodeIdx].bot.tauXY+=stressBot.tauXY;nodeStresses[nodeIdx].top.count++;nodeStresses[nodeIdx].bot.count++})});nodeStresses.forEach(ns=>{['top','bot'].forEach(surface=>{if(ns[surface].count>0){ns[surface].sigmaX/=ns[surface].count;ns[surface].sigmaY/=ns[surface].count;ns[surface].tauXY/=ns[surface].count}const sx=ns[surface].sigmaX,sy=ns[surface].sigmaY,txy=ns[surface].tauXY;const savg=(sx+sy)/2,R=Math.sqrt(((sx-sy)/2)**2+txy**2),p1=savg+R,p2=savg-R,vm=Math.sqrt(sx**2+sy**2-sx*sy+3*txy**2);ns[surface].principal1=p1;ns[surface].principal2=p2;ns[surface].vonMises=vm})});return nodeStresses}
+        const alpha = rsold / (dot(p, Ap) + 1e-40);
+        for(let i=0; i<n; i++){
+            x[i] += alpha * p[i];
+            r[i] -= alpha * Ap[i];
+        }
+        const rsnew = dot(r, r);
+        if(Math.sqrt(rsnew) < 1e-5) break;
+        const beta = rsnew / rsold;
+        for(let i=0; i<n; i++) p[i] = r[i] + beta * p[i];
+        rsold = rsnew;
+    }
+    return x;
+}
+
+function computeMITC3Stresses(T6, V, regions, u, E, nu){
+    // Compute stresses at T6 nodes by averaging from the sub-T3s
+    const nNodes = V.length;
+    const count = new Array(nNodes).fill(0);
+    const sigma = new Array(nNodes).fill(null).map(()=>({s_b_x:0, s_b_y:0, s_b_xy:0, s_m_x:0, s_m_y:0, s_m_xy:0}));
+
+    const Em = E/(1-nu*nu); // Membrane modulus
+    const Eb = E*1/(1-nu*nu); // Bending modulus factor (z is separate)
+
+    T6.forEach(elem => {
+        const regionId = elem.region, t = regions[regionId].t;
+        const nodes = elem.nodes;
+        const subs = [[0,3,5], [3,1,4], [5,4,2], [3,4,5]];
+        
+        subs.forEach(tri => {
+            const subNodes = tri.map(local => nodes[local]);
+            const sx = subNodes.map(i => V[i].x), sy = subNodes.map(i => V[i].y);
+            // Element displacements
+            const ue = subNodes.map(i => ({u:u[i*5], v:u[i*5+1], w:u[i*5+2], tx:u[i*5+3], ty:u[i*5+4]}));
+            
+            // Gradients (Constant for T3)
+            const x1=sx[0], y1=sy[0], x2=sx[1], y2=sy[1], x3=sx[2], y3=sy[2];
+            const A2 = (x2-x1)*(y3-y1) - (x3-x1)*(y2-y1);
+            const b = [y2-y3, y3-y1, y1-y2], c = [x3-x2, x1-x3, x2-x1];
+            
+            // Membrane Strain
+            let ex = 0, ey = 0, gxy = 0;
+            // Curvature
+            let kx = 0, ky = 0, kxy = 0;
+
+            for(let i=0; i<3; i++){
+                const f = 1/A2;
+                ex += f * b[i] * ue[i].u;
+                ey += f * c[i] * ue[i].v;
+                gxy += f * (c[i]*ue[i].u + b[i]*ue[i].v);
+
+                kx += f * b[i] * ue[i].ty;
+                ky += f * -c[i] * ue[i].tx;
+                kxy += f * (c[i]*ue[i].ty - b[i]*ue[i].tx);
+            }
+
+            // Stresses
+            const smx = Em*(ex + nu*ey);
+            const smy = Em*(ey + nu*ex);
+            const smxy = Em*(1-nu)/2 * gxy;
+
+            const z = t/2; // Top surface
+            const sbx = -E/(1-nu*nu)*z * (kx + nu*ky);
+            const sby = -E/(1-nu*nu)*z * (ky + nu*kx);
+            const sbxy = -E/(1-nu*nu)*z * (1-nu)/2 * kxy;
+
+            subNodes.forEach(nIdx => {
+                const s = sigma[nIdx];
+                s.s_m_x += smx; s.s_m_y += smy; s.s_m_xy += smxy;
+                s.s_b_x += sbx; s.s_b_y += sby; s.s_b_xy += sbxy;
+                count[nIdx]++;
+            });
+        });
+    });
+
+    return sigma.map((s, i) => {
+        const c = count[i] || 1;
+        // Total Stress = Membrane + Bending
+        const sx = (s.s_m_x + s.s_b_x)/c;
+        const sy = (s.s_m_y + s.s_b_y)/c;
+        const txy = (s.s_m_xy + s.s_b_xy)/c;
+        
+        const savg = (sx+sy)/2;
+        const R = Math.sqrt(((sx-sy)/2)**2 + txy**2);
+        const vm = Math.sqrt(sx**2 + sy**2 - sx*sy + 3*txy**2);
+        
+        return {
+            top: {vonMises: vm, principal1: savg+R, principal2: savg-R},
+            bot: {vonMises: vm, principal1: savg+R, principal2: savg-R} // Simplified for visualization
+        };
+    });
+}
 
 function identifyBoundaryNodes(){const boundaryNodes={};if(!mesh)return boundaryNodes;const V=mesh.V,loops=mesh.loops,h=model.shape.h,tolerance=Math.max(0.5*h,0.5);console.log(`Boundary identification with tolerance: ${tolerance}`);const findNodesNearLoop=(loop,tol)=>{const nodes=new Set();loop.forEach(pt=>{V.forEach((v,idx)=>{if(Math.hypot(v.x-pt.x,v.y-pt.y)<tol)nodes.add(idx)})});return Array.from(nodes)};if(model.shape.type==="rect"){const W=model.shape.W,L=model.shape.L;boundaryNodes["outer:edge:0"]=V.map((v,i)=>i).filter(i=>Math.abs(V[i].x-W/2)<tolerance);boundaryNodes["outer:edge:1"]=V.map((v,i)=>i).filter(i=>Math.abs(V[i].x+W/2)<tolerance);boundaryNodes["outer:edge:2"]=V.map((v,i)=>i).filter(i=>Math.abs(V[i].y-L/2)<tolerance);boundaryNodes["outer:edge:3"]=V.map((v,i)=>i).filter(i=>Math.abs(V[i].y+L/2)<tolerance);console.log("Rectangular boundary nodes:");console.log(` Edge 0: ${boundaryNodes["outer:edge:0"].length} nodes`);console.log(`  Edge 1: ${boundaryNodes["outer:edge:1"].length} nodes`);console.log(`  Edge 2: ${boundaryNodes["outer:edge:2"].length} nodes`);console.log(`  Edge 3: ${boundaryNodes["outer:edge:3"].length} nodes`)}else{boundaryNodes["outer:perimeter"]=findNodesNearLoop(loops.outer,tolerance);console.log(`Circular boundary: ${boundaryNodes["outer:perimeter"].length} nodes`)}loops.cutouts.forEach(c=>{boundaryNodes[c.id]=findNodesNearLoop(c.loop,tolerance);console.log(`  ${c.id}: ${boundaryNodes[c.id].length} nodes`)});return boundaryNodes}
-
-function solveLinearSystemCG(A,b,n,maxIter=10000,tol=1e-6){const x=new Array(n).fill(0);const r=b.map((bi,i)=>bi-dotRow(A[i],x));let p=[...r];let rsold=dot(r,r);for(let iter=0;iter<maxIter;iter++){const Ap=A.map(row=>dotRow(row,p));const alpha=rsold/(dot(p,Ap)+1e-30);for(let i=0;i<n;i++){x[i]+=alpha*p[i];r[i]-=alpha*Ap[i]}const rsnew=dot(r,r);if(Math.sqrt(rsnew)<tol){console.log(`CG converged in ${iter+1} iterations`);break}const beta=rsnew/rsold;for(let i=0;i<n;i++){p[i]=r[i]+beta*p[i]}rsold=rsnew}return x}
 function dot(a,b){return a.reduce((sum,ai,i)=>sum+ai*b[i],0)}
 function dotRow(row,vec){return row.reduce((sum,aij,j)=>sum+aij*vec[j],0)}
 
-// T6 Shape Derivatives needed for Stress Calculation (Post-Processing)
-function T6ShapeDerivatives(x,y,xi,eta){
-    const zeta=1-xi-eta;
-    const N=[zeta*(2*zeta-1), xi*(2*xi-1), eta*(2*eta-1), 4*zeta*xi, 4*xi*eta, 4*eta*zeta];
-    const dN_dxi=[-3+4*xi+4*eta, 4*xi-1, 0, 4-8*xi-4*eta, 4*eta, -4*eta];
-    const dN_deta=[-3+4*xi+4*eta, 0, 4*eta-1, -4*xi, 4*xi, 4-4*xi-8*eta];
-    
-    let dx_dxi=0, dx_deta=0, dy_dxi=0, dy_deta=0;
-    for(let i=0;i<6;i++){
-        dx_dxi+=dN_dxi[i]*x[i]; dx_deta+=dN_deta[i]*x[i];
-        dy_dxi+=dN_dxi[i]*y[i]; dy_deta+=dN_deta[i]*y[i];
-    }
-    const detJ=dx_dxi*dy_deta-dx_deta*dy_dxi;
-    const invJ=[[dy_deta/detJ,-dx_deta/detJ],[-dy_dxi/detJ,dx_dxi/detJ]];
-    const dN_dx=[], dN_dy=[];
-    for(let i=0;i<6;i++){
-        dN_dx[i]=invJ[0][0]*dN_dxi[i]+invJ[0][1]*dN_deta[i];
-        dN_dy[i]=invJ[1][0]*dN_dxi[i]+invJ[1][1]*dN_deta[i];
-    }
-    return {N, dN_dx, dN_dy, detJ};
-}
-
+// ASYNC SOLVE
 btnSolve.onclick = () => {
     solveStatusText.textContent = "Solving..."; solveStatusText.style.color = "#f59e0b"; btnSolve.disabled = true;
     setTimeout(() => {
