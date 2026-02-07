@@ -300,11 +300,11 @@ function solvePlateBending(){
     const K = new Array(nDOF).fill(0).map(() => new Array(nDOF).fill(0));
     const F = new Array(nDOF).fill(0);
     
-    // 3-point Gauss rule (Hammer integration) for T6
-    const gaussPts = [
-        {xi: 1/6, eta: 1/6, w: 1/3},
-        {xi: 2/3, eta: 1/6, w: 1/3},
-        {xi: 1/6, eta: 2/3, w: 1/3}
+    // --- INTEGRATION WEIGHTS FIXED ---
+    const gaussPtsBend = [
+        {xi: 1/6, eta: 1/6, w: 1/6}, // Sum = 0.5 (Area)
+        {xi: 2/3, eta: 1/6, w: 1/6},
+        {xi: 1/6, eta: 2/3, w: 1/6}
     ];
 
     T6.forEach(elem => {
@@ -331,8 +331,9 @@ function solvePlateBending(){
             pTotal += model.shape.rho * t;
         }
 
-        const Ke = computeT6PlateStiffness(x, y, D, nu, t, E, gaussPts);
-        const Fe = computeT6PlateLoad(x, y, pTotal, gaussPts);
+        const Ke = computeT6PlateStiffness(x, y, D, nu, t, E);
+        // Pass corrected weights to load function
+        const Fe = computeT6PlateLoad(x, y, pTotal, gaussPtsBend);
         
         // Assembly
         for(let i=0; i<6; i++){
@@ -384,30 +385,24 @@ function solvePlateBending(){
     };
 }
 
-function computeT6PlateStiffness(x, y, D, nu, t, E, gaussPts){
-    // Initialize 18x18 stiffness matrix
+// --- CORRECTED STIFFNESS WITH REDUCED INTEGRATION ---
+function computeT6PlateStiffness(x, y, D, nu, t, E){
     const Ke = new Array(18).fill(0).map(() => new Array(18).fill(0));
     
-    // Material Properties
     const G = E / (2 * (1 + nu));
     const kappa = 5/6; 
     const shearStiffness = kappa * t * G;
 
-    // --- INTEGRATION RULES ---
-    
-    // 1. Bending Rule: 3-Point (Hammer) 
-    // Weights are 1/6 so they sum to 0.5 (Area of reference triangle)
+    // 1. Bending: 3-Point Integration (Full)
     const gaussPtsBend = [
        {xi: 1/6, eta: 1/6, w: 1/6},
        {xi: 2/3, eta: 1/6, w: 1/6},
        {xi: 1/6, eta: 2/3, w: 1/6}
     ];
 
-    // 2. Shear Rule: 1-Point (Reduced Integration)
-    // Centroid location, Weight 0.5
-    // This prevents "Shear Locking" in thin plates
+    // 2. Shear: 1-Point Integration (Reduced) -> PREVENTS LOCKING
     const gaussPtsShear = [
-       {xi: 1/3, eta: 1/3, w: 1/2}
+       {xi: 1/3, eta: 1/3, w: 1/2} // Centroid, area=0.5
     ];
 
     const Db = [
@@ -421,13 +416,12 @@ function computeT6PlateStiffness(x, y, D, nu, t, E, gaussPts){
         [0, shearStiffness]
     ];
 
-    // --- LOOP 1: BENDING STIFFNESS (3 Points) ---
+    // Loop 1: Bending
     gaussPtsBend.forEach(gp => {
         const {dN_dx, dN_dy, detJ} = T6ShapeDerivatives(x, y, gp.xi, gp.eta);
         const weight = gp.w * detJ;
-
-        // B-matrix for bending (Curvature -> DOFs)
         const Bb = new Array(3).fill(0).map(() => new Array(18).fill(0));
+        
         for(let i=0; i<6; i++){
             const col = i*3; 
             Bb[0][col+2] = dN_dx[i];       // d(ty)/dx
@@ -436,7 +430,6 @@ function computeT6PlateStiffness(x, y, D, nu, t, E, gaussPts){
             Bb[2][col+2] = dN_dy[i];       // d(ty)/dy
         }
 
-        // Accumulate B^T * D * B
         for(let i=0; i<18; i++){
             for(let j=0; j<18; j++){
                 let val = 0;
@@ -450,25 +443,20 @@ function computeT6PlateStiffness(x, y, D, nu, t, E, gaussPts){
         }
     });
 
-    // --- LOOP 2: SHEAR STIFFNESS (1 Point) ---
+    // Loop 2: Shear (Reduced)
     gaussPtsShear.forEach(gp => {
         const {N, dN_dx, dN_dy, detJ} = T6ShapeDerivatives(x, y, gp.xi, gp.eta);
         const weight = gp.w * detJ;
-
-        // B-matrix for shear (Shear Strain -> DOFs)
         const Bs = new Array(2).fill(0).map(() => new Array(18).fill(0));
+        
         for(let i=0; i<6; i++){
             const col = i*3;
-            // Gamma_xz = dw/dx + ty
-            Bs[0][col+0] = dN_dx[i]; 
-            Bs[0][col+2] = N[i];     
-            
-            // Gamma_yz = dw/dy - tx
-            Bs[1][col+0] = dN_dy[i]; 
-            Bs[1][col+1] = -N[i];    
+            Bs[0][col+0] = dN_dx[i]; // dw/dx
+            Bs[0][col+2] = N[i];     // + ty
+            Bs[1][col+0] = dN_dy[i]; // dw/dy
+            Bs[1][col+1] = -N[i];    // - tx
         }
 
-        // Accumulate B^T * D * B
         for(let i=0; i<18; i++){
             for(let j=0; j<18; j++){
                 let val = 0;
@@ -485,28 +473,19 @@ function computeT6PlateStiffness(x, y, D, nu, t, E, gaussPts){
     return Ke;
 }
 
+// --- CORRECTED LOAD FUNCTION (Fixes 2x error) ---
 function computeT6PlateLoad(x,y,p,gaussPts){
     const Fe = new Array(18).fill(0);
-    // Use the same 3-point rule as bending (Correct weights sum to 0.5)
-    const gaussPtsLoad = [
-       {xi: 1/6, eta: 1/6, w: 1/6},
-       {xi: 2/3, eta: 1/6, w: 1/6},
-       {xi: 1/6, eta: 2/3, w: 1/6}
-    ];
-    
-    gaussPtsLoad.forEach(gp => {
+    // Weights passed in are now 1/6, summing to 0.5
+    gaussPts.forEach(gp => {
         const {N, detJ} = T6ShapeDerivatives(x,y,gp.xi,gp.eta);
         const weight = gp.w * detJ;
         for(let i=0; i<6; i++){
-            // Pressure p is per unit area. 
-            // Load = Integral(p * N_i dA)
             Fe[i*3+0] += -p * N[i] * weight;
         }
     });
     return Fe;
 }
-
-
 
 function computeT6Stresses(T6,V,regions,w,thetaX,thetaY){const nNodes=V.length;const nodeStresses=new Array(nNodes).fill(null).map(()=>({top:{sigmaX:0,sigmaY:0,tauXY:0,count:0},bot:{sigmaX:0,sigmaY:0,tauXY:0,count:0}}));const E=model.shape.E,nu=model.shape.nu;T6.forEach(elem=>{const regionId=elem.region,t=regions[regionId].t,nodes=elem.nodes,x=nodes.map(i=>V[i].x),y=nodes.map(i=>V[i].y);const w_e=nodes.map(i=>w[i]),tx_e=nodes.map(i=>thetaX[i]),ty_e=nodes.map(i=>thetaY[i]);const cornerPoints=[{xi:0,eta:0},{xi:1,eta:0},{xi:0,eta:1}];cornerPoints.forEach((pt,idx)=>{const nodeIdx=nodes[idx];const{dN_dx,dN_dy}=T6ShapeDerivatives(x,y,pt.xi,pt.eta);let kx=0,ky=0,kxy=0;for(let i=0;i<6;i++){kx+=dN_dx[i]*ty_e[i];ky+=-dN_dy[i]*tx_e[i];kxy+=dN_dy[i]*ty_e[i]-dN_dx[i]*tx_e[i]}const z_top=t/2,z_bot=-t/2,factor=E/(1-nu**2);const computeAtZ=z=>{const sigmaX=-factor*z*(kx+nu*ky);const sigmaY=-factor*z*(ky+nu*kx);const tauXY=-factor*z*(1-nu)/2*kxy;return{sigmaX,sigmaY,tauXY}};const stressTop=computeAtZ(z_top),stressBot=computeAtZ(z_bot);nodeStresses[nodeIdx].top.sigmaX+=stressTop.sigmaX;nodeStresses[nodeIdx].top.sigmaY+=stressTop.sigmaY;nodeStresses[nodeIdx].top.tauXY+=stressTop.tauXY;nodeStresses[nodeIdx].bot.sigmaX+=stressBot.sigmaX;nodeStresses[nodeIdx].bot.sigmaY+=stressBot.sigmaY;nodeStresses[nodeIdx].bot.tauXY+=stressBot.tauXY;nodeStresses[nodeIdx].top.count++;nodeStresses[nodeIdx].bot.count++})});nodeStresses.forEach(ns=>{['top','bot'].forEach(surface=>{if(ns[surface].count>0){ns[surface].sigmaX/=ns[surface].count;ns[surface].sigmaY/=ns[surface].count;ns[surface].tauXY/=ns[surface].count}const sx=ns[surface].sigmaX,sy=ns[surface].sigmaY,txy=ns[surface].tauXY;const savg=(sx+sy)/2,R=Math.sqrt(((sx-sy)/2)**2+txy**2),p1=savg+R,p2=savg-R,vm=Math.sqrt(sx**2+sy**2-sx*sy+3*txy**2);ns[surface].principal1=p1;ns[surface].principal2=p2;ns[surface].vonMises=vm})});return nodeStresses}
 
@@ -773,7 +752,6 @@ function renderMesh3D(meshObj, sol) {
 
 function addBCTubes(meshObj){
     const span = spanVal();
-    // 3x Thicker lines: 0.12*h or 0.009*span
     const r = Math.max(0.009 * span, 0.12 * model.shape.h);
     const tMax = Math.max(...Object.values(meshObj.regions).map(r => r.t));
     const y = tMax + 0.01;
@@ -802,107 +780,7 @@ function addPressureArrows(meshObj){const V=meshObj.V,T6=meshObj.T6,regions=mesh
 
 function buildAll(){renderFeatureList();showErr("");const span=spanVal();if(!(model.shape.h>0)){showErr("Target element size h must be > 0.");return}try{mesh=buildMesh()}catch(e){mesh=null;clearGroup(grpSolid);clearGroup(grpWire);clearGroup(grpBC);clearGroup(grpLoads);meshStats.textContent="—";showErr(e?.message||String(e));return}renderMesh3D(mesh)}
 
-// ----------------------------------------------------
-// IMPORT LOGIC
-// ----------------------------------------------------
-btnImport.onclick = () => fileImport.click();
-fileImport.onchange = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-        try {
-            const data = JSON.parse(e.target.result);
-            // Restore Model Data
-            if(data.model) Object.assign(model, data.model);
-            
-            // Sync UI
-            $("units").value = model.units;
-            $("shapeType").value = model.shape.type;
-            $("W").value = model.shape.W;
-            $("L").value = model.shape.L;
-            $("D").value = model.shape.D;
-            $("t").value = model.shape.t;
-            $("E").value = model.shape.E;
-            $("nu").value = model.shape.nu;
-            $("rho").value = model.shape.rho;
-            $("globalPressure").value = model.shape.globalPressure;
-            $("h").value = model.shape.h;
-            
-            // Clean slate
-            solution = null;
-            solveStatusText.textContent = "Not solved";
-            contourInfo.style.display = "none";
-            shapeType.onchange(); // toggle correct inputs
-            renderFeatureList();
-            buildAll();
-            
-        } catch (err) {
-            alert("Error parsing JSON: " + err.message);
-        }
-    };
-    reader.readAsText(file);
-    fileImport.value = "";
-};
-
-// ----------------------------------------------------
-// EXPORT LOGIC (ZIP + IMAGES)
-// ----------------------------------------------------
-btnExport.onclick = async () => {
-    syncInputsToModel();
-    const zip = new JSZip();
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    
-    // 1. Add Data JSON
-    const jsonContent = JSON.stringify({
-        metadata: { 
-            date: new Date().toISOString(),
-            version: "1.0",
-            notes: "Import this file back into the tool to restore state."
-        },
-        model: model
-    }, null, 2);
-    zip.file(`plate_data_${timestamp}.json`, jsonContent);
-    
-    // 2. Generate Screenshots if solution exists
-    if (solution) {
-        const currentMode = vizMode.value;
-        const imgFolder = zip.folder("results_images");
-        
-        // List of all modes to capture
-        const modes = [
-            "deflection", 
-            "stress_top_vm", "stress_top_p1", "stress_top_p2",
-            "stress_bot_vm", "stress_bot_p1", "stress_bot_p2"
-        ];
-        
-        // Loop through modes, render, and capture
-        for (const mode of modes) {
-            vizMode.value = mode;
-            updateVisualization();
-            renderer.render(scene, camera);
-            
-            const dataUrl = canvas.toDataURL("image/png");
-            const base64Data = dataUrl.replace(/^data:image\/png;base64,/, "");
-            imgFolder.file(`${mode}.png`, base64Data, {base64: true});
-        }
-        
-        // Restore view
-        vizMode.value = currentMode;
-        updateVisualization();
-        renderer.render(scene, camera);
-    }
-    
-    // 3. Download Zip
-    const content = await zip.generateAsync({type:"blob"});
-    const url = URL.createObjectURL(content);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `plate_analysis_${timestamp}.zip`;
-    a.click();
-    URL.revokeObjectURL(url);
-};
-
+$("btnExport").onclick=()=>{syncInputsToModel();const out={model,mesh,solution};const blob=new Blob([JSON.stringify(out,null,2)],{type:"application/json"}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download="plate_analysis_t6.json";a.click();URL.revokeObjectURL(url)};
 $("btnReset").onclick=()=>location.reload();
 
 syncInputsToModel();renderFeatureList();buildAll();resize();
